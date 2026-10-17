@@ -176,6 +176,7 @@ test("custom profile names stay text on mobile and in the rule editor", async ({
 });
 
 test("custom stage count, labels and rule targets are saved without HA mapping", async ({page}) => {
+  await page.evaluate(() => { delete Crypto.prototype.randomUUID; });
   await page.getByRole("tab",{name:"Level-Konfiguration"}).click();
   const rows = page.locator("[data-stage-row]");
   const original = await rows.count();
@@ -404,6 +405,7 @@ test("save dialog assigns an existing room directly without discarding edited pr
 });
 
 test("save dialog creates a room and stores its corrected area together",async({page})=>{
+  await page.evaluate(() => { delete Crypto.prototype.randomUUID; });
   await prepareDraftPlan(page,"draft_new_room");
   await page.getByRole("button",{name:"Neu zeichnen",exact:true}).click();
   const svg=page.locator("#floorplan"),bounds=await svg.boundingBox();

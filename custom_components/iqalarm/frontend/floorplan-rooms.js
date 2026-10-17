@@ -16,7 +16,19 @@ export function hasRoomReference(rooms, areas, reference) {
   return Object.hasOwn(rooms, reference) || areas.some(area => areaReference(area.id) === reference);
 }
 
-export function resolveRoom(rooms, areas, reference, newName, createId) {
+export function randomId(cryptoObj = globalThis.crypto) {
+  if (typeof cryptoObj?.randomUUID === "function") return cryptoObj.randomUUID().replaceAll("-", "");
+  if (typeof cryptoObj?.getRandomValues === "function") {
+    const bytes = new Uint8Array(16);
+    cryptoObj.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    return Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
+  }
+  return Array.from({length: 32}, () => Math.floor(Math.random() * 16).toString(16)).join("");
+}
+
+export function resolveRoom(rooms, areas, reference, newName, createId = randomId) {
   const name = newName.trim();
   if (reference && name) throw new Error("Bitte einen vorhandenen Raum wählen oder einen neuen benennen");
   if (!reference && !name) throw new Error("Bitte einen Raum auswählen oder einen Namen eingeben. Dein Entwurf bleibt erhalten.");

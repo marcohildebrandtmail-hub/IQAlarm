@@ -1,6 +1,6 @@
-import {DraftJournal} from "./floorplan-drafts.js?v=2.2.2";
-import {hasRoomReference, resolveRoom, roomGroups} from "./floorplan-rooms.js?v=2.2.2";
-/* IQAlarm 2.2.2 · native ES module · no CDN, framework or build required. */
+import {DraftJournal} from "./floorplan-drafts.js?v=2.2.3";
+import {hasRoomReference, randomId, resolveRoom, roomGroups} from "./floorplan-rooms.js?v=2.2.3";
+/* IQAlarm 2.2.3 · native ES module · no CDN, framework or build required. */
 const RULES = {perimeter: "Vorfeld-Erkennung", single: "Unbestätigter Einzelsensor", flapping: "Sensor-Prellen", perimeter_contact: "Vorfeld + Öffnung", contact_motion: "Öffnung + Bewegung", multi_contact: "Zwei Öffnungssensoren", multi_motion: "Zwei Bewegungsmelder", immediate: "Freigegebene Einzelauslösung / Gefahr"};
 const PROFILE_ICONS = {"mdi:home-outline":"Zuhause", "mdi:weather-night":"Nacht", "mdi:home-export-outline":"Abwesend", "mdi:palm-tree":"Urlaub", "mdi:account-group-outline":"Besuch", "mdi:garage-variant":"Garage", "mdi:shield-check-outline":"Schutz", "mdi:eye-outline":"Beobachtung", "mdi:dog":"Haustiere", "mdi:briefcase-outline":"Arbeit", "mdi:bed-outline":"Schlafzimmer", "mdi:lock-outline":"Schloss", "mdi:home-floor-0":"Erdgeschoss", "mdi:home-floor-1":"Obergeschoss", "mdi:home-floor-b":"Keller", "mdi:tree-outline":"Garten"};
 const ROLES = {perimeter_camera: "Außenkamera / Person", perimeter_sensor: "Vorfeld-Sensor", entry_contact: "Tür / Fenster", lock_contact: "Schloss / Riegel", vibration_glass: "Glas / Vibration", interior_motion: "Bewegung innen", interior_mmwave: "Präsenz / mmWave", panic: "Panik", smoke: "Rauch / Gefahr"};
@@ -262,7 +262,7 @@ class IQAlarmPanel extends HTMLElement {
   }
   _changeStageRows(add) {
     const rows = this.shadowRoot.getElementById("stage-rows"), count = rows.children.length;
-    if (add && count < 32) rows.insertAdjacentHTML("beforeend",this._stageRow({id:crypto.randomUUID().replaceAll("-",""),name:`Stufe ${count}`,color:"#2986bb",requires_confirmation:false,allow_loud:false,latch:false},count));
+    if (add && count < 32) rows.insertAdjacentHTML("beforeend",this._stageRow({id:randomId(),name:`Stufe ${count}`,color:"#2986bb",requires_confirmation:false,allow_loud:false,latch:false},count));
     else if (!add && count > 1) rows.lastElementChild.remove();
   }
   _profileSymbol(profile) {
@@ -345,7 +345,7 @@ class IQAlarmPanel extends HTMLElement {
     if (this.points.length < 3) throw new Error("Mindestens drei Eckpunkte markieren");
     if (roomId?.startsWith("ha-area:")) this.catalog=await this._call("catalog");
     const config=structuredClone(this.data.config);
-    const {id,room}=resolveRoom(config.rooms,this.catalog.areas,roomId,newName,() => crypto.randomUUID().replaceAll("-",""));
+    const {id,room}=resolveRoom(config.rooms,this.catalog.areas,roomId,newName,randomId);
     if (room) config.rooms[id]=room;
     config.floorplans[this.plan].zones[id]=structuredClone(this.points);
     this.data=await this._call("config/save",{config,revision}); this.zoneRoom=id;
@@ -669,7 +669,7 @@ class IQAlarmPanel extends HTMLElement {
           } else if (type === "floorplan") { collection = "floorplans"; item = {...(this.data.config.floorplans[id] || {}), name:get("name")}; if (id) item.id = id; } else throw new Error("Unbekanntes Formular");
           const knownRooms = new Set(Object.keys(this.data.config.rooms));
           this.data = await this._call("crud", {collection, operation: "save", item, revision: this._dialogRevision});
-          if (type === "room" && !id && this.selectedCandidate) this.zoneRoom = Object.keys(this.data.config.rooms).find(key => !knownRooms.has(key)) || this.zoneRoom;
+          if (type === "room" && !id && (this.selectedCandidate || this.points.length)) this.zoneRoom = Object.keys(this.data.config.rooms).find(key => !knownRooms.has(key)) || this.zoneRoom;
           if (type === "profile") this.profile = Object.keys(this.data.config.profiles).find(key => this.data.config.profiles[key].name === item.name);
         }
         this.shadowRoot.getElementById("editor").close();

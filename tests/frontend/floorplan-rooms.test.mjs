@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {areaReference, hasRoomReference, resolveRoom, roomGroups} from "../../custom_components/iqalarm/frontend/floorplan-rooms.js";
+import {areaReference, hasRoomReference, randomId, resolveRoom, roomGroups} from "../../custom_components/iqalarm/frontend/floorplan-rooms.js";
 import {DraftJournal} from "../../custom_components/iqalarm/frontend/floorplan-drafts.js";
 
 const areas = [{id: "kitchen", name: "Küche"}, {id: "living", name: "Wohnzimmer"}];
@@ -30,6 +30,21 @@ test("saving an area prepares only that linked room without mutating the configu
   assert.deepEqual(rooms, {});
 });
 
+test("randomId and resolveRoom work on HTTP origins where crypto.randomUUID is unavailable", () => {
+  const httpCrypto = {
+    getRandomValues(bytes) {
+      for (let i = 0; i < bytes.length; i += 1) bytes[i] = i + 1;
+      return bytes;
+    },
+  };
+  const generated = randomId(httpCrypto);
+  assert.match(generated, /^[0-9a-f]{32}$/);
+  assert.match(randomId({}), /^[0-9a-f]{32}$/);
+  const created = resolveRoom({}, areas, areaReference("kitchen"), "", () => randomId(httpCrypto));
+  assert.equal(created.id, generated);
+  assert.equal(created.room.name, "Küche");
+});
+
 test("another client importing the same area does not create a duplicate", () => {
   const room = {id: "existing", name: "Meine Küche", area_id: "kitchen", adjacent: ["hall"]};
   assert.deepEqual(resolveRoom({existing: room}, areas, areaReference("kitchen"), "", () => {throw new Error("No new ID expected");}), {id: "existing", room: null});
@@ -51,12 +66,11 @@ test("missing, conflicting and removed choices fail without creating a room", ()
 
 test("a selected HA area and every edited point survive draft restoration and undo", () => {
   let raw;
-  const storage = {getItem: () => raw, setItem: (_, value) => {raw = value;}};
-  const journal = new DraftJournal("test", storage);
+  const journal = new DraftJournal("test", {getItem: () => raw, setItem: (_, value) => {raw = value;}});
   const initial = {points: [[.1,.2],[.7,.2],[.5,.8]], roomId: null, candidateId: "2", manual: false};
   journal.update(initial); journal.checkpoint(initial);
   journal.update({...initial, roomId: areaReference("kitchen")});
-  const restored = new DraftJournal("test", storage);
+  const restored = new DraftJournal("test", {getItem: () => raw, setItem: (_, value) => {raw = value;}});
   assert.equal(restored.state.roomId, areaReference("kitchen"));
   assert.deepEqual(restored.state.points, initial.points);
   assert.deepEqual(restored.undo(), initial);
