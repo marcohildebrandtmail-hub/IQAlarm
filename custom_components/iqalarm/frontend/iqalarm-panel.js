@@ -334,7 +334,7 @@ class IQAlarmPanel extends HTMLElement {
   }
   _zoneAssignmentDialog() {
     this._storeDraft();
-    this._dialog("Fläche einem Raum zuordnen",`<p>Deine ${this.points.length} Eckpunkte bleiben erhalten. Wähle den zugehörigen Raum oder benenne einen neuen.</p><label class="field" style="margin-top:18px">Vorhandener Raum<select name="zone_room">${this._roomsOptions("","Raum auswählen")}</select></label><label class="field" style="margin-top:18px">Oder neuen Raum anlegen<input name="zone_new_room" maxlength="100" placeholder="z. B. Wohnzimmer"></label>`,"zone-assignment");
+    this._dialog("Fläche einem Raum zuordnen",`<p>Deine ${this.points.length} Eckpunkte bleiben erhalten. Wähle den zugehörigen Raum oder benenne einen neuen.</p><label class="field" style="margin-top:18px">Vorhandener Raum<select name="zone_room" aria-label="Vorhandener Raum">${this._roomsOptions("","Raum auswählen")}</select></label><label class="field" style="margin-top:18px">Oder neuen Raum anlegen<input name="zone_new_room" aria-label="Oder neuen Raum anlegen" maxlength="100" placeholder="z. B. Wohnzimmer"></label>`,"zone-assignment");
   }
   async _saveDraftZone(roomId, newName = "", revision = this._viewRevision) {
     if (this.points.length < 3) throw new Error("Mindestens drei Eckpunkte markieren");
