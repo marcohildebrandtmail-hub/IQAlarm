@@ -264,7 +264,7 @@ class IQAlarmPanel extends HTMLElement {
     return `<ha-icon icon="${esc(value)}" aria-hidden="true"></ha-icon>`;
   }
   _profileIconField(value) {
-    return `<div class="wide icon-picker"><label class="field">Profilsymbol<input name="profile_icon" value="${esc(value || "")}" placeholder="Automatisch nach Profilname" maxlength="84" pattern="mdi:[a-z0-9][a-z0-9-]{0,79}" list="profile-icon-list"><small>Symbol auswählen oder eine eigene MDI-Kennung eingeben. Leer: passend zum Profilnamen.</small></label><datalist id="profile-icon-list">${Object.entries(PROFILE_ICONS).map(([id,label]) => `<option value="${id}">${esc(label)}</option>`).join("")}</datalist><div class="icon-options" role="group" aria-label="Profilsymbole">${Object.entries(PROFILE_ICONS).map(([id,label]) => `<button type="button" class="small ${value === id ? "active" : ""}" data-command="profile-icon" data-id="${id}" aria-label="Symbol ${esc(label)}" title="${esc(label)}" aria-pressed="${value === id}">${this._profileSymbol({icon:id})}<span>${esc(label)}</span></button>`).join("")}</div><div class="row" style="margin-top:10px"><ha-icon data-icon-preview icon="${esc(value || "mdi:shield-check-outline")}"></ha-icon><small>Vorschau des gewählten Symbols</small></div></div>`;
+    return `<div class="wide icon-picker"><label class="field">Profilsymbol<input name="profile_icon" aria-label="Profilsymbol" value="${esc(value || "")}" placeholder="Automatisch nach Profilname" maxlength="84" pattern="mdi:[a-z0-9][a-z0-9-]{0,79}" list="profile-icon-list"><small>Symbol auswählen oder eine eigene MDI-Kennung eingeben. Leer: passend zum Profilnamen.</small></label><datalist id="profile-icon-list">${Object.entries(PROFILE_ICONS).map(([id,label]) => `<option value="${id}">${esc(label)}</option>`).join("")}</datalist><div class="icon-options" role="group" aria-label="Profilsymbole">${Object.entries(PROFILE_ICONS).map(([id,label]) => `<button type="button" class="small ${value === id ? "active" : ""}" data-command="profile-icon" data-id="${id}" aria-label="Symbol ${esc(label)}" title="${esc(label)}" aria-pressed="${value === id}">${this._profileSymbol({icon:id})}<span>${esc(label)}</span></button>`).join("")}</div><div class="row" style="margin-top:10px"><ha-icon data-icon-preview icon="${esc(value || "mdi:shield-check-outline")}"></ha-icon><small>Vorschau des gewählten Symbols</small></div></div>`;
   }
   _updateIconPreview(form) {
     const value = form.elements.profile_icon.value.trim();
@@ -587,7 +587,9 @@ class IQAlarmPanel extends HTMLElement {
             item = this._profileTemplate ? structuredClone(this.data.config.profiles[this._profileTemplate]) : {reactions_enabled:true, action_ids:null, motion_mode:"always"};
             item.name = get("name").trim(); item.icon = get("profile_icon").trim() || null;
           } else if (type === "floorplan") { collection = "floorplans"; item = {...(this.data.config.floorplans[id] || {}), name:get("name")}; if (id) item.id = id; } else throw new Error("Unbekanntes Formular");
+          const knownRooms = new Set(Object.keys(this.data.config.rooms));
           this.data = await this._call("crud", {collection, operation: "save", item, revision: this._dialogRevision});
+          if (type === "room" && !id && this.selectedCandidate) this.zoneRoom = Object.keys(this.data.config.rooms).find(key => !knownRooms.has(key)) || this.zoneRoom;
           if (type === "profile") this.profile = Object.keys(this.data.config.profiles).find(key => this.data.config.profiles[key].name === item.name);
         }
         this.shadowRoot.getElementById("editor").close();

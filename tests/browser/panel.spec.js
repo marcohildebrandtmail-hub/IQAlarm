@@ -296,6 +296,7 @@ test("direct upload opens file picker and room proposals remain editable until s
   await page.locator("#zone-room").selectOption("living");
   const handle=page.locator('[data-draft-vertex="0"]');
   await expect(handle).toBeVisible();
+  await handle.scrollIntoViewIfNeeded();
   const beforeDrag=await handle.getAttribute("cx");
   const bounds=await handle.boundingBox();
   await page.mouse.move(bounds.x+bounds.width/2,bounds.y+bounds.height/2);
