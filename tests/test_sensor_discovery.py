@@ -90,9 +90,9 @@ def test_discover_sensors_with_mock_hass():
 
     # Entity registry
     er_mock = MagicMock()
-    ent_entry_1 = MagicMock(area_id="wohnzimmer", device_id=None)
-    ent_entry_2 = MagicMock(area_id=None, device_id="dev_42")
-    ent_entry_3 = MagicMock(area_id=None, device_id=None)
+    ent_entry_1 = MagicMock(area_id="wohnzimmer", device_id=None, platform="mqtt")
+    ent_entry_2 = MagicMock(area_id=None, device_id="dev_42", platform="hue")
+    ent_entry_3 = MagicMock(area_id=None, device_id=None, platform="matter")
     er_mock.async_get.side_effect = lambda eid: {
         "binary_sensor.fenster_wz_1": ent_entry_1,
         "binary_sensor.motionsensor_dev": ent_entry_2,
@@ -101,7 +101,8 @@ def test_discover_sensors_with_mock_hass():
 
     # Device registry
     dr_mock = MagicMock()
-    dev_mock = MagicMock(area_id="wohnzimmer")
+    dev_mock = MagicMock(id="dev_42", area_id="wohnzimmer", manufacturer="Signify Netherlands B.V.", model="SML002")
+    dev_mock.name = "Hue BWM WZ"
     dr_mock.async_get.side_effect = lambda did: dev_mock if did == "dev_42" else None
 
     # Attach registries directly to mock hass
@@ -133,17 +134,25 @@ def test_discover_sensors_with_mock_hass():
     c1 = next(c for c in candidates if c["entity_id"] == "binary_sensor.fenster_wz_1")
     assert c1["room_id"] == "wz_id"
     assert c1["role"] == Role.ENTRY.value
+    assert c1["platform"] == "mqtt"
+    assert c1["integration_name"] == "MQTT / Zigbee"
 
-    # s2 matched to Wohnzimmer via device area
+    # s2 matched to Wohnzimmer via device area, with Aliased Manufacturer Philips Hue
     c2 = next(c for c in candidates if c["entity_id"] == "binary_sensor.motionsensor_dev")
     assert c2["room_id"] == "wz_id"
     assert c2["role"] == Role.MOTION.value
+    assert c2["device_name"] == "Hue BWM WZ"
+    assert c2["manufacturer"] == "Philips Hue"
+    assert c2["model"] == "SML002"
+    assert c2["platform"] == "hue"
 
     # s3 matched to WC via name keyword "Gäste WC"
     c3 = next(c for c in candidates if c["entity_id"] == "binary_sensor.fenster_wc")
     assert c3["room_id"] == "wc_id"
     assert c3["role"] == Role.ENTRY.value
+    assert c3["platform"] == "matter"
 
     # s5 is entrance door, should have entry_delay True
     c5 = next(c for c in candidates if c["entity_id"] == "binary_sensor.tur_haustur")
     assert c5["entry_delay"] is True
+

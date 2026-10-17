@@ -1,6 +1,6 @@
-import {DraftJournal} from "./floorplan-drafts.js?v=2.2.16";
-import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.2.16";
-/* IQAlarm 2.2.16 · native ES module · no CDN, framework or build required. */
+import {DraftJournal} from "./floorplan-drafts.js?v=2.2.17";
+import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.2.17";
+/* IQAlarm 2.2.17 · native ES module · no CDN, framework or build required. */
 const RULES = {perimeter: "Vorfeld-Erkennung", single: "Unbestätigter Einzelsensor", flapping: "Sensor-Prellen", perimeter_contact: "Vorfeld + Öffnung", contact_motion: "Öffnung + Bewegung", multi_contact: "Zwei Öffnungssensoren", multi_motion: "Zwei Bewegungsmelder", immediate: "Freigegebene Einzelauslösung / Gefahr"};
 const PROFILE_ICONS = {"mdi:home-outline":"Zuhause", "mdi:weather-night":"Nacht", "mdi:home-export-outline":"Abwesend", "mdi:palm-tree":"Urlaub", "mdi:account-group-outline":"Besuch", "mdi:garage-variant":"Garage", "mdi:shield-check-outline":"Schutz", "mdi:eye-outline":"Beobachtung", "mdi:dog":"Haustiere", "mdi:briefcase-outline":"Arbeit", "mdi:bed-outline":"Schlafzimmer", "mdi:lock-outline":"Schloss", "mdi:home-floor-0":"Erdgeschoss", "mdi:home-floor-1":"Obergeschoss", "mdi:home-floor-b":"Keller", "mdi:tree-outline":"Garten"};
 const ROLES = {perimeter_camera: "Außenkamera / Person", perimeter_sensor: "Vorfeld-Sensor", entry_contact: "Tür / Fenster", lock_contact: "Schloss / Riegel", vibration_glass: "Glas / Vibration", interior_motion: "Bewegung innen", interior_mmwave: "Präsenz / mmWave", panic: "Panik", smoke: "Rauch / Gefahr"};
@@ -47,6 +47,7 @@ class IQAlarmPanel extends HTMLElement {
     this.attachShadow({mode: "open"});
     this.tab = 0; this.profile = "armed_night"; this.stage = "1"; this.catalogFilter = "all"; this.catalog = {entities: [], notify_services: [], areas: []};
     this.plan = null; this.points = []; this.planAnalysis = null; this.selectedCandidate = ""; this.analysisGap = null; this.manualDrawing = false; this.graphicPreview = false; this.positioningRoom = null; this.livePlanFilter = "all"; this.liveStacked = false; this.imageURLs = new Map(); this.imageLoading = new Set(); this.data = null; this._connected = false; this._subscribing = false; this._requestBusy = false; this._unsubscribe = null; this._reconnectTimer = null;
+    this._assistantCategory = "all"; this._assistantTechFilter = "all"; this._assistantSortFilter = "recommendation";
     this._saveDraftOnLeave = () => this._storeDraft();
     this._onWindowKey = e => this._windowKey(e);
     this._onDisconnect = () => this._connection(false);
@@ -75,6 +76,13 @@ class IQAlarmPanel extends HTMLElement {
       if (e.target.id === "plan-merge" && e.target.value) this._mergeCandidate(e.target.value);
       if (e.target.id === "analysis-gap") this.analysisGap = e.target.value === "auto" ? null : Number(e.target.value);
       if (e.target.id === "plan-upload") this._uploadPlan(e.target.files[0], e.target.dataset.plan);
+      if (e.target.id === "assistant-tech-filter") {
+        this._assistantTechFilter = e.target.value;
+        this._filterAssistantRows();
+      }
+      if (e.target.id === "assistant-sort-filter") {
+        this._sortAssistantRows(e.target.value);
+      }
       if (e.target.hasAttribute("data-scope")) this._scopeVisibility(e.target.form);
       if (e.target.hasAttribute("data-candidate-check")) {
         e.target.closest(".assistant-candidate-row")?.classList.toggle("unselected", !e.target.checked);
@@ -98,6 +106,8 @@ class IQAlarmPanel extends HTMLElement {
           const needsRoom = ["entry_contact", "lock_contact", "vibration_glass", "interior_motion", "interior_mmwave"].includes(row.dataset.role);
           const hasRoom = Boolean(e.target.value);
           row.classList.toggle("no-room", needsRoom && !hasRoom);
+          row.dataset.hasRoom = hasRoom ? "1" : "0";
+          row.dataset.roomName = e.target.selectedOptions?.[0]?.textContent?.trim() || "";
           if (hasRoom) {
             const cb = row.querySelector("[data-candidate-check]");
             if (cb && !cb.checked) {
@@ -898,6 +908,8 @@ class IQAlarmPanel extends HTMLElement {
       const res = await this._call("sensors/discover");
       this._discoveredCandidates = res.candidates || [];
       this._assistantCategory = "all";
+      this._assistantTechFilter = "all";
+      this._assistantSortFilter = "recommendation";
       this._renderAssistantModal();
     } catch (err) {
       const body = this.shadowRoot.querySelector("#editor .dialog-body");
@@ -932,22 +944,48 @@ class IQAlarmPanel extends HTMLElement {
       ["hazard", `Gefahr & Schlösser (${catCounts.hazard})`],
     ].map(([id, label]) => `<button type="button" class="small ${this._assistantCategory === id ? "active" : ""}" data-command="assistant-cat" data-id="${id}">${esc(label)}</button>`).join("");
 
+    const techCounts = new Map();
+    for (const c of candidates) {
+      const tech = c.integration_name || c.platform || "Sonstige";
+      techCounts.set(tech, (techCounts.get(tech) || 0) + 1);
+    }
+    const sortedTechs = [...techCounts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "de"));
+    const techOptions = sortedTechs.map(([tech, count]) => `<option value="${esc(tech)}"${selected(tech, this._assistantTechFilter)}>${esc(tech)} (${count})</option>`).join("");
+
     const toolbar = `
       <div class="assistant-toolbar">
-        <p style="margin:0 0 4px">IQAlarm hat <strong>${candidates.length} Sensoren</strong> in Home Assistant erkannt und passende Sicherheitsrollen und Räume vorgeschlagen. Prüfe die Zuordnung und passe sie nach Belieben an.</p>
+        <p style="margin:0 0 4px">IQAlarm hat <strong>${candidates.length} Sensoren</strong> in Home Assistant erkannt und passende Sicherheitsrollen und Räume vorgeschlagen. Filter nach Gerät, Hersteller oder Technik und passe die Zuordnung an.</p>
         <div class="chips">${catButtons}</div>
-        <div class="row between" style="gap:10px">
-          <input class="search" id="assistant-search" type="search" placeholder="Filter nach Name, Entität oder Raum …" style="flex:1;min-width:200px">
+        <div class="row between" style="gap:10px;align-items:center">
+          <input class="search" id="assistant-search" type="search" placeholder="Suche nach Name, Gerät, Hersteller (z. B. Aqara, Hue) oder Raum …" style="flex:1.4;min-width:220px">
+          <select id="assistant-tech-filter" style="flex:1;min-width:170px" title="Nach Technik / Integration filtern">
+            <option value="all"${selected("all", this._assistantTechFilter)}>Alle Technologien (${candidates.length})</option>
+            ${techOptions}
+          </select>
+          <select id="assistant-sort-filter" style="flex:1;min-width:170px" title="Sortierung auswählen">
+            <option value="recommendation"${selected("recommendation", this._assistantSortFilter)}>Sortierung: Empfehlung</option>
+            <option value="device"${selected("device", this._assistantSortFilter)}>Gerätename (A–Z)</option>
+            <option value="manufacturer"${selected("manufacturer", this._assistantSortFilter)}>Hersteller / Marke (Aqara, Hue …)</option>
+            <option value="tech"${selected("tech", this._assistantSortFilter)}>Technik / Integration (MQTT, Matter …)</option>
+            <option value="name"${selected("name", this._assistantSortFilter)}>Sensorname (A–Z)</option>
+            <option value="room"${selected("room", this._assistantSortFilter)}>Raum (A–Z)</option>
+            <option value="unassigned"${selected("unassigned", this._assistantSortFilter)}>Zuerst: Räume noch offen</option>
+          </select>
+        </div>
+        <div class="row between" style="gap:8px;align-items:center;padding:2px 0">
           <div class="row" style="gap:6px">
-            <button type="button" class="small" data-command="assistant-select-all">${icon("checkbox-marked-outline")}Alle auswählen</button>
-            <button type="button" class="small" data-command="assistant-deselect-all">${icon("checkbox-blank-outline")}Keine</button>
+            <button type="button" class="small" data-command="assistant-select-all" title="Wählt alle aktuell gefilterten & sichtbaren Sensoren aus">${icon("checkbox-marked-outline")}Sichtbare auswählen</button>
+            <button type="button" class="small" data-command="assistant-deselect-all" title="Auswahl aufheben">${icon("checkbox-blank-outline")}Keine</button>
+          </div>
+          <div class="row" style="gap:8px">
+            <span id="assistant-match-count" class="pill" style="font-size:11px">${candidates.length} angezeigt</span>
             <span id="assistant-selected-count" class="pill" style="--level-color:var(--iq-accent)">0 gewählt</span>
           </div>
         </div>
       </div>
     `;
 
-    const rows = candidates.map(c => {
+    const rows = candidates.map((c, index) => {
       const needsRoom = ["entry_contact", "lock_contact", "vibration_glass", "interior_motion", "interior_mmwave"].includes(c.role);
       const hasRoom = Boolean(c.room_id);
       const isChecked = hasRoom || !needsRoom;
@@ -955,22 +993,43 @@ class IQAlarmPanel extends HTMLElement {
         : ["interior_motion", "interior_mmwave"].includes(c.role) ? "interior"
         : ["perimeter_camera", "perimeter_sensor"].includes(c.role) ? "perimeter"
         : "hazard";
+      const techName = c.integration_name || c.platform || "";
+      const devName = c.device_name || "";
+      const mfr = c.manufacturer || "";
+      const model = c.model || "";
+      const showDevPill = devName && devName.trim().toLowerCase() !== (c.name || "").trim().toLowerCase();
 
       return `
-        <div class="assistant-candidate-row ${!isChecked ? "unselected" : ""} ${needsRoom && !hasRoom ? "no-room" : ""}" data-candidate-id="${esc(c.entity_id)}" data-role="${esc(c.role)}" data-category="${cat}">
+        <div class="assistant-candidate-row ${!isChecked ? "unselected" : ""} ${needsRoom && !hasRoom ? "no-room" : ""}"
+          data-candidate-id="${esc(c.entity_id)}"
+          data-role="${esc(c.role)}"
+          data-category="${cat}"
+          data-name="${esc(c.name || c.entity_id)}"
+          data-device="${esc(devName)}"
+          data-manufacturer="${esc(mfr)}"
+          data-model="${esc(model)}"
+          data-platform="${esc(c.platform || "")}"
+          data-integration="${esc(techName)}"
+          data-room-id="${esc(c.room_id || "")}"
+          data-room-name="${esc(c.room_name || "")}"
+          data-has-room="${hasRoom ? "1" : "0"}"
+          data-order="${index}">
           <label class="check" style="margin:0">
             <input type="checkbox" name="candidate_enable_${esc(c.entity_id)}" data-candidate-check="${esc(c.entity_id)}"${isChecked ? " checked" : ""}>
           </label>
-          <div style="flex:1;min-width:180px">
-            <div class="row" style="gap:8px;align-items:center">
+          <div style="flex:1;min-width:200px">
+            <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap">
               <strong>${esc(c.name || c.entity_id)}</strong>
+              ${showDevPill ? `<span class="pill" style="--level-color:var(--iq-blue);font-size:11px" title="Gerätename: ${esc(devName)}">${icon("devices")}${esc(devName)}</span>` : ""}
+              ${techName ? `<span class="pill" style="--level-color:var(--iq-accent);font-size:10px" title="Technologie / Integration: ${esc(techName)}">${icon("lan")}${esc(techName)}</span>` : ""}
+              ${mfr ? `<span class="pill" style="--level-color:var(--iq-muted);font-size:10px" title="Hersteller: ${esc(mfr)}${model ? ` · Modell: ${esc(model)}` : ""}">${esc(mfr)}${model ? ` · ${esc(model)}` : ""}</span>` : ""}
               ${needsRoom && !hasRoom ? `<span class="pill" style="--level-color:var(--iq-amber)">Raum wählen</span>` : ""}
             </div>
             <div class="candidate-meta">
               <code>${esc(c.entity_id)}</code>
               ${c.state ? `<span class="pill" style="font-size:10px">${esc(c.state)}</span>` : ""}
               ${c.device_class ? `<span class="pill" style="font-size:10px">${esc(c.device_class)}</span>` : ""}
-              ${c.area_name ? `<span class="pill" style="font-size:10px">HA: ${esc(c.area_name)}</span>` : ""}
+              ${c.area_name ? `<span class="pill" style="font-size:10px">HA-Bereich: ${esc(c.area_name)}</span>` : ""}
             </div>
           </div>
           <div class="candidate-controls">
@@ -996,6 +1055,10 @@ class IQAlarmPanel extends HTMLElement {
     }).join("");
 
     dialog.querySelector(".dialog-body").innerHTML = toolbar + `<div class="assistant-list" style="max-height:55vh;overflow:auto;display:flex;flex-direction:column;gap:6px;padding-right:4px">${rows}</div>`;
+
+    if (this._assistantSortFilter && this._assistantSortFilter !== "recommendation") {
+      this._sortAssistantRows(this._assistantSortFilter);
+    }
 
     const submitBtn = dialog.querySelector('[type="submit"]');
     if (submitBtn) {
@@ -1026,15 +1089,20 @@ class IQAlarmPanel extends HTMLElement {
     dialog.querySelectorAll('[data-command="assistant-cat"]').forEach(b => {
       b.classList.toggle("active", b.dataset.id === cat);
     });
-    const search = dialog.querySelector("#assistant-search")?.value || "";
-    this._filterAssistantRows(search, cat);
+    this._filterAssistantRows();
   }
 
-  _filterAssistantRows(query, cat = this._assistantCategory || "all") {
+  _filterAssistantRows(query = null, cat = this._assistantCategory || "all") {
     const dialog = this.shadowRoot.getElementById("editor");
     if (!dialog) return;
-    const q = (query || "").toLowerCase().trim();
+    const searchVal = query !== null ? query : (dialog.querySelector("#assistant-search")?.value || "");
+    const q = searchVal.toLowerCase().trim();
+    const techFilter = this._assistantTechFilter || "all";
+    const terms = q ? q.split(/\s+/).filter(Boolean).map(term => [term, term.replace(/aquara/g, "aqara")]) : [];
+
     const rows = dialog.querySelectorAll(".assistant-candidate-row");
+    let visibleCount = 0;
+
     rows.forEach(row => {
       const role = row.dataset.role;
       let matchesCat = cat === "all";
@@ -1044,9 +1112,79 @@ class IQAlarmPanel extends HTMLElement {
         else if (cat === "perimeter") matchesCat = ["perimeter_camera", "perimeter_sensor"].includes(role);
         else if (cat === "hazard") matchesCat = ["smoke", "panic", "lock_contact"].includes(role);
       }
-      const matchesSearch = !q || row.textContent.toLowerCase().includes(q) || row.dataset.candidateId.toLowerCase().includes(q);
-      row.hidden = !(matchesCat && matchesSearch);
+
+      let matchesTech = techFilter === "all";
+      if (!matchesTech) {
+        matchesTech = row.dataset.integration === techFilter || row.dataset.platform === techFilter;
+      }
+
+      let matchesSearch = true;
+      if (terms.length > 0) {
+        const haystack = `${row.dataset.candidateId || ""} ${row.dataset.name || ""} ${row.dataset.device || ""} ${row.dataset.manufacturer || ""} ${row.dataset.model || ""} ${row.dataset.integration || ""} ${row.dataset.platform || ""} ${row.dataset.roomName || ""} ${row.textContent || ""}`.toLowerCase();
+        matchesSearch = terms.every(([orig, norm]) => haystack.includes(orig) || haystack.includes(norm));
+      }
+
+      const isVisible = matchesCat && matchesTech && matchesSearch;
+      row.hidden = !isVisible;
+      if (isVisible) visibleCount++;
     });
+
+    const matchPill = dialog.querySelector("#assistant-match-count");
+    if (matchPill) matchPill.textContent = `${visibleCount} angezeigt`;
+  }
+
+  _sortAssistantRows(mode = this._assistantSortFilter || "recommendation") {
+    this._assistantSortFilter = mode;
+    const dialog = this.shadowRoot.getElementById("editor");
+    if (!dialog) return;
+    const list = dialog.querySelector(".assistant-list");
+    if (!list) return;
+    const rows = [...list.querySelectorAll(".assistant-candidate-row")];
+
+    rows.sort((a, b) => {
+      if (mode === "device") {
+        const da = (a.dataset.device || a.dataset.name || "").toLowerCase();
+        const db = (b.dataset.device || b.dataset.name || "").toLowerCase();
+        const cmp = da.localeCompare(db, "de");
+        if (cmp !== 0) return cmp;
+        return (a.dataset.name || "").localeCompare(b.dataset.name || "", "de");
+      }
+      if (mode === "manufacturer") {
+        const ma = (a.dataset.manufacturer || "zzz").toLowerCase();
+        const mb = (b.dataset.manufacturer || "zzz").toLowerCase();
+        const cmp = ma.localeCompare(mb, "de");
+        if (cmp !== 0) return cmp;
+        return (a.dataset.name || "").localeCompare(b.dataset.name || "", "de");
+      }
+      if (mode === "tech") {
+        const ta = (a.dataset.integration || a.dataset.platform || "zzz").toLowerCase();
+        const tb = (b.dataset.integration || b.dataset.platform || "zzz").toLowerCase();
+        const cmp = ta.localeCompare(tb, "de");
+        if (cmp !== 0) return cmp;
+        return (a.dataset.name || "").localeCompare(b.dataset.name || "", "de");
+      }
+      if (mode === "name") {
+        return (a.dataset.name || "").localeCompare(b.dataset.name || "", "de");
+      }
+      if (mode === "room") {
+        const ra = (a.dataset.roomName || a.querySelector("[data-room-select] option:checked")?.textContent || "zzz").toLowerCase();
+        const rb = (b.dataset.roomName || b.querySelector("[data-room-select] option:checked")?.textContent || "zzz").toLowerCase();
+        const cmp = ra.localeCompare(rb, "de");
+        if (cmp !== 0) return cmp;
+        return (a.dataset.name || "").localeCompare(b.dataset.name || "", "de");
+      }
+      if (mode === "unassigned") {
+        const ua = a.dataset.hasRoom === "1" ? 1 : 0;
+        const ub = b.dataset.hasRoom === "1" ? 1 : 0;
+        if (ua !== ub) return ua - ub;
+        return Number(a.dataset.order || 0) - Number(b.dataset.order || 0);
+      }
+      return Number(a.dataset.order || 0) - Number(b.dataset.order || 0);
+    });
+
+    for (const row of rows) {
+      list.appendChild(row);
+    }
   }
 
   _assistantToggleAll(check) {

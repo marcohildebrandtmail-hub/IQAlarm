@@ -163,6 +163,50 @@ def normalize_text(text: str) -> str:
     return s
 
 
+PLATFORM_LABELS: dict[str, str] = {
+    "mqtt": "MQTT / Zigbee",
+    "matter": "Matter",
+    "hue": "Philips Hue",
+    "zha": "Zigbee (ZHA)",
+    "shelly": "Shelly",
+    "esphome": "ESPHome",
+    "homematicip_cloud": "Homematic IP",
+    "homematicip_local": "Homematic IP (CCU)",
+    "deconz": "deCONZ",
+    "tapo": "TP-Link Tapo",
+    "tuya": "Tuya",
+    "reolink": "Reolink",
+    "frigate": "Frigate",
+    "unifiprotect": "UniFi Protect",
+    "group": "Helfer-Gruppe",
+    "template": "Template",
+    "bthome": "BTHome (Bluetooth)",
+    "smartthings": "SmartThings",
+    "fritzbox": "FRITZ!Box",
+    "xiaomi_miio": "Xiaomi",
+    "xiaomi_ble": "Xiaomi BLE",
+}
+
+MANUFACTURER_ALIASES: dict[str, str] = {
+    "signify netherlands b.v.": "Philips Hue",
+    "lumi": "Aqara",
+    "mayer & co beschlaege gmbh": "MACO",
+}
+
+
+def friendly_platform_label(platform: str | None) -> str:
+    if not platform:
+        return "Direkt"
+    return PLATFORM_LABELS.get(platform, platform.replace("_", " ").title())
+
+
+def friendly_manufacturer(manufacturer: str | None) -> str | None:
+    if not manufacturer:
+        return None
+    cleaned = str(manufacturer).strip()
+    return MANUFACTURER_ALIASES.get(cleaned.lower(), cleaned)
+
+
 def build_room_matcher(rooms: dict[str, Any], areas: dict[str, str] | None = None) -> list[tuple[str, str]]:
     """Build a priority list of (search_keyword, room_id) tuples sorted by keyword length descending."""
     aliases_map: dict[str, list[str]] = {
@@ -322,15 +366,22 @@ def discover_sensors(
         if not role:
             continue
 
-        # Determine area_id
+        # Determine registry and device info
         entry = ent_reg.async_get(entity_id) if ent_reg else None
+        platform = getattr(entry, "platform", None) if entry else None
+        device_id = getattr(entry, "device_id", None) if entry else None
+        dev = dev_reg.async_get(device_id) if (device_id and dev_reg) else None
+
+        device_name = getattr(dev, "name", None) if dev else None
+        raw_mfr = getattr(dev, "manufacturer", None) if dev else None
+        manufacturer = friendly_manufacturer(raw_mfr)
+        model = getattr(dev, "model", None) if dev else None
+
         effective_area_id = None
         if entry:
-            effective_area_id = entry.area_id
-            if not effective_area_id and entry.device_id and dev_reg:
-                dev = dev_reg.async_get(entry.device_id)
-                if dev:
-                    effective_area_id = dev.area_id
+            effective_area_id = getattr(entry, "area_id", None)
+            if not effective_area_id and dev:
+                effective_area_id = getattr(dev, "area_id", None)
 
         # Room matching
         matched_room_id = None
@@ -339,7 +390,7 @@ def discover_sensors(
             matched_room_id = area_to_room.get(effective_area_id.lower()) or area_to_room.get(norm_area)
 
         if not matched_room_id:
-            norm_text = normalize_text(f"{name} {entity_id}")
+            norm_text = normalize_text(f"{name} {entity_id} {device_name or ''}")
             for keyword, rid in matcher:
                 if keyword in norm_text:
                     matched_room_id = rid
@@ -348,7 +399,7 @@ def discover_sensors(
         # Entry delay recommendation
         entry_delay = False
         if role == Role.ENTRY.value:
-            norm_name = normalize_text(f"{name} {entity_id}")
+            norm_name = normalize_text(f"{name} {entity_id} {device_name or ''}")
             if any(k in norm_name for k in ENTRY_DELAY_KEYWORDS):
                 entry_delay = True
 
@@ -367,6 +418,12 @@ def discover_sensors(
                 "device_class": dc,
                 "state": state.state,
                 "entry_delay": entry_delay,
+                "platform": platform or "other",
+                "integration_name": friendly_platform_label(platform),
+                "device_id": device_id,
+                "device_name": device_name,
+                "manufacturer": manufacturer,
+                "model": model,
             }
         )
 
