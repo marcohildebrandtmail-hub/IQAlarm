@@ -1,6 +1,6 @@
 [project]
 name = "iqalarm"
-version = "2.2.15"
+version = "2.2.16"
 description = "Spatially correlated multi-stage alarm for Home Assistant"
 requires-python = ">=3.13.2"
 

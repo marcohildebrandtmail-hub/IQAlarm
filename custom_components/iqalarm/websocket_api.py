@@ -342,5 +342,5 @@ def ws_discover_sensors(hass, connection, msg) -> None:
                 "revision": instance.config.revision,
             },
         )
-    except (ValueError, HomeAssistantError) as err:
+    except Exception as err:
         connection.send_error(msg["id"], "sensor_discovery_failed", str(err))

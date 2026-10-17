@@ -192,8 +192,8 @@ def build_room_matcher(rooms: dict[str, Any], areas: dict[str, str] | None = Non
     seen: set[tuple[str, str]] = set()
 
     for rid, r in rooms.items():
-        raw_name = r.get("name", "").strip()
-        raw_area = (r.get("area_id") or "").strip()
+        raw_name = (getattr(r, "name", None) or (r.get("name", "") if isinstance(r, dict) else "") or "").strip()
+        raw_area = (getattr(r, "area_id", None) or (r.get("area_id", "") if isinstance(r, dict) else "") or "").strip()
         norm_name = normalize_text(raw_name)
         norm_area = normalize_text(raw_area)
 
@@ -297,12 +297,14 @@ def discover_sensors(
     # Build direct area_id -> room_id lookup
     area_to_room: dict[str, str] = {}
     for rid, r in rooms.items():
-        if r.get("area_id"):
-            area_to_room[r["area_id"].lower()] = rid
-            area_to_room[normalize_text(r["area_id"])] = rid
-        if r.get("name"):
-            area_to_room[r["name"].lower()] = rid
-            area_to_room[normalize_text(r["name"])] = rid
+        r_area = getattr(r, "area_id", None) or (r.get("area_id") if isinstance(r, dict) else None)
+        r_name = getattr(r, "name", None) or (r.get("name") if isinstance(r, dict) else None)
+        if r_area:
+            area_to_room[r_area.lower()] = rid
+            area_to_room[normalize_text(r_area)] = rid
+        if r_name:
+            area_to_room[r_name.lower()] = rid
+            area_to_room[normalize_text(r_name)] = rid
 
     candidates: list[dict[str, Any]] = []
 
@@ -350,13 +352,16 @@ def discover_sensors(
             if any(k in norm_name for k in ENTRY_DELAY_KEYWORDS):
                 entry_delay = True
 
+        r_obj = rooms.get(matched_room_id) if matched_room_id else None
+        r_name = (getattr(r_obj, "name", None) or (r_obj.get("name") if isinstance(r_obj, dict) else None)) if r_obj else None
+
         candidates.append(
             {
                 "entity_id": entity_id,
                 "name": name,
                 "role": role,
                 "room_id": matched_room_id,
-                "room_name": rooms[matched_room_id]["name"] if matched_room_id and matched_room_id in rooms else None,
+                "room_name": r_name,
                 "area_id": effective_area_id,
                 "area_name": areas_map.get(effective_area_id) if effective_area_id else None,
                 "device_class": dc,
