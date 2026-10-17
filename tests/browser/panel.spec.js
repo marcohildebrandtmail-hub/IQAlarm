@@ -144,9 +144,11 @@ test("custom profile names stay text on mobile and in the rule editor", async ({
   await page.evaluate(async profileName => {
     document.body.classList.add("dark");
     const data = await window.iqTest.request({type: "iqalarm/get"});
-    await window.iqTest.request({type: "iqalarm/crud", collection: "profiles", operation: "save", revision: data.config.revision, item: {id: "panel_escaped", name: profileName, base_mode: "armed_night"}});
+    await window.iqTest.request({type: "iqalarm/crud", collection: "profiles", operation: "save", revision: data.config.revision, item: {id: "panel_escaped", name: profileName, base_mode: "armed_night", action_ids: []}});
   }, name);
   await expect(page.getByRole("button", {name, exact: true})).toBeVisible();
+  await page.getByRole("button", {name, exact: true}).click();
+  await expect(page.getByText(`${name} · Überwachung aktiv`, {exact: true})).toBeVisible();
   const overflow = await page.locator("iqalarm-panel").evaluate(el => {
     const shell = el.shadowRoot.querySelector(".shell");
     return shell.scrollWidth > shell.clientWidth;
@@ -159,6 +161,7 @@ test("custom profile names stay text on mobile and in the rule editor", async ({
   await expect(page.locator('#rules-form input[name="profile_name"]')).toHaveValue(name);
   expect(await page.evaluate(() => window.__profileInjected)).toBeUndefined();
   await page.evaluate(async () => {
+    await window.iqTest.request({type: "iqalarm/set_mode", mode: "disarmed", code: "2468"});
     const data = await window.iqTest.request({type: "iqalarm/get"});
     await window.iqTest.request({type: "iqalarm/crud", collection: "profiles", operation: "delete", revision: data.config.revision, key: "panel_escaped"});
   });
