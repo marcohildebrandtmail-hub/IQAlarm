@@ -7,13 +7,14 @@ from uuid import uuid4
 from homeassistant.components import websocket_api
 from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import area_registry
+from homeassistant.helpers import area_registry, device_registry, entity_registry
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .compat import vol
 from .const import ALLOWED_SENSOR_DOMAINS, DOMAIN, SIGNAL_UPDATE
 from .floorplan_analysis import analyze_image
 from .models import Action, FloorPlan, Profile, Room, SensorConfig, construct
+from .sensor_discovery import discover_sensors
 
 
 def runtime(hass):
@@ -36,6 +37,7 @@ def register(hass) -> None:
         ws_test,
         ws_catalog,
         ws_analyze_floorplan,
+        ws_discover_sensors,
     ):
         websocket_api.async_register_command(hass, handler)
 
@@ -287,22 +289,34 @@ def ws_catalog(hass, connection, msg) -> None:
         "tts",
         "media_player",
     }
-    entities = [
-        {
-            "entity_id": s.entity_id,
-            "name": s.attributes.get("friendly_name", s.entity_id),
-            "state": s.state,
-            "attributes": {
-                k: v
-                for k, v in s.attributes.items()
-                if isinstance(v, (str, int, float, bool))
-                and k not in {"access_token", "entity_picture"}
-            },
-        }
-        for s in hass.states.async_all()
-        if s.domain in domains
-        and not s.entity_id.startswith(("sensor.iqalarm", "binary_sensor.iqalarm"))
-    ]
+    ent_reg = entity_registry.async_get(hass)
+    dev_reg = device_registry.async_get(hass)
+    entities = []
+    for s in hass.states.async_all():
+        if s.domain not in domains or s.entity_id.startswith(("sensor.iqalarm", "binary_sensor.iqalarm")):
+            continue
+        entry = ent_reg.async_get(s.entity_id)
+        area_id = None
+        if entry:
+            area_id = entry.area_id
+            if not area_id and entry.device_id:
+                dev = dev_reg.async_get(entry.device_id)
+                if dev:
+                    area_id = dev.area_id
+        entities.append(
+            {
+                "entity_id": s.entity_id,
+                "name": s.attributes.get("friendly_name", s.entity_id),
+                "state": s.state,
+                "area_id": area_id,
+                "attributes": {
+                    k: v
+                    for k, v in s.attributes.items()
+                    if isinstance(v, (str, int, float, bool))
+                    and k not in {"access_token", "entity_picture"}
+                },
+            }
+        )
     notify = [
         f"notify.{service}"
         for service in hass.services.async_services().get("notify", {})
@@ -312,3 +326,21 @@ def ws_catalog(hass, connection, msg) -> None:
     connection.send_result(
         msg["id"], {"entities": entities, "notify_services": notify, "areas": areas}
     )
+
+
+@websocket_api.websocket_command({"type": "iqalarm/sensors/discover"})
+@websocket_api.require_admin
+@callback
+def ws_discover_sensors(hass, connection, msg) -> None:
+    try:
+        instance = runtime(hass)
+        candidates = discover_sensors(hass, instance.config.sensors, instance.config.rooms)
+        connection.send_result(
+            msg["id"],
+            {
+                "candidates": candidates,
+                "revision": instance.config.revision,
+            },
+        )
+    except (ValueError, HomeAssistantError) as err:
+        connection.send_error(msg["id"], "sensor_discovery_failed", str(err))

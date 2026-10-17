@@ -1,6 +1,6 @@
-import {DraftJournal} from "./floorplan-drafts.js?v=2.2.14";
-import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.2.14";
-/* IQAlarm 2.2.14 · native ES module · no CDN, framework or build required. */
+import {DraftJournal} from "./floorplan-drafts.js?v=2.2.15";
+import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.2.15";
+/* IQAlarm 2.2.15 · native ES module · no CDN, framework or build required. */
 const RULES = {perimeter: "Vorfeld-Erkennung", single: "Unbestätigter Einzelsensor", flapping: "Sensor-Prellen", perimeter_contact: "Vorfeld + Öffnung", contact_motion: "Öffnung + Bewegung", multi_contact: "Zwei Öffnungssensoren", multi_motion: "Zwei Bewegungsmelder", immediate: "Freigegebene Einzelauslösung / Gefahr"};
 const PROFILE_ICONS = {"mdi:home-outline":"Zuhause", "mdi:weather-night":"Nacht", "mdi:home-export-outline":"Abwesend", "mdi:palm-tree":"Urlaub", "mdi:account-group-outline":"Besuch", "mdi:garage-variant":"Garage", "mdi:shield-check-outline":"Schutz", "mdi:eye-outline":"Beobachtung", "mdi:dog":"Haustiere", "mdi:briefcase-outline":"Arbeit", "mdi:bed-outline":"Schlafzimmer", "mdi:lock-outline":"Schloss", "mdi:home-floor-0":"Erdgeschoss", "mdi:home-floor-1":"Obergeschoss", "mdi:home-floor-b":"Keller", "mdi:tree-outline":"Garten"};
 const ROLES = {perimeter_camera: "Außenkamera / Person", perimeter_sensor: "Vorfeld-Sensor", entry_contact: "Tür / Fenster", lock_contact: "Schloss / Riegel", vibration_glass: "Glas / Vibration", interior_motion: "Bewegung innen", interior_mmwave: "Präsenz / mmWave", panic: "Panik", smoke: "Rauch / Gefahr"};
@@ -28,6 +28,16 @@ const CSS = `
 .level-display{display:flex;flex-direction:column;align-items:center;gap:10px;max-width:170px;text-align:center}.level-caption{font-weight:700;font-size:13px;color:var(--level-color);overflow-wrap:anywhere}.plan-wrap{position:relative;width:100%;background:var(--primary-background-color,#f3f6fa);border-radius:14px;overflow:hidden;margin-top:16px}.plan-wrap.graphic-mode{background:radial-gradient(circle at 50% 30%,#132846 0%,#08111f 100%);border:1px solid #1e3a5f;box-shadow:inset 0 0 42px #0009}.plan-wrap.template-mode{background:#0b1526;border:1px solid #1e3a5f}.plan-wrap.template-mode image{opacity:.38;filter:grayscale(.35) contrast(1.08)}.plan-wrap svg{display:block;width:100%;height:100%}.plan-wrap polygon{cursor:pointer;stroke-width:2}.plan-wrap .draft{pointer-events:none;fill:#2986bb40;stroke:#38bdf8;stroke-dasharray:6 4}.plan-wrap text{pointer-events:none;paint-order:stroke;stroke:var(--iq-surface);stroke-width:3px;stroke-linejoin:round;fill:var(--primary-text-color,#122);font-weight:650}.plan-wrap g[data-room]{cursor:pointer}.plan-wrap g[data-room]:focus-visible{outline:none}.plan-wrap g[data-room]:focus-visible .room-badge{stroke:#38bdf8;stroke-width:2.6}.plan-wrap g[data-room] text{stroke:#07101d;stroke-width:3.5px;fill:#f8fafc;font-weight:720;letter-spacing:.2px}.plan-wrap g[data-room] .room-sub{fill:#cbd5e1;font-weight:600}.plan-wrap .room-corner,.plan-wrap .room-glow,.plan-wrap .room-inner,.plan-wrap .room-link{pointer-events:none}.plan-wrap .room-label-group{cursor:grab;touch-action:none;user-select:none}.plan-wrap .room-label-group .room-badge{pointer-events:all;cursor:grab}.plan-wrap .room-label-group text{pointer-events:none}.plan-wrap .room-label-group:hover .room-badge{stroke:#38bdf8;stroke-width:2.4;filter:drop-shadow(0 0 8px #38bdf8aa)}.plan-wrap .room-label-group.dragging{cursor:grabbing;opacity:.88}.plan-wrap .room-label-group.dragging .room-badge{cursor:grabbing}.plan-wrap .room-label-group:focus-visible{outline:none}.plan-wrap .room-label-group:focus-visible .room-badge{stroke:#38bdf8;stroke-width:2.6}.plan-wrap .room-label-group.active-positioning .room-badge{stroke:#38bdf8;stroke-width:3.2;filter:drop-shadow(0 0 14px #38bdf8);animation:pulse-badge 1.4s infinite}.stage-row{padding:16px 0;border-bottom:1px solid var(--iq-border)}.stage-row .form-grid{grid-template-columns:80px minmax(0,1fr)}.rule-box{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border:1px solid var(--iq-border);border-radius:10px;background:var(--primary-background-color,#f3f6fa)}@keyframes pulse-badge{0%,100%{stroke-opacity:1}50%{stroke-opacity:.35}}
 .icon-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:7px;margin-top:12px}.icon-options button{font-size:11px;justify-content:flex-start}.icon-options button.active{border-color:var(--iq-accent);background:color-mix(in srgb,var(--iq-accent) 12%,var(--iq-surface))}.plan-steps{display:flex;gap:20px;flex-wrap:wrap;padding:0;margin:20px 0;list-style:none;counter-reset:step}.plan-steps li{font-size:12px;color:var(--iq-muted);display:flex;align-items:center;gap:8px}.plan-steps li::before{counter-increment:step;content:counter(step);border:1px solid var(--iq-accent);border-radius:50%;width:24px;height:24px;display:grid;place-items:center;color:var(--iq-accent);flex-shrink:0}.plan-assistant{padding:16px;border:1px solid var(--iq-border);border-radius:12px;background:var(--primary-background-color,#f3f6fa)}.assistant-step{margin-top:14px;padding:15px 16px;border:2px solid var(--iq-accent);border-radius:12px;background:color-mix(in srgb,var(--iq-accent) 7%,var(--iq-surface))}.assistant-step.saved{border-color:var(--iq-green);background:color-mix(in srgb,var(--iq-green) 8%,var(--iq-surface))}.plan-wrap .plan-proposal{fill:#33a7c028;stroke:#38bdf8;stroke-dasharray:7 5;vector-effect:non-scaling-stroke}.plan-wrap .plan-proposal.chosen{fill:#33a7c055;stroke-width:3}.draft-points circle{fill:var(--iq-surface);stroke:#087e9b;stroke-width:2;cursor:grab;touch-action:none;vector-effect:non-scaling-stroke}.draft-points circle:focus{fill:#50c6d1;outline:none;stroke-width:4}
 .live-floorplans-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,480px),1fr));gap:20px;margin-top:16px}.live-floorplans-grid.stacked{grid-template-columns:1fr}.live-floorplan-item{background:color-mix(in srgb,var(--iq-accent) 4%,var(--iq-surface));border:1px solid var(--iq-border);border-radius:14px;padding:16px;min-width:0;display:flex;flex-direction:column}.live-floorplan-item h3{margin:0;font-size:15px;font-weight:700}.live-floorplan-item .plan-wrap{margin-top:10px;flex:1}
+dialog.wide{width:min(980px,calc(100vw - 28px));max-width:min(980px,calc(100vw - 28px))}
+.assistant-toolbar{display:flex;flex-direction:column;gap:10px;margin-bottom:12px}
+.assistant-candidate-row{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--iq-border);background:var(--iq-surface);border-radius:10px;margin-bottom:6px;transition:background .12s,opacity .12s}
+.assistant-candidate-row:hover{background:color-mix(in srgb,var(--iq-accent) 4%,var(--iq-surface))}
+.assistant-candidate-row.unselected{opacity:.6}
+.assistant-candidate-row.no-room{border-left:4px solid var(--iq-amber);background:color-mix(in srgb,var(--iq-amber) 7%,var(--iq-surface))}
+.candidate-meta{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--iq-muted);margin-top:3px;flex-wrap:wrap}
+.candidate-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
+.candidate-controls select{min-width:140px;width:auto;height:36px;min-height:36px;padding:4px 8px;font-size:12px}
+@media(max-width:800px){.assistant-candidate-row{flex-direction:column;align-items:stretch}.candidate-controls{width:100%;margin-left:0;justify-content:flex-start}.candidate-controls select{flex:1}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 `;
 
@@ -51,7 +61,11 @@ class IQAlarmPanel extends HTMLElement {
     this.shadowRoot.addEventListener("pointercancel", e => this._vertexEnd(e));
     this.shadowRoot.addEventListener("keydown", e => this._vertexKey(e));
     this.shadowRoot.addEventListener("submit", e => this._submit(e));
-    this.shadowRoot.addEventListener("input", e => { if (e.target.id === "sensor-search") this._renderCatalog(e.target.value); if (e.target.name === "profile_icon") this._updateIconPreview(e.target.form); });
+    this.shadowRoot.addEventListener("input", e => {
+      if (e.target.id === "sensor-search") this._renderCatalog(e.target.value);
+      if (e.target.id === "assistant-search") this._filterAssistantRows(e.target.value);
+      if (e.target.name === "profile_icon") this._updateIconPreview(e.target.form);
+    });
     this.shadowRoot.addEventListener("change", e => {
       if (e.target.name === "kind") this._actionVisibility(e.target.value);
       if (e.target.id === "plan-select") { this._selectPlan(e.target.value); this._render(); }
@@ -62,6 +76,38 @@ class IQAlarmPanel extends HTMLElement {
       if (e.target.id === "analysis-gap") this.analysisGap = e.target.value === "auto" ? null : Number(e.target.value);
       if (e.target.id === "plan-upload") this._uploadPlan(e.target.files[0], e.target.dataset.plan);
       if (e.target.hasAttribute("data-scope")) this._scopeVisibility(e.target.form);
+      if (e.target.hasAttribute("data-candidate-check")) {
+        e.target.closest(".assistant-candidate-row")?.classList.toggle("unselected", !e.target.checked);
+        this._updateAssistantCounter();
+      }
+      if (e.target.hasAttribute("data-role-select")) {
+        const row = e.target.closest(".assistant-candidate-row");
+        if (row) {
+          row.dataset.role = e.target.value;
+          const delayWrap = row.querySelector("[data-delay-wrap]");
+          if (delayWrap) delayWrap.hidden = e.target.value !== "entry_contact";
+          const needsRoom = ["entry_contact", "lock_contact", "vibration_glass", "interior_motion", "interior_mmwave"].includes(e.target.value);
+          const roomSelect = row.querySelector("[data-room-select]");
+          const hasRoom = Boolean(roomSelect?.value);
+          row.classList.toggle("no-room", needsRoom && !hasRoom);
+        }
+      }
+      if (e.target.hasAttribute("data-room-select")) {
+        const row = e.target.closest(".assistant-candidate-row");
+        if (row) {
+          const needsRoom = ["entry_contact", "lock_contact", "vibration_glass", "interior_motion", "interior_mmwave"].includes(row.dataset.role);
+          const hasRoom = Boolean(e.target.value);
+          row.classList.toggle("no-room", needsRoom && !hasRoom);
+          if (hasRoom) {
+            const cb = row.querySelector("[data-candidate-check]");
+            if (cb && !cb.checked) {
+              cb.checked = true;
+              row.classList.remove("unselected");
+              this._updateAssistantCounter();
+            }
+          }
+        }
+      }
     });
     this.shadowRoot.querySelector("nav").addEventListener("keydown", e => {
       if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
@@ -214,10 +260,11 @@ class IQAlarmPanel extends HTMLElement {
     const perimeter = sensors.filter(s => s.role.startsWith("perimeter"));
     const contacts = sensors.filter(s => ["entry_contact", "lock_contact", "vibration_glass"].includes(s.role));
     const interior = sensors.filter(s => ["interior_motion", "interior_mmwave", "panic", "smoke"].includes(s.role));
-    return this._head("Kameras & Sensoren", "Umfeldüberwachung (Kameras & Außensensoren), Tür-/Fensterkontakte und Innenraummelder klar getrennt verwalten.", `<div class="row"><button data-command="filter-perimeter" class="small">${icon("cctv")}Kameras & Außensensoren wählen</button><button data-command="refresh" class="small">${icon("refresh")}Entitäten aktualisieren</button></div>`) + this._lockNote() +
-      `<section class="card" style="margin-bottom:18px"><div class="row between"><div><h2>${icon("cctv")} Kameras & Außensensoren (Umfeldüberwachung) <span class="muted">· ${perimeter.length}</span></h2><p>Kameras mit Personen-/Objekterkennung und Bewegungsmelder im Außenbereich für die Vorfeld-Überwachung.</p></div></div><div style="margin-top:14px">${this._sensorTable(perimeter, "Noch keine Kameras oder Außensensoren", "Wähle unten im Katalog eine Kamera, Personenerkennung oder einen Außen-Bewegungsmelder mit „Als Kamera / Außen“ aus.", "cctv")}</div></section>` +
-      `<section class="card" style="margin-bottom:18px"><h2>${icon("window-closed-variant")} Türen, Fenster & Schlösser (Außenhaut) <span class="muted">· ${contacts.length}</span></h2><div style="margin-top:14px">${this._sensorTable(contacts, "Noch keine Tür-/Fensterkontakte", "Weise unten Öffnungs-, Riegel- oder Glasbruchsensoren einem Raum zu.", "window-closed-variant")}</div></section>` +
-      `<section class="card" style="margin-bottom:18px"><h2>${icon("motion-sensor")} Innenraum- & Gefahrenmelder <span class="muted">· ${interior.length}</span></h2><div style="margin-top:14px">${this._sensorTable(interior, "Noch keine Innenraummelder", "Weise unten Bewegungsmelder, Präsenzmelder oder Rauch-/Panikmelder zu.", "motion-sensor")}</div></section>` +
+    const emptyBanner = sensors.length === 0 ? `<section class="card hero" style="margin-bottom:18px;background:linear-gradient(135deg,color-mix(in srgb,var(--iq-accent) 10%,var(--iq-surface)),var(--iq-surface));border:1px solid color-mix(in srgb,var(--iq-accent) 30%,var(--iq-border))"><div class="row between" style="gap:16px;width:100%"><div><h2 style="display:flex;align-items:center;gap:10px">${icon("auto-fix")} Sensor-Erkennungs-Assistent</h2><p style="margin-top:6px">IQAlarm kann deine Home-Assistant-Entitäten automatisch durchsuchen, passende Türen, Fenster, Kameras und Melder finden und den richtigen Räumen zuordnen.</p></div><button class="primary" data-command="sensor-assistant" data-config>${icon("auto-fix")}Sensoren jetzt automatisch erkennen</button></div></section>` : "";
+    return this._head("Kameras & Sensoren", "Umfeldüberwachung (Kameras & Außensensoren), Tür-/Fensterkontakte und Innenraummelder klar getrennt verwalten.", `<div class="row"><button class="primary small" data-command="sensor-assistant" data-config>${icon("auto-fix")}Sensoren automatisch erkennen</button><button data-command="filter-perimeter" class="small">${icon("cctv")}Kameras & Außensensoren wählen</button><button data-command="refresh" class="small">${icon("refresh")}Entitäten aktualisieren</button></div>`) + this._lockNote() + emptyBanner +
+      `<section class="card" style="margin-bottom:18px"><div class="row between"><div><h2>${icon("cctv")} Kameras & Außensensoren (Umfeldüberwachung) <span class="muted">· ${perimeter.length}</span></h2><p>Kameras mit Personen-/Objekterkennung und Bewegungsmelder im Außenbereich für die Vorfeld-Überwachung.</p></div></div><div style="margin-top:14px">${this._sensorTable(perimeter, "Noch keine Kameras oder Außensensoren", "Wähle oben „Sensoren automatisch erkennen“ oder unten im Katalog eine Kamera aus.", "cctv")}</div></section>` +
+      `<section class="card" style="margin-bottom:18px"><h2>${icon("window-closed-variant")} Türen, Fenster & Schlösser (Außenhaut) <span class="muted">· ${contacts.length}</span></h2><div style="margin-top:14px">${this._sensorTable(contacts, "Noch keine Tür-/Fensterkontakte", "Weise Öffnungs-, Riegel- oder Glasbruchsensoren automatisch oder manuell zu.", "window-closed-variant")}</div></section>` +
+      `<section class="card" style="margin-bottom:18px"><h2>${icon("motion-sensor")} Innenraum- & Gefahrenmelder <span class="muted">· ${interior.length}</span></h2><div style="margin-top:14px">${this._sensorTable(interior, "Noch keine Innenraummelder", "Weise Bewegungsmelder, Präsenzmelder oder Rauch-/Panikmelder zu.", "motion-sensor")}</div></section>` +
       `<div class="section-title"><div><h2>Verfügbare Home-Assistant-Entitäten</h2><div class="chips" style="margin-top:10px">${[["all", "Alle"], ["perimeter", "Kameras & Außen"], ["contact", "Türen & Fenster"], ["interior", "Innenraum"]].map(([id, label]) => `<button type="button" class="small ${this.catalogFilter === id ? "active" : ""}" data-catalog-filter="${id}">${label}</button>`).join("")}</div></div><input class="search" id="sensor-search" type="search" aria-label="Sensoren suchen" placeholder="Kamera, Bewegung oder Entitäts-ID suchen …"></div><section class="card catalog" id="catalog"></section><div class="help">Kamera-Streaming ist keine Personenerkennung. Verwende bevorzugt den Personen-Binary-Sensor deiner Kamera (z. B. Reolink / Frigate / UniFi Person) oder einen Außen-Bewegungsmelder. Direkte camera-/image_processing-Entitäten brauchen ein explizites Erkennungsattribut.</div>`;
   }
 
@@ -819,6 +866,7 @@ class IQAlarmPanel extends HTMLElement {
   _dialog(title, body, type, id = "") {
     this._dialogRevision = this.data.config.revision;
     const dialog = this.shadowRoot.getElementById("editor");
+    dialog.classList.toggle("wide", type === "sensor-assistant");
     dialog.innerHTML = `<div class="dialog-head"><h2 id="dialog-title">${esc(title)}</h2><button class="icon-button" data-command="close" aria-label="Schließen">${icon("close")}</button></div><form id="editor-form" data-type="${type}" data-id="${esc(id)}"><div class="dialog-body">${body}</div><div class="dialog-foot"><button type="button" data-command="close">Abbrechen</button><button type="submit" class="primary">Speichern</button></div></form>`;
     dialog.showModal();
   }
@@ -840,6 +888,178 @@ class IQAlarmPanel extends HTMLElement {
     const defaultRole = forcePerimeter ? (id.startsWith("camera.") || id.startsWith("image_processing.") || /person|kamera|camera/i.test(`${e?.name || ""} ${id}`) ? "perimeter_camera" : "perimeter_sensor") : (id.startsWith("camera.") ? "perimeter_camera" : id.startsWith("lock.") ? "lock_contact" : "entry_contact");
     const s = old || {entity_id: id, name: e?.name || id, role: defaultRole, front_of: [], enabled: true, flap_enabled: true, flap_threshold: 3, flap_window: 15, debounce_ms: 0, active_states: id.startsWith("lock.") ? ["unlocked", "open"] : ["on"]};
     this._dialog(old ? "Sensor bearbeiten" : (forcePerimeter ? "Kamera / Außensensor zuweisen" : "Sensor zuweisen"), `<div class="form-grid"><label class="field wide">Entität<input value="${esc(id)}" readonly></label><label class="field wide">Anzeigename<input name="name" value="${esc(s.name)}" required maxlength="200"></label><label class="field">Sicherheitsrolle<select name="role">${options(ROLES, s.role)}</select></label><label class="field">Raum<select name="room_id">${this._roomsOptions(s.room_id, "Kein Raum / globales Vorfeld")}</select></label><label class="field wide">Vorfeld vor diesen Räumen<select name="front_of" multiple>${Object.values(this.data.config.rooms).map(r => `<option value="${r.id}"${s.front_of.includes(r.id) ? " selected" : ""}>${esc(r.name)}</option>`).join("")}</select><small>Nur für Kameras & Außensensoren (Vorfeld). Keine Auswahl bedeutet gesamtes Grundstück (global), falls auch kein Raum gewählt ist.</small></label><label class="field wide">Unabhängige Signalquelle<input name="source_id" value="${esc(s.source_id || "")}" maxlength="200" placeholder="Standard: Entitäts-ID"><small>Mehrere Entitäten desselben physischen Sensors müssen dieselbe Quellenkennung haben. Sie dürfen sich nicht gegenseitig bestätigen.</small></label><div class="wide checks">${this._checkbox("enabled", "Sensor aktivieren", s.enabled)}${this._checkbox("flap_enabled", "Anti-Flapping für Öffnungs-/Schlosssensoren aktivieren", s.flap_enabled)}</div>${this._number("flap_threshold", "Quarantäne ab N Zustandswechseln", s.flap_threshold, 3, 100)}${this._number("flap_window", "Innerhalb von W Sekunden", s.flap_window, 1, 300)}${this._number("debounce_ms", "Mindest-Aktivzeit (Millisekunden)", s.debounce_ms, 0, 60000, "0 verwendet den Standard der Sensorrolle.")}<label class="field">Verknüpfte Kamera<select name="camera_entity_id">${this._entityOptions(["camera"], s.camera_entity_id)}</select></label><label class="field">Erkennungsattribut (optional)<input name="attribute" value="${esc(s.attribute || "")}" maxlength="100" placeholder="z. B. person_detected"><small>Für camera/image_processing erforderlich.</small></label><label class="field">Aktive Werte, durch Komma getrennt<input name="active_states" value="${esc(s.active_states.join(", "))}" required maxlength="500"><small>Boolesche Attribute: true / false; Zählwerte explizit angeben.</small></label><div class="wide checks">${this._checkbox("entry_delay", "Eingangsverzögerung für diesen Öffnungssensor erlauben", s.entry_delay)}${this._checkbox("immediate", "Darf alleine die zugeordnete bestätigte Stufe auslösen (Override)", s.immediate)}</div><div class="help wide">Override, Rauch und Panik lösen bei scharfer Anlage alleine aus. Für diese Sensoren ersetzt die Entprellzeit die Wartezeit auf eine Bestätigung.</div></div>`, "sensor", id);
+  }
+
+  async _sensorAssistantDialog() {
+    this._dialog("Sensor-Erkennungs-Assistent", `<div class="loading">${icon("auto-fix")}<p style="margin-top:12px">Home-Assistant-Entitäten werden nach Sensoren durchsucht …</p></div>`, "sensor-assistant");
+    const submitBtn = this.shadowRoot.querySelector('#editor [type="submit"]');
+    if (submitBtn) submitBtn.hidden = true;
+    try {
+      const res = await this._call("sensors/discover");
+      this._discoveredCandidates = res.candidates || [];
+      this._assistantCategory = "all";
+      this._renderAssistantModal();
+    } catch (err) {
+      const body = this.shadowRoot.querySelector("#editor .dialog-body");
+      if (body) body.innerHTML = `<div class="empty">${icon("alert-circle")}<h3>Erkennung fehlgeschlagen</h3><p>${esc(err.message || String(err))}</p></div>`;
+    }
+  }
+
+  _renderAssistantModal() {
+    const dialog = this.shadowRoot.getElementById("editor");
+    if (!dialog || !dialog.open) return;
+    const candidates = this._discoveredCandidates || [];
+    if (!candidates.length) {
+      dialog.querySelector(".dialog-body").innerHTML = this._empty("Keine neuen Sensoren gefunden", "Alle sicherheitsrelevanten Home-Assistant-Sensoren sind bereits in IQAlarm eingerichtet oder es wurden keine passenden Entitäten gefunden.", "shield-check");
+      const submitBtn = dialog.querySelector('[type="submit"]');
+      if (submitBtn) submitBtn.hidden = true;
+      return;
+    }
+
+    const catCounts = {
+      all: candidates.length,
+      contact: candidates.filter(c => ["entry_contact", "lock_contact", "vibration_glass"].includes(c.role)).length,
+      interior: candidates.filter(c => ["interior_motion", "interior_mmwave"].includes(c.role)).length,
+      perimeter: candidates.filter(c => ["perimeter_camera", "perimeter_sensor"].includes(c.role)).length,
+      hazard: candidates.filter(c => ["smoke", "panic", "lock_contact"].includes(c.role)).length,
+    };
+
+    const catButtons = [
+      ["all", `Alle (${catCounts.all})`],
+      ["contact", `Türen & Fenster (${catCounts.contact})`],
+      ["interior", `Bewegung & Präsenz (${catCounts.interior})`],
+      ["perimeter", `Kameras & Vorfeld (${catCounts.perimeter})`],
+      ["hazard", `Gefahr & Schlösser (${catCounts.hazard})`],
+    ].map(([id, label]) => `<button type="button" class="small ${this._assistantCategory === id ? "active" : ""}" data-command="assistant-cat" data-id="${id}">${esc(label)}</button>`).join("");
+
+    const toolbar = `
+      <div class="assistant-toolbar">
+        <p style="margin:0 0 4px">IQAlarm hat <strong>${candidates.length} Sensoren</strong> in Home Assistant erkannt und passende Sicherheitsrollen und Räume vorgeschlagen. Prüfe die Zuordnung und passe sie nach Belieben an.</p>
+        <div class="chips">${catButtons}</div>
+        <div class="row between" style="gap:10px">
+          <input class="search" id="assistant-search" type="search" placeholder="Filter nach Name, Entität oder Raum …" style="flex:1;min-width:200px">
+          <div class="row" style="gap:6px">
+            <button type="button" class="small" data-command="assistant-select-all">${icon("checkbox-marked-outline")}Alle auswählen</button>
+            <button type="button" class="small" data-command="assistant-deselect-all">${icon("checkbox-blank-outline")}Keine</button>
+            <span id="assistant-selected-count" class="pill" style="--level-color:var(--iq-accent)">0 gewählt</span>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const rows = candidates.map(c => {
+      const needsRoom = ["entry_contact", "lock_contact", "vibration_glass", "interior_motion", "interior_mmwave"].includes(c.role);
+      const hasRoom = Boolean(c.room_id);
+      const isChecked = hasRoom || !needsRoom;
+      const cat = ["entry_contact", "lock_contact", "vibration_glass"].includes(c.role) ? "contact"
+        : ["interior_motion", "interior_mmwave"].includes(c.role) ? "interior"
+        : ["perimeter_camera", "perimeter_sensor"].includes(c.role) ? "perimeter"
+        : "hazard";
+
+      return `
+        <div class="assistant-candidate-row ${!isChecked ? "unselected" : ""} ${needsRoom && !hasRoom ? "no-room" : ""}" data-candidate-id="${esc(c.entity_id)}" data-role="${esc(c.role)}" data-category="${cat}">
+          <label class="check" style="margin:0">
+            <input type="checkbox" name="candidate_enable_${esc(c.entity_id)}" data-candidate-check="${esc(c.entity_id)}"${isChecked ? " checked" : ""}>
+          </label>
+          <div style="flex:1;min-width:180px">
+            <div class="row" style="gap:8px;align-items:center">
+              <strong>${esc(c.name || c.entity_id)}</strong>
+              ${needsRoom && !hasRoom ? `<span class="pill" style="--level-color:var(--iq-amber)">Raum wählen</span>` : ""}
+            </div>
+            <div class="candidate-meta">
+              <code>${esc(c.entity_id)}</code>
+              ${c.state ? `<span class="pill" style="font-size:10px">${esc(c.state)}</span>` : ""}
+              ${c.device_class ? `<span class="pill" style="font-size:10px">${esc(c.device_class)}</span>` : ""}
+              ${c.area_name ? `<span class="pill" style="font-size:10px">HA: ${esc(c.area_name)}</span>` : ""}
+            </div>
+          </div>
+          <div class="candidate-controls">
+            <label class="field" style="margin:0">
+              <span style="font-size:10px;color:var(--iq-muted)">Rolle</span>
+              <select name="role_${esc(c.entity_id)}" data-role-select="${esc(c.entity_id)}">
+                ${options(ROLES, c.role)}
+              </select>
+            </label>
+            <label class="field" style="margin:0">
+              <span style="font-size:10px;color:var(--iq-muted)">Raum</span>
+              <select name="room_${esc(c.entity_id)}" data-room-select="${esc(c.entity_id)}">
+                ${this._roomsOptions(c.room_id, "Kein Raum / Vorfeld")}
+              </select>
+            </label>
+            <label class="check" data-delay-wrap="${esc(c.entity_id)}" style="font-size:11px;margin-top:14px;white-space:nowrap" title="Eingangsverzögerung erlauben"${c.role === "entry_contact" ? "" : " hidden"}>
+              <input type="checkbox" name="entry_delay_${esc(c.entity_id)}"${c.entry_delay ? " checked" : ""}>
+              <span>Verzögert</span>
+            </label>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    dialog.querySelector(".dialog-body").innerHTML = toolbar + `<div class="assistant-list" style="max-height:55vh;overflow:auto;display:flex;flex-direction:column;gap:6px;padding-right:4px">${rows}</div>`;
+
+    const submitBtn = dialog.querySelector('[type="submit"]');
+    if (submitBtn) {
+      submitBtn.hidden = false;
+      submitBtn.innerHTML = `${icon("check")}<span id="assistant-submit-label">Sensoren importieren</span>`;
+    }
+
+    this._updateAssistantCounter();
+  }
+
+  _updateAssistantCounter() {
+    const dialog = this.shadowRoot.getElementById("editor");
+    if (!dialog) return;
+    const checks = dialog.querySelectorAll('[data-candidate-check]:checked');
+    const count = checks.length;
+    const pill = dialog.querySelector("#assistant-selected-count");
+    if (pill) pill.textContent = `${count} ausgewählt`;
+    const label = dialog.querySelector("#assistant-submit-label");
+    if (label) label.textContent = `${count} Sensoren importieren`;
+    const submitBtn = dialog.querySelector('[type="submit"]');
+    if (submitBtn) submitBtn.disabled = count === 0;
+  }
+
+  _assistantFilterCategory(cat) {
+    this._assistantCategory = cat;
+    const dialog = this.shadowRoot.getElementById("editor");
+    if (!dialog) return;
+    dialog.querySelectorAll('[data-command="assistant-cat"]').forEach(b => {
+      b.classList.toggle("active", b.dataset.id === cat);
+    });
+    const search = dialog.querySelector("#assistant-search")?.value || "";
+    this._filterAssistantRows(search, cat);
+  }
+
+  _filterAssistantRows(query, cat = this._assistantCategory || "all") {
+    const dialog = this.shadowRoot.getElementById("editor");
+    if (!dialog) return;
+    const q = (query || "").toLowerCase().trim();
+    const rows = dialog.querySelectorAll(".assistant-candidate-row");
+    rows.forEach(row => {
+      const role = row.dataset.role;
+      let matchesCat = cat === "all";
+      if (!matchesCat) {
+        if (cat === "contact") matchesCat = ["entry_contact", "lock_contact", "vibration_glass"].includes(role);
+        else if (cat === "interior") matchesCat = ["interior_motion", "interior_mmwave"].includes(role);
+        else if (cat === "perimeter") matchesCat = ["perimeter_camera", "perimeter_sensor"].includes(role);
+        else if (cat === "hazard") matchesCat = ["smoke", "panic", "lock_contact"].includes(role);
+      }
+      const matchesSearch = !q || row.textContent.toLowerCase().includes(q) || row.dataset.candidateId.toLowerCase().includes(q);
+      row.hidden = !(matchesCat && matchesSearch);
+    });
+  }
+
+  _assistantToggleAll(check) {
+    const dialog = this.shadowRoot.getElementById("editor");
+    if (!dialog) return;
+    dialog.querySelectorAll(".assistant-candidate-row:not([hidden])").forEach(row => {
+      const cb = row.querySelector('[data-candidate-check]');
+      if (cb) {
+        cb.checked = check;
+        row.classList.toggle("unselected", !check);
+      }
+    });
+    this._updateAssistantCounter();
   }
 
   _actionDialog(id) {
@@ -870,8 +1090,12 @@ class IQAlarmPanel extends HTMLElement {
     const command = button.dataset.command, id = button.dataset.id;
     try {
       if (command === "menu") this.dispatchEvent(new CustomEvent("hass-toggle-menu", {bubbles: true, composed: true}));
-      else if (command === "close") { this.liveRoom = null; this.shadowRoot.getElementById("editor").close(); }
+      else if (command === "close") { this.liveRoom = null; const ed = this.shadowRoot.getElementById("editor"); ed.classList.remove("wide"); ed.close(); }
       else if (command === "room-new" || command === "room-edit") this._roomDialog(id);
+      else if (command === "sensor-assistant") await this._sensorAssistantDialog();
+      else if (command === "assistant-cat") this._assistantFilterCategory(id);
+      else if (command === "assistant-select-all") this._assistantToggleAll(true);
+      else if (command === "assistant-deselect-all") this._assistantToggleAll(false);
       else if (command === "sensor-new" || command === "sensor-edit") this._sensorDialog(id, false);
       else if (command === "sensor-new-perimeter") this._sensorDialog(id, true);
       else if (command === "filter-perimeter") { this.catalogFilter = "perimeter"; this._render(); this.shadowRoot.getElementById("sensor-search")?.scrollIntoView({behavior: "smooth"}); }
@@ -1103,7 +1327,58 @@ class IQAlarmPanel extends HTMLElement {
         this.data = await this._call("config/save", {config, revision: this._viewRevision});
       } else if (form.id === "editor-form") {
         const type = form.dataset.type, id = form.dataset.id;
-        if (type === "zone-assignment") {
+        if (type === "sensor-assistant") {
+          const checkedBoxes = form.querySelectorAll('[data-candidate-check]:checked');
+          if (!checkedBoxes.length) throw new Error("Bitte mindestens einen Sensor auswählen");
+          const candidatesMap = new Map((this._discoveredCandidates || []).map(c => [c.entity_id, c]));
+          const config = structuredClone(this.data.config);
+          const needsRoomRoles = ["entry_contact", "lock_contact", "vibration_glass", "interior_motion", "interior_mmwave"];
+          const newSensors = [];
+
+          for (const cb of checkedBoxes) {
+            const eid = cb.dataset.candidateCheck;
+            const cand = candidatesMap.get(eid) || {entity_id: eid, name: eid};
+            const role = String(fields.get(`role_${eid}`) || cand.role || "entry_contact");
+            const roomId = String(fields.get(`room_${eid}`) || cand.room_id || "");
+            const entryDelay = fields.has(`entry_delay_${eid}`);
+
+            if (needsRoomRoles.includes(role) && !roomId) {
+              throw new Error(`Für „${cand.name || eid}“ muss ein Raum ausgewählt werden.`);
+            }
+
+            const isLock = role === "lock_contact" || eid.startsWith("lock.");
+            const isCam = eid.startsWith("camera.") || eid.startsWith("image_processing.");
+            const sensorObj = {
+              entity_id: eid,
+              name: cand.name || eid,
+              role: role,
+              room_id: roomId || null,
+              front_of: [],
+              source_id: eid,
+              enabled: true,
+              flap_enabled: true,
+              flap_threshold: 3,
+              flap_window: 15,
+              debounce_ms: 0,
+              entry_delay: entryDelay,
+              immediate: role === "smoke" || role === "panic",
+              attribute: isCam ? "person_detected" : null,
+              active_states: isLock ? ["unlocked", "open"] : ["on"],
+              camera_entity_id: role === "perimeter_camera" && isCam ? eid : null,
+            };
+            config.sensors[eid] = sensorObj;
+            newSensors.push(sensorObj);
+          }
+
+          this.data = await this._call("config/save", {config, revision: this._dialogRevision});
+          const ed = this.shadowRoot.getElementById("editor");
+          ed.classList.remove("wide");
+          ed.close();
+          this._toast(`${newSensors.length} Sensoren erfolgreich eingerichtet`);
+          this._render();
+          return;
+        }
+        else if (type === "zone-assignment") {
           await this._saveDraftZone(get("zone_room"), get("zone_new_room").trim(), this._dialogRevision);
         }
         else if (type === "floorplan-reset") {
