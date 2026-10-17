@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {areaReference, hasRoomReference, randomId, resolveRoom, roomGroups} from "../../custom_components/iqalarm/frontend/floorplan-rooms.js";
+import {areaReference, hasRoomReference, mergePolygons, randomId, resolveRoom, roomGroups} from "../../custom_components/iqalarm/frontend/floorplan-rooms.js";
 import {DraftJournal} from "../../custom_components/iqalarm/frontend/floorplan-drafts.js";
 
 const areas = [{id: "kitchen", name: "Küche"}, {id: "living", name: "Wohnzimmer"}];
@@ -43,6 +43,14 @@ test("randomId and resolveRoom work on HTTP origins where crypto.randomUUID is u
   const created = resolveRoom({}, areas, areaReference("kitchen"), "", () => randomId(httpCrypto));
   assert.equal(created.id, generated);
   assert.equal(created.room.name, "Küche");
+});
+
+test("mergePolygons combines two wall-separated proposals into a single outer room polygon", () => {
+  const topRoom = [[0.72, 0.36], [0.89, 0.36], [0.89, 0.51], [0.72, 0.51]];
+  const bottomRoom = [[0.72, 0.53], [0.89, 0.53], [0.89, 0.85], [0.72, 0.85]];
+  assert.deepEqual(mergePolygons(topRoom, bottomRoom), [
+    [0.72, 0.36], [0.89, 0.36], [0.89, 0.85], [0.72, 0.85],
+  ]);
 });
 
 test("another client importing the same area does not create a duplicate", () => {

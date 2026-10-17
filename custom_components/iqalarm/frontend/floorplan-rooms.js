@@ -40,3 +40,120 @@ export function resolveRoom(rooms, areas, reference, newName, createId = randomI
   const id = createId();
   return {id, room: {id, name: area ? area.name : name, area_id: area?.id || null, adjacent: [], home_enabled: false}};
 }
+
+function simplifyLine(points, tolerance) {
+  if (points.length <= 2) return points;
+  const [x1, y1] = points[0], [x2, y2] = points.at(-1);
+  const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy);
+  let maxDist = 0, split = 1;
+  for (let i = 1; i < points.length - 1; i += 1) {
+    const dist = len === 0 ? Math.hypot(points[i][0] - x1, points[i][1] - y1) : Math.abs(dy * (points[i][0] - x1) - dx * (points[i][1] - y1)) / len;
+    if (dist > maxDist) { maxDist = dist; split = i; }
+  }
+  if (maxDist <= tolerance) return [points[0], points.at(-1)];
+  return [...simplifyLine(points.slice(0, split + 1), tolerance).slice(0, -1), ...simplifyLine(points.slice(split), tolerance)];
+}
+
+function polygonArea(points) {
+  let sum = 0;
+  for (let i = 0; i < points.length; i += 1) {
+    const [x1, y1] = points[i], [x2, y2] = points[(i + 1) % points.length];
+    sum += x1 * y2 - y1 * x2;
+  }
+  return Math.abs(sum) / 2;
+}
+
+function rasterizePolygon(points, size) {
+  const mask = new Uint8Array(size * size);
+  for (let y = 0; y < size; y += 1) {
+    const py = (y + 0.5) / size, xs = [];
+    for (let i = 0; i < points.length; i += 1) {
+      const [x1, y1] = points[i], [x2, y2] = points[(i + 1) % points.length];
+      if ((y1 <= py && y2 > py) || (y2 <= py && y1 > py)) xs.push(x1 + ((py - y1) * (x2 - x1)) / (y2 - y1));
+    }
+    xs.sort((a, b) => a - b);
+    for (let i = 0; i + 1 < xs.length; i += 2) {
+      const start = Math.max(0, Math.floor(xs[i] * size)), end = Math.min(size - 1, Math.ceil(xs[i + 1] * size) - 1);
+      for (let x = start; x <= end; x += 1) mask[y * size + x] = 1;
+    }
+  }
+  return mask;
+}
+
+export function mergePolygons(pointsA, pointsB) {
+  if (!Array.isArray(pointsA) || pointsA.length < 3) return structuredClone(pointsB || []);
+  if (!Array.isArray(pointsB) || pointsB.length < 3) return structuredClone(pointsA);
+  const size = 240, maxGap = 18;
+  const maskA = rasterizePolygon(pointsA, size), maskB = rasterizePolygon(pointsB, size);
+  const combined = new Uint8Array(size * size);
+  for (let i = 0; i < combined.length; i += 1) combined[i] = maskA[i] ? 1 : maskB[i] ? 2 : 0;
+  for (const vertical of [false, true]) {
+    for (let line = 0; line < size; line += 1) {
+      let lastKind = 0, lastPos = -1;
+      for (let pos = 0; pos < size; pos += 1) {
+        const idx = vertical ? pos * size + line : line * size + pos;
+        const kind = maskA[idx] ? 1 : maskB[idx] ? 2 : 0;
+        if (kind) {
+          if (lastKind && lastKind !== kind && pos - lastPos - 1 <= maxGap) {
+            for (let fill = lastPos + 1; fill < pos; fill += 1) combined[vertical ? fill * size + line : line * size + fill] = 3;
+          }
+          lastKind = kind; lastPos = pos;
+        }
+      }
+    }
+  }
+  const edges = new Map(), key = (x, y) => `${x},${y}`, addEdge = (x1, y1, x2, y2) => {
+    const k = key(x1, y1); if (!edges.has(k)) edges.set(k, []); edges.get(k).push([x2, y2]);
+  };
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      if (!combined[y * size + x]) continue;
+      if (y === 0 || !combined[(y - 1) * size + x]) addEdge(x, y, x + 1, y);
+      if (x === size - 1 || !combined[y * size + x + 1]) addEdge(x + 1, y, x + 1, y + 1);
+      if (y === size - 1 || !combined[(y + 1) * size + x]) addEdge(x + 1, y + 1, x, y + 1);
+      if (x === 0 || !combined[y * size + x - 1]) addEdge(x, y + 1, x, y);
+    }
+  }
+  const loops = [];
+  while (edges.size) {
+    const firstKey = edges.keys().next().value;
+    let [cx, cy] = firstKey.split(",").map(Number);
+    const [sx, sy] = [cx, cy], loop = [];
+    while (edges.has(key(cx, cy))) {
+      loop.push([cx, cy]);
+      const list = edges.get(key(cx, cy)), next = list.pop();
+      if (!list.length) edges.delete(key(cx, cy));
+      [cx, cy] = next;
+      if (cx === sx && cy === sy) break;
+    }
+    if (cx === sx && cy === sy && loop.length >= 4) {
+      const corners = loop.filter((p, i) => {
+        const prev = loop[(i + loop.length - 1) % loop.length], next = loop[(i + 1) % loop.length];
+        return p[0] - prev[0] !== next[0] - p[0] || p[1] - prev[1] !== next[1] - p[1];
+      });
+      if (corners.length >= 3) loops.push(corners);
+    }
+  }
+  if (!loops.length) return structuredClone(pointsA);
+  const outline = loops.reduce((best, cur) => (polygonArea(cur) > polygonArea(best) ? cur : best));
+  let split = 1, maxDist = -1;
+  for (let i = 1; i < outline.length; i += 1) {
+    const d = Math.hypot(outline[i][0] - outline[0][0], outline[i][1] - outline[0][1]);
+    if (d > maxDist) { maxDist = d; split = i; }
+  }
+  const origX = [...pointsA, ...pointsB].map(p => p[0]), origY = [...pointsA, ...pointsB].map(p => p[1]);
+  const snap = (val, list) => {
+    let best = val, bestDiff = 1.6 / size;
+    for (const item of list) { const diff = Math.abs(item - val); if (diff <= bestDiff) { bestDiff = diff; best = item; } }
+    return Math.round(best * 10000) / 10000;
+  };
+  let tolerance = 1.4;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const simplified = [...simplifyLine(outline.slice(0, split + 1), tolerance).slice(0, -1), ...simplifyLine([...outline.slice(split), outline[0]], tolerance).slice(0, -1)];
+    if (simplified.length >= 3 && simplified.length <= 64) {
+      return simplified.map(([x, y]) => [snap(x / size, origX), snap(y / size, origY)]);
+    }
+    tolerance *= 1.6;
+  }
+  return structuredClone(pointsA);
+}
