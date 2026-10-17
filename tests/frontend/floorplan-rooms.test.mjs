@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {areaReference, hasRoomReference, mergePolygons, randomId, resolveRoom, roomGroups} from "../../custom_components/iqalarm/frontend/floorplan-rooms.js";
+import {areaReference, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, randomId, resolveRoom, roomGroups, roomVisualCenter} from "../../custom_components/iqalarm/frontend/floorplan-rooms.js";
 import {DraftJournal} from "../../custom_components/iqalarm/frontend/floorplan-drafts.js";
 
 const areas = [{id: "kitchen", name: "Küche"}, {id: "living", name: "Wohnzimmer"}];
@@ -51,6 +51,24 @@ test("mergePolygons combines two wall-separated proposals into a single outer ro
   assert.deepEqual(mergePolygons(topRoom, bottomRoom), [
     [0.72, 0.36], [0.89, 0.36], [0.89, 0.85], [0.72, 0.85],
   ]);
+});
+
+test("roomVisualCenter, buildGraphicZones and graphicViewBox generate clean room graphics", () => {
+  const lShape = [[0.1, 0.1], [0.6, 0.1], [0.6, 0.35], [0.35, 0.35], [0.35, 0.8], [0.1, 0.8]];
+  const center = roomVisualCenter(lShape);
+  assert.equal(center[0] > 0.1 && center[0] < 0.35, true);
+  assert.equal(center[1] > 0.1 && center[1] < 0.8, true);
+
+  const zones = buildGraphicZones({living: lShape}, {
+    living: {id: "living", name: "Wohnzimmer"},
+    office: {id: "office", name: "Büro"},
+  });
+  assert.deepEqual(zones.living, lShape);
+  assert.equal(zones.office.length, 4);
+
+  const box = graphicViewBox(zones, 1000, 800);
+  assert.match(box.viewBox, /^\d+ \d+ \d+ \d+$/);
+  assert.equal(box.scale >= 0.35 && box.scale <= 1, true);
 });
 
 test("another client importing the same area does not create a duplicate", () => {

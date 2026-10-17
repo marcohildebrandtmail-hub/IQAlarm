@@ -157,3 +157,79 @@ export function mergePolygons(pointsA, pointsB) {
   }
   return structuredClone(pointsA);
 }
+
+function pointInPolygon(px, py, points) {
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const [xi, yi] = points[i], [xj, yj] = points[j];
+    if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+function pointToSegmentDist(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1, len2 = dx * dx + dy * dy;
+  const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / len2));
+  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+}
+
+export function roomVisualCenter(points) {
+  if (!Array.isArray(points) || !points.length) return [0.5, 0.5];
+  const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  let best = [(minX + maxX) / 2, (minY + maxY) / 2], bestDist = -1;
+  const steps = 16;
+  for (let iy = 1; iy < steps; iy += 1) {
+    for (let ix = 1; ix < steps; ix += 1) {
+      const px = minX + ((maxX - minX) * ix) / steps, py = minY + ((maxY - minY) * iy) / steps;
+      if (!pointInPolygon(px, py, points)) continue;
+      let minDist = Infinity;
+      for (let i = 0; i < points.length; i += 1) {
+        const [x1, y1] = points[i], [x2, y2] = points[(i + 1) % points.length];
+        minDist = Math.min(minDist, pointToSegmentDist(px, py, x1, y1, x2, y2));
+      }
+      if (minDist > bestDist) { bestDist = minDist; best = [px, py]; }
+    }
+  }
+  return best;
+}
+
+export function buildGraphicZones(planZones, rooms) {
+  const result = {};
+  for (const [id, pts] of Object.entries(planZones || {})) {
+    if (Array.isArray(pts) && pts.length >= 3) result[id] = pts;
+  }
+  const unmapped = Object.values(rooms || {}).filter(r => !result[r.id]);
+  if (!unmapped.length) return result;
+  const existingPts = Object.values(result).flat();
+  const baseMinX = existingPts.length ? Math.min(...existingPts.map(p => p[0])) : 0.08;
+  const baseMaxX = existingPts.length ? Math.max(...existingPts.map(p => p[0])) : 0.92;
+  const startY = existingPts.length ? Math.min(0.82, Math.max(...existingPts.map(p => p[1])) + 0.05) : 0.12;
+  const cols = Math.min(3, Math.max(1, unmapped.length));
+  const totalW = Math.max(0.36, baseMaxX - baseMinX);
+  const gap = 0.025, cellW = (totalW - gap * (cols - 1)) / cols, cellH = existingPts.length ? 0.14 : 0.28;
+  unmapped.forEach((room, idx) => {
+    const col = idx % cols, row = Math.floor(idx / cols);
+    const x1 = Math.max(0.04, Math.min(0.96 - cellW, baseMinX + col * (cellW + gap)));
+    const y1 = Math.max(0.04, Math.min(0.95 - cellH, startY + row * (cellH + gap)));
+    const x2 = Math.min(0.96, x1 + cellW), y2 = Math.min(0.96, y1 + cellH);
+    result[room.id] = [[x1, y1], [x2, y1], [x2, y2], [x1, y2]];
+  });
+  return result;
+}
+
+export function graphicViewBox(zones, width, height) {
+  const pts = Object.values(zones || {}).flat();
+  if (!pts.length) return {viewBox: `0 0 ${width} ${height}`, scale: 1};
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const spanX = Math.max(0.18, maxX - minX), spanY = Math.max(0.18, maxY - minY);
+  const padX = Math.max(0.04, spanX * 0.1), padY = Math.max(0.04, spanY * 0.12);
+  const x0 = Math.max(0, minX - padX), y0 = Math.max(0, minY - padY);
+  const x1 = Math.min(1, maxX + padX), y1 = Math.min(1, maxY + padY);
+  const vw = Math.max(120, (x1 - x0) * width), vh = Math.max(100, (y1 - y0) * height);
+  return {
+    viewBox: `${Math.round(x0 * width)} ${Math.round(y0 * height)} ${Math.round(vw)} ${Math.round(vh)}`,
+    scale: Math.max(0.35, Math.min(1, Math.max(x1 - x0, y1 - y0))),
+  };
+}
