@@ -95,7 +95,7 @@ test("custom profiles can be created, scoped, copied, armed and deleted in the p
   await page.getByRole("dialog").getByLabel("Profilname", {exact: true}).fill("Nacht mit Gästen");
   await page.getByRole("button", {name: "Speichern", exact: true}).click();
   await expect(page.getByRole("heading", {name: "Nacht mit Gästen · Korrelations-Matrix"})).toBeVisible();
-  await expect(page.getByLabel("Basis und HA-Modus", {exact: true})).toBeEnabled();
+  await expect(page.locator("#rules-form").getByLabel(/^Basis und HA-Modus/)).toBeEnabled();
   await page.getByLabel("Alle Räume einbeziehen", {exact: true}).uncheck();
   await page.getByLabel("Räume auswählen", {exact: false}).selectOption({label: "Wohnzimmer"});
   await page.getByLabel("Alle Sensoren einbeziehen", {exact: true}).uncheck();
@@ -104,6 +104,7 @@ test("custom profiles can be created, scoped, copied, armed and deleted in the p
   await page.getByLabel("Korrelation T_corr (Sekunden)", {exact: true}).fill("39");
   await page.getByRole("button", {name: "Profil speichern", exact: true}).click();
   await expect(page.getByLabel("Korrelation T_corr (Sekunden)", {exact: true})).toHaveValue("39");
+  await page.screenshot({path: "test-results/profiles-desktop.png", fullPage: true});
   await page.reload();
   await expect(page.getByText("Live verbunden · lokal")).toBeVisible();
   await page.getByRole("tab", {name: "Alarmstufen & Regeln"}).click();
@@ -135,4 +136,30 @@ test("custom profiles can be created, scoped, copied, armed and deleted in the p
   await page.getByRole("button", {name: "Speichern", exact: true}).click();
   await expect(page.getByRole("button", {name: "Nacht mit Gästen", exact: true})).toHaveCount(0);
   expect(errors).toEqual([]);
+});
+
+test("custom profile names stay text on mobile and in the rule editor", async ({page}) => {
+  const name = '<img src=x onerror="window.__profileInjected=true">';
+  await page.setViewportSize({width: 390, height: 844});
+  await page.evaluate(async profileName => {
+    document.body.classList.add("dark");
+    const data = await window.iqTest.request({type: "iqalarm/get"});
+    await window.iqTest.request({type: "iqalarm/crud", collection: "profiles", operation: "save", revision: data.config.revision, item: {id: "panel_escaped", name: profileName, base_mode: "armed_night"}});
+  }, name);
+  await expect(page.getByRole("button", {name, exact: true})).toBeVisible();
+  const overflow = await page.locator("iqalarm-panel").evaluate(el => {
+    const shell = el.shadowRoot.querySelector(".shell");
+    return shell.scrollWidth > shell.clientWidth;
+  });
+  expect(overflow).toBe(false);
+  expect(await page.evaluate(() => window.__profileInjected)).toBeUndefined();
+  await page.screenshot({path: "test-results/profiles-mobile-dark.png", fullPage: true});
+  await page.getByRole("tab", {name: "Alarmstufen & Regeln"}).click();
+  await page.getByRole("button", {name, exact: true}).click();
+  await expect(page.locator('#rules-form input[name="profile_name"]')).toHaveValue(name);
+  expect(await page.evaluate(() => window.__profileInjected)).toBeUndefined();
+  await page.evaluate(async () => {
+    const data = await window.iqTest.request({type: "iqalarm/get"});
+    await window.iqTest.request({type: "iqalarm/crud", collection: "profiles", operation: "delete", revision: data.config.revision, key: "panel_escaped"});
+  });
 });

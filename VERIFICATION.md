@@ -12,7 +12,7 @@
 - Alle neun Aktionsarten gegen ausführbare Testdienste im echten HA-Service-Registry: Push, Sirene, Schalter, Skript, Licht, Rollos, Snapshot, Aufzeichnung und TTS.
 - Kamerafehler unterdrücken den Text-Push nicht. Langsame Verdachts-Pushs blockieren den bestätigten Sirenenalarm nicht. Selbst übernommene Ausgänge werden bei Entschärfung oder Timerende abgeschaltet.
 - Private Kameradateien, Kameraleserechte und PIN-Versuchslimit.
-- **Vier Chromium-Browserprüfungen** gegen den echten Test-Core: CRUD über die deutsche Oberfläche, Profilwechsel/PIN, mobile Darstellung und Dark Theme, Formulare, Text-Escaping und sichtbarer Verbindungsverlust mit Schreibsperre.
+- **Sechs Chromium-Browserprüfungen** gegen den echten Test-Core: CRUD über die deutsche Oberfläche, eigene Profile mit Auswahl und Duplizieren, Profilwechsel/PIN, mobile Darstellung und Dark Theme, Formulare, Text-Escaping und sichtbarer Verbindungsverlust mit Schreibsperre.
 - Python-Syntax, Ruff-Lint, Ruff-Format und JavaScript-Syntaxprüfung erfolgreich.
 - ZIP-Reproduzierbarkeit, vollständiges ES-Modul im Archiv, Backup und Rollback des Installationsskripts geprüft.
 
