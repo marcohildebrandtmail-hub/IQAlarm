@@ -287,30 +287,28 @@ class IQAlarmRuntime:
         obsolete_images = {p.image for p in self.config.floorplans.values() if p.image} - {
             p.image for p in candidate.floorplans.values() if p.image
         }
-        async with self.storage_lock:
-            await self.store.async_save(config=candidate)
-        self.engine.config = candidate
-        self.generation += 1
-        self.engine.evidence.clear()
-        self.engine.edges.clear()
-        self.engine.debouncing.clear()
-        self.engine.quarantine = {
-            k: v for k, v in self.engine.quarantine.items() if k in candidate.sensors
+        replacement = CorrelationEngine(candidate)
+        replacement.events = self.engine.events.copy()
+        replacement.last_profile_id = self.engine.last_profile_id
+        replacement.quarantine = {
+            key: value for key, value in self.engine.quarantine.items() if key in candidate.sensors
         }
-        self.engine.stage_id = candidate.stages[0].id
-        self.engine.severity = 0
-        self.engine.latched = False
-        self.engine.profile_id = None
-        self.engine.pending_until = None
-        self.engine.pending_chain = []
-        self.engine.pending_rule = None
-        self.engine.confirmation_rule = None
-        self.engine.breach_chain = []
-        self.engine.arming_until = None
-        self.engine.raw.clear()
-        self.seed()
-        self.report("configuration_changed", "Konfiguration gespeichert")
-        await self.persist()
+        for sensor in candidate.sensors.values():
+            replacement.seed(
+                sensor.entity_id, self.active_state(sensor, self.hass.states.get(sensor.entity_id))
+            )
+        replacement._log(time.time(), "configuration_changed", "Konfiguration gespeichert")
+        async with self.storage_lock:
+            await self.store.async_save(
+                config=candidate,
+                state=deepcopy(replacement.persistent_state()),
+                outputs=deepcopy(self.dispatcher.outputs),
+            )
+        self.engine = replacement
+        self.generation += 1
+        for event in replacement.drain():
+            self.hass.bus.async_fire(EVENT_TYPE, event.to_dict())
+        self.publish()
         for filename in obsolete_images:
             try:
                 await self.hass.async_add_executor_job(
