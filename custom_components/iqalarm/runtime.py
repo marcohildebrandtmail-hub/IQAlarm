@@ -8,6 +8,7 @@ import time
 from collections.abc import Callable
 from copy import deepcopy
 from datetime import timedelta
+from pathlib import Path
 
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP, EVENT_STATE_CHANGED
 from homeassistant.core import HomeAssistant, callback
@@ -17,7 +18,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
 from .action_dispatcher import ActionDispatcher
-from .const import EVENT_TYPE, SIGNAL_UPDATE, Mode
+from .const import EVENT_TYPE, SIGNAL_UPDATE
 from .correlation_engine import CorrelationEngine
 from .models import Configuration, EventLog
 from .store import IQAlarmStore
@@ -163,8 +164,10 @@ class IQAlarmRuntime:
         for event in events:
             self.hass.bus.async_fire(EVENT_TYPE, event.to_dict())
             if (
-                event.kind == "level_changed" and event.level > 0
+                event.kind in ("level_changed", "confirmation_changed") and event.level > 0
             ) or event.kind == "quarantined_flapping":
+                if not event.reactions_enabled:
+                    continue
                 if self.queue.full():
                     self.report(
                         "action_failed",
@@ -182,11 +185,15 @@ class IQAlarmRuntime:
         event = EventLog(
             time.time(),
             kind,
-            int(self.engine.level),
+            self.engine.level,
             self.engine.mode.value,
             reason,
-            profile_id=self.engine.profile_id,
+            profile_id=self.engine.evaluation_profile_id,
             profile_name=self.engine.profile.name if self.engine.profile else "",
+            stage_id=self.engine.stage_id,
+            stage_name=self.config.stage(self.engine.stage_id).name,
+            confirmed=self.engine.confirmed,
+            reactions_enabled=self.engine.reactions_enabled,
         )
         self.engine.events.appendleft(event)
         self.hass.bus.async_fire(EVENT_TYPE, event.to_dict())
@@ -195,7 +202,7 @@ class IQAlarmRuntime:
     async def _action_worker(self) -> None:
         while True:
             event, generation = await self.queue.get()
-            if len(self.action_tasks) >= 32 and event.level < 3:
+            if len(self.action_tasks) >= 32 and not event.confirmed:
                 await asyncio.wait(self.action_tasks, return_when=asyncio.FIRST_COMPLETED)
             task = self.hass.async_create_background_task(
                 self._dispatch_event(event, generation), "IQAlarm stage actions"
@@ -237,8 +244,19 @@ class IQAlarmRuntime:
         self._failed_pins.clear()
 
     async def set_mode(self, mode: str, code: str | None = None) -> None:
-        target = Mode(mode)
-        await self.set_profile(None if target == Mode.DISARMED else target.value, code)
+        await self.set_profile(None if mode in ("disarmed", "inactive") else mode, code)
+
+    async def activate(self) -> None:
+        """HA's generic on command selects the last usable IQAlarm profile."""
+        key = self.engine.last_profile_id
+        if key not in self.config.profiles or not self.config.profiles[key].reactions_enabled:
+            key = next(
+                (key for key, profile in self.config.profiles.items() if profile.reactions_enabled),
+                None,
+            )
+        if key is None:
+            raise ValueError("Kein Profil mit freigegebenen Aktionen vorhanden")
+        await self.set_profile(key)
 
     async def set_profile(self, profile_id: str | None, code: str | None = None) -> None:
         if profile_id is None:
@@ -249,51 +267,81 @@ class IQAlarmRuntime:
             if previous != (self.engine.mode, self.engine.profile_id):
                 self.generation += 1
             await self.flush()
-        if profile_id is None:
+        if not self.engine.reactions_enabled:
             await self.dispatcher.cleanup(force=True)
             await self.persist()
 
     async def update_config(self, data: dict, revision: int) -> None:
         async with self.lock:
-            if self.engine.mode != Mode.DISARMED:
-                raise ValueError("Konfiguration nur im unscharfen Zustand änderbar")
-            if revision != self.config.revision:
-                raise ValueError(
-                    "Konfiguration wurde in einem anderen Fenster geändert. Bitte neu laden."
+            await self.save_config_locked(data, revision)
+
+    async def save_config_locked(self, data: dict, revision: int) -> None:
+        if self.engine.reactions_enabled:
+            raise ValueError("Konfiguration nur im unscharfen Zustand änderbar")
+        if revision != self.config.revision:
+            raise ValueError(
+                "Konfiguration wurde in einem anderen Fenster geändert. Bitte neu laden."
+            )
+        candidate = Configuration.from_dict(data)
+        candidate.revision = self.config.revision + 1
+        obsolete_images = {p.image for p in self.config.floorplans.values() if p.image} - {
+            p.image for p in candidate.floorplans.values() if p.image
+        }
+        async with self.storage_lock:
+            await self.store.async_save(config=candidate)
+        self.engine.config = candidate
+        self.generation += 1
+        self.engine.evidence.clear()
+        self.engine.edges.clear()
+        self.engine.debouncing.clear()
+        self.engine.quarantine = {
+            k: v for k, v in self.engine.quarantine.items() if k in candidate.sensors
+        }
+        self.engine.stage_id = candidate.stages[0].id
+        self.engine.severity = 0
+        self.engine.latched = False
+        self.engine.profile_id = None
+        self.engine.pending_until = None
+        self.engine.pending_chain = []
+        self.engine.pending_rule = None
+        self.engine.confirmation_rule = None
+        self.engine.breach_chain = []
+        self.engine.arming_until = None
+        self.engine.raw.clear()
+        self.seed()
+        self.report("configuration_changed", "Konfiguration gespeichert")
+        await self.persist()
+        for filename in obsolete_images:
+            try:
+                await self.hass.async_add_executor_job(
+                    Path(self.hass.config.path(".iqalarm_floorplans", filename)).unlink, True
                 )
-            candidate = Configuration.from_dict(data)
-            candidate.revision = self.config.revision + 1
-            async with self.storage_lock:
-                await self.store.async_save(config=candidate)
-            self.engine.config = candidate
-            self.engine.evidence.clear()
-            self.engine.edges.clear()
-            self.engine.debouncing.clear()
-            self.engine.quarantine = {
-                k: v for k, v in self.engine.quarantine.items() if k in candidate.sensors
-            }
-            self.engine.raw.clear()
-            self.seed()
-            self.report("configuration_changed", "Konfiguration gespeichert")
-            await self.persist()
+            except OSError as err:
+                self.report(
+                    "runtime_error", f"Altes Grundrissbild konnte nicht entfernt werden: {err}"
+                )
 
     async def test_level(
         self, stage: str, dry_run: bool = True, profile_id: str | None = None
     ) -> list[dict]:
-        if stage not in ("1", "2", "3", "diagnostic"):
+        if stage != "diagnostic" and stage not in {value.id for value in self.config.stages}:
             raise ValueError("Ungültige Teststufe")
         if profile_id is not None and profile_id not in self.config.profiles:
             raise ValueError("Unbekanntes Alarmprofil")
-        profile_id = profile_id or self.engine.profile_id
+        profile_id = profile_id or self.engine.evaluation_profile_id
         profile = self.config.profiles.get(profile_id)
         event = EventLog(
             time.time(),
             "test",
-            0 if stage == "diagnostic" else int(stage),
-            profile.base_mode if profile else self.engine.mode.value,
+            0 if stage == "diagnostic" else self.config.stage_rank(stage),
+            self.engine.mode.value,
             "Manueller Aktionstest",
             profile_id=profile_id,
             profile_name=profile.name if profile else "",
+            stage_id=stage,
+            stage_name="Diagnose" if stage == "diagnostic" else self.config.stage(stage).name,
+            confirmed=stage != "diagnostic" and self.config.stage(stage).requires_confirmation,
+            reactions_enabled=bool(profile and profile.reactions_enabled),
         )
         result = await self.dispatcher.dispatch(
             event, self.generation, dry_run=dry_run, stage=stage

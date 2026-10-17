@@ -16,7 +16,7 @@ from iqalarm_core.models import Configuration, Room, SensorConfig  # noqa: E402
 
 @pytest.fixture
 def config():
-    return Configuration(
+    result = Configuration(
         rooms={
             "living": Room("living", "Wohnzimmer", adjacent=["hall"]),
             "hall": Room("hall", "Flur"),
@@ -46,6 +46,9 @@ def config():
             ),
         },
     )
+
+    result.validate()
+    return result
 
 
 @pytest.fixture

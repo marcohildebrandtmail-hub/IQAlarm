@@ -1,5 +1,5 @@
 arm_profile:
-  name: Profil scharfschalten
+  name: Profil aktivieren
   description: Ein eigenes IQAlarm-Profil anhand seiner ID aktivieren. Vor Profilwechseln zuerst entschärfen.
   fields:
     profile_id:
@@ -10,19 +10,13 @@ arm_profile:
         text:
 set_mode:
   name: Modus setzen
-  description: Scharfschalten oder entschärfen. Vor Profilwechseln zuerst entschärfen.
+  description: Aktivieren (active), deaktivieren (inactive) oder eine Profil-ID setzen. Vor Profilwechseln zuerst deaktivieren.
   fields:
     mode:
       name: Modus
       required: true
       selector:
-        select:
-          options:
-            - disarmed
-            - armed_home
-            - armed_night
-            - armed_away
-            - armed_vacation
+        text:
     code:
       name: PIN
       description: Bei eingerichteter PIN zum Entschärfen erforderlich.
@@ -50,15 +44,10 @@ trigger_test_level:
       selector:
         text:
     level:
-      name: Stufe
+      name: Stufen-ID (oder diagnostic)
       required: true
       selector:
-        select:
-          options:
-            - "1"
-            - "2"
-            - "3"
-            - diagnostic
+        text:
     dry_run:
       name: Trockenlauf
       default: true

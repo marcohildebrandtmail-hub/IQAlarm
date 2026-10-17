@@ -35,6 +35,7 @@ ws.addEventListener("close", () => connectionEvents.dispatchEvent(new Event("dis
 window.iqTest.disconnect = () => ws.close();
 document.querySelector("iqalarm-panel").hass = {
   callWS: async data => request(data).promise,
+  fetchWithAuth: (path, init = {}) => fetch(path, {...init,headers:{...init.headers,Authorization:`Bearer ${token}`}}),
   connection: {addEventListener: (...args) => connectionEvents.addEventListener(...args), removeEventListener: (...args) => connectionEvents.removeEventListener(...args), subscribeMessage: async (callback, data) => {
     const {id, promise} = request(data, callback); await promise;
     return () => {subscribers.delete(id); request({type: "unsubscribe_events", subscription: id});};

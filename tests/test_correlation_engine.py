@@ -1,7 +1,7 @@
 """Required intrusion scenarios plus timer, source-independence and restart boundaries."""
 
 import pytest
-from iqalarm_core.const import Level, Mode
+from iqalarm_core.const import Level
 from iqalarm_core.correlation_engine import CorrelationEngine
 from iqalarm_core.models import SensorConfig
 
@@ -188,7 +188,7 @@ def test_arming_blockers_and_failed_mode_is_rolled_back(engine):
     engine.seed("binary_sensor.window", True)
     with pytest.raises(ValueError, match="offen"):
         engine.set_mode("armed_night", 100)
-    assert engine.mode == Mode.DISARMED
+    assert not engine.reactions_enabled
 
 
 def test_unavailable_arm_blocker(engine):
@@ -207,7 +207,9 @@ def test_home_only_enabled_rooms_and_perimeter(engine):
 
 
 def test_home_selected_basement(engine):
-    engine.config.rooms["living"].home_enabled = True
+    engine.config.profiles["armed_home"].contacts_enabled = True
+    engine.config.profiles["armed_home"].motion_mode = "always"
+    engine.config.profiles["armed_home"].room_ids = ["living"]
     engine.set_mode("armed_home", 100)
     engine.feed("binary_sensor.window", True, 101)
     engine.feed("binary_sensor.motion", True, 102)
@@ -237,7 +239,7 @@ def test_restore_full_alarm_and_log(engine):
     restored = CorrelationEngine(engine.config)
     restored.restore(engine.persistent_state(), 200)
     assert restored.level == Level.BREACH
-    assert restored.mode == Mode.NIGHT
+    assert restored.reactions_enabled and restored.profile_id == "armed_night"
     assert len(restored.breach_chain) == 2
     assert restored.events[0].reason == engine.events[0].reason
     assert not restored.drain()  # No duplicate actions from a stored full alarm.
@@ -251,7 +253,7 @@ def test_restore_pending_delay_is_completed(engine):
     restored = CorrelationEngine(engine.config)
     restored.restore(engine.persistent_state(), 200)
     assert restored.level == Level.BREACH
-    assert any(e.kind == "level_changed" for e in restored.drain())
+    assert any(e.kind == "confirmation_changed" and e.confirmed for e in restored.drain())
 
 
 def test_restore_old_suspicion_expires(engine):
@@ -282,7 +284,7 @@ def test_room_status_and_fault(engine):
     engine.feed("binary_sensor.window", True, 101)
     assert engine.room_status("living", 101)["open"] == ["binary_sensor.window"]
     assert engine.room_status("living", 101)["level"] == 2
-    assert engine.snapshot(101)["level_state"] == "level_2_suspicion"
+    assert engine.snapshot(101)["stage_id"] == "2"
 
 
 def test_direct_profile_switch_rejected(engine):
@@ -293,6 +295,7 @@ def test_direct_profile_switch_rejected(engine):
 
 def test_disarmed_diagnosis_optional(engine):
     engine.config.settings.diagnose_disarmed = False
+    engine.config.settings.observation_profile_id = None
     for i, state in enumerate((True, False, True, False, True)):
         engine.feed("binary_sensor.window", state, 101 + i)
     assert not engine.quarantine

@@ -10,7 +10,10 @@ PARALLEL_UPDATES = 0
 
 async def async_setup_entry(hass, entry, async_add_entities) -> None:
     async_add_entities(
-        [IQAlarmSensor(entry.runtime_data, key) for key in ("level", "flapping", "last_event")]
+        [
+            IQAlarmSensor(entry.runtime_data, key)
+            for key in ("level", "flapping", "last_event", "profile")
+        ]
     )
 
 
@@ -25,6 +28,7 @@ class IQAlarmSensor(IQAlarmEntity, SensorEntity):
             "level": "mdi:shield-half-full",
             "flapping": "mdi:connection",
             "last_event": "mdi:timeline-clock-outline",
+            "profile": "mdi:account-shield-outline",
         }[key]
 
     @property
@@ -34,6 +38,8 @@ class IQAlarmSensor(IQAlarmEntity, SensorEntity):
             return int(engine.level)
         if self.key == "flapping":
             return len(engine.quarantine)
+        if self.key == "profile":
+            return engine.profile.name if engine.profile else "Aus"
         return engine.events[0].kind if engine.events else "none"
 
     @property
@@ -48,6 +54,9 @@ class IQAlarmSensor(IQAlarmEntity, SensorEntity):
             }
         return {
             "mode": engine.mode.value,
+            "stage_id": engine.stage_id,
+            "stage_name": self.runtime.config.stage(engine.stage_id).name,
+            "active": engine.reactions_enabled,
             "profile_id": engine.profile_id,
             "profile_name": engine.profile.name if engine.profile else None,
         }

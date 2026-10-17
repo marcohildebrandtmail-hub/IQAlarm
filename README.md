@@ -2,7 +2,9 @@
 
 **Erst verstehen, dann auslösen.** IQAlarm ist eine lokale Home-Assistant-Integration mit räumlicher Sensor-Korrelation, Prell-Schutz und eigenem deutschen Seitenpanel. Das Panel wird direkt als ES-Modul ausgeliefert. Auf dem Home-Assistant-System sind weder Node.js noch ein Frontend-Build nötig.
 
-## Alarmstufen
+## Frei konfigurierbare Alarmstufen
+
+Die folgenden vier Stufen sind Startvorgaben. Unter **Alarmstufen & Regeln → Alarmstufen** lassen sich 1–32 Stufen mit eigenen Namen und Farben festlegen. Die Reihenfolge bestimmt die Zahl im Kreis; die Bezeichnung steht darüber. Jedes Profil ordnet die Ereignisarten seinen Stufen zu. Aktionen verweisen auf feste Stufenkennungen, sodass Umbenennungen keine Zuordnungen lösen. Vor dem Entfernen einer verwendeten Stufe müssen Regeln und Aktionen umgestellt werden.
 
 | Stufe | Bedeutung | Standardlogik |
 | --- | --- | --- |
@@ -11,7 +13,7 @@
 | 2 | Verdacht | Einzelkontakt oder unbestätigte Bewegung; Korrelation standardmäßig 60 s |
 | 3 | Bestätigter Alarm | Zwei unabhängige, zeitlich und räumlich passende Quellen oder ausdrücklich freigegebener Override |
 
-Ein bestätigter Alarm bleibt bis zum Entschärfen bestehen. Unbestätigte Ereignisse laufen automatisch aus. Die native Entität `alarm_control_panel.iqalarm` meldet bei Stufe 1/2 weiterhin den gewählten Scharf-Modus; ausschließlich Stufe 3 meldet `triggered`. Eine aktive Eingangsverzögerung meldet `pending`.
+Bestätigte Stufen können bis zum Ausschalten gehalten werden. Unbestätigte Ereignisse laufen nach ihrem Zeitfenster aus. Sirenen, freie Schalter-/Skriptaktionen, TTS und kritische Pushs sind nur bei Bestätigung und ausdrücklich freigegebener Stufe erlaubt. Stufe 0 ist immer der lautlose Normalzustand. Prellen und Einzelsignale dürfen keiner bestätigungspflichtigen Stufe zugeordnet werden.
 
 ### MACO-/Kontakt-Prellen
 
@@ -26,36 +28,40 @@ Die optionale Mindest-Aktivzeit filtert kurze Impulse, während die Prell-Erkenn
 - Vorfeld + Öffnung: nur vor dem zugeordneten Raum; ein globales Vorfeld gilt für das gesamte Haus.
 - Öffnung + Innenraum: im selben Raum oder optional in einem direkt angrenzenden Raum. Eine Verbindung gilt in beide Richtungen, ohne transitive Weitergabe über mehrere Räume.
 - Zwei Öffnungssensoren: im gesamten Haus innerhalb des Korrelationsfensters.
-- Zwei Innenraumsensoren: im Abwesend-/Urlaubsprofil innerhalb des Korrelationsfensters.
+- Zwei Innenraumsensoren: bei aktivierter Profilregel innerhalb des Korrelationsfensters.
 - Mehrere Entitäten desselben physischen Sensors müssen dieselbe **Signalquellenkennung** erhalten. Eine Quelle kann sich niemals selbst bestätigen.
 
 Kamera und Öffnung werden auch in umgekehrter Reihenfolge berücksichtigt, solange beide Ereignisse noch in ihrem jeweiligen Zeitfenster liegen.
 
-## Profile
+## Unabhängige IQAlarm-Profile
 
-| Modus | Verhalten |
-| --- | --- |
-| Unscharf | Optional weiterhin Prell-Diagnose; keine Einbruchsalarmierung |
-| Zuhause | Vorfeld und zusätzlich ausdrücklich freigegebene Räume, etwa Keller oder Nebengebäude |
-| Nacht | Vorfeld und Außenhaut aktiv. Bewegung wird erst nach frischem Öffnungssignal ausgewertet |
-| Abwesend | Alle zugeordneten Sensoren; zwei unabhängige Innenraumsensoren können bestätigen |
-| Urlaub | Wie Abwesend; standardmäßig 45 s Korrelation und 5 s Eingangsverzögerung; optionale Lichtsimulation |
+Profile haben freie Namen und definieren die gesamte Steuerung. Es gibt **keine Zuordnung zu HA-Modi**. Zuhause, Nacht, Abwesend und Urlaub sind bearbeitbare und löschbare Startvorgaben; selbst ihre Kennungen bestimmen keine Regeln.
 
-Im Nachtprofil wird eine Bewegung **vor** dem Öffnungssignal nicht nachträglich zur Bestätigung. Eine bereits aktive Präsenz wird ebenfalls nicht künstlich als neue Bewegung gewertet. Erst eine neue Signalflanke nach dem Kontakt zählt. Die Nacht-Aktivierung kann für betroffene Räume oder das ganze Haus gewählt werden; die räumliche Bestätigungsregel bleibt erhalten.
+Jedes Profil legt unabhängig fest:
 
-Eingangsverzögerung gilt ausschließlich für ausdrücklich markierte Öffnungssensoren und beginnt nach deren Bestätigung. Weitere Signale verlängern die laufende Frist nicht. Ausgangsverzögerung unterdrückt Einbruchssignale während des Verlassens; danach werden noch offene Kontakte erneut geprüft. Vor einem Profilwechsel muss entschärft werden.
+- Räume und Sensoren (gemeinsame Schnittmenge), erlaubte Aktionen und eigene Timer.
+- Vorfeld und Kontakte auswerten oder nur live anzeigen.
+- Bewegung immer, erst nach Öffnung oder nur live anzeigen. Eine Bewegungsfreigabe kann auf betroffene Räume oder das Haus begrenzt werden; die räumliche Bestätigung bleibt erforderlich.
+- Welche Kombinationen bestätigen und auf welche eigene Alarmstufe sie führen.
+- Ob Reaktionen und Anwesenheitssimulation erlaubt sind.
 
-### Eigene Profile im IQAlarm-Panel
+Bei „erst nach Öffnung“ zählt eine frühere Bewegung nicht rückwirkend. Bereits aktive Präsenz erzeugt keine künstliche Bestätigung; erst eine neue Signalflanke nach dem Kontakt zählt. Eingangstimer gelten nur für dafür freigegebene Kontakte und beginnen nach Bestätigung. Weitere Signale verlängern den Timer nicht. Aktive Schutzprofile müssen vor einem Wechsel mit der optionalen PIN deaktiviert werden.
 
-Seit Version 1.1 können unter **Alarmstufen & Regeln → Profil anlegen** eigene Profile erstellt und vorhandene Profile dupliziert werden, etwa „Nacht mit Gästen“ oder „Nur Garage“. Jedes Profil hat einen eindeutigen Namen, eigene Timer und Korrelationsregeln sowie eine Auswahl von Räumen, Sensoren und Aktionen. Im Live-Cockpit erscheinen alle Profile als Schaltflächen; das tatsächlich aktive Profil wird mit seinem Namen und seiner Sensoranzahl angezeigt.
+„Alle“ umfasst auch neue Einträge. Eine explizit leere Auswahl umfasst nichts; ein Schutzprofil mit leerem Sensorumfang lässt sich nicht aktivieren. Eine leere Aktionsauswahl schließt konfigurierte Aktionen aus. Automatische Kamerafunktionen benötigen zusätzlich globale Freigabe und ein Profil mit erlaubten Reaktionen.
 
-- **Basis und HA-Modus:** Zuhause, Nacht, Abwesend oder Urlaub bestimmen die Grundlogik, etwa die Nacht-Bewegungsfreigabe, und den Zustand von `alarm_control_panel.iqalarm`. Zwei Nachtprofile können unterschiedliche Regeln verwenden und melden beide `armed_night`. `profile_id` und `profile_name` zeigen als Attribute das genaue aktive Profil an.
-- **Standardbedienung:** Die normale HA-Alarmkarte und HomeKit verwenden weiterhin Standardmodi. Ein HA-Befehl für Nacht aktiviert immer das Standardprofil mit der ID `armed_night`. Dieses Profil darf umbenannt und angepasst werden; seine HA-Zuordnung bleibt fest. Zusätzliche Profile werden über das IQAlarm-Panel oder `iqalarm.arm_profile` aktiviert. Die vier Standardprofile sind nicht löschbar.
-- **Auswahl:** „Alle“ schließt auch später hinzugefügte Einträge ein. Bei ausgeschaltetem „Alle“ gelten ausschließlich die ausgewählten Einträge. Raum- und Sensorauswahl werden gemeinsam angewendet. Direkt zugeordnete Vorfeldsensoren müssen vor einem ausgewählten Raum liegen; globales Vorfeld gilt für alle ausgewählten Räume. Explizite Raum-/Sensorauswahl im Zuhause-Profil ersetzt die allgemeinen Zuhause-Freigaben der Räume.
-- **Leere Auswahl:** Eine leere explizite Raum- oder Sensorauswahl überwacht nichts; ein solches Profil lässt sich nicht scharfschalten. Das Entfernen des letzten ausgewählten Sensors erweitert den Schutzbereich niemals automatisch. Eine leere Aktionsauswahl führt keine konfigurierten Aktionen aus. Automatische Vorfeld-Snapshots und Aufzeichnungen richten sich zusätzlich nach den Systemeinstellungen.
-- **Aktionen testen:** Unter Aktionen & Push kann die Aktionsauswahl eines Profils trocken geprüft werden, ohne das Profil zu aktivieren. Die Auswahl gilt für alle Stufen und für Prell-Diagnosen während des scharfen Profils; im unscharfen Zustand gilt die globale Diagnosekonfiguration.
+### Live-Beobachtung und Grundriss
 
-Bestehende Konfigurationen werden ohne Verlust ihrer Regeln übernommen. Aktives Profil, Quarantäne und Auslösekette bleiben bei Neustarts erhalten. Profiländerungen und Profilwechsel erfordern weiterhin den unscharfen Zustand; zum Entschärfen gilt eine eingerichtete PIN.
+**Aus · Live** deaktiviert Alarmreaktionen. Ein wählbares Hintergrundprofil wertet weiterhin Signale und Korrelation aus und zeigt die erreichte Stufe. Das automatisch angelegte Profil „Live-Beobachtung“ schaltet keine Geräte, sendet keine Pushs, speichert keine Kameraaufnahmen und simuliert keine Anwesenheit. Bestätigungen laufen hier wieder aus. Weitere Beobachtungsprofile können eigene Sensoren und Regeln verwenden. Ohne Hintergrundprofil bleiben die Rohzustände sichtbar.
+
+Unter **Räume & Topologie** je Etage einen Grundriss anlegen und PNG/JPG hochladen (maximal 10 MB, 8192 Pixel pro Seite, 32 Megapixel). Raum auswählen, seine Eckpunkte im Bild markieren und speichern. Außenbereiche werden ebenso als Raum markiert. Die bestehenden Sensorzuordnungen liefern automatisch Fenster-/Türstatus, Bewegung, Personen und Quarantäne. Markierungen bleiben bei Größenänderungen proportional erhalten. Der Live-Grundriss zeigt auch Signale, die ein Profil nur anzeigt. Ein Klick auf den Raum öffnet Sensorstatus und gegebenenfalls die verknüpfte HA-Kamera.
+
+Grundrissbilder werden als bereinigte PNG-Dateien privat unter `.iqalarm_floorplans` gespeichert. Abrufe und Uploads benötigen einen HA-Administrator. Bilder und Markierungen bleiben bei Neustarts und HACS-Updates erhalten.
+
+### Einfache HA-Anbindung
+
+`binary_sensor.iqalarm_aktiv` meldet ausschließlich **an / aus** für erlaubte Alarmreaktionen. Profilname und Alarmstufe sind eigene Sensorinformationen. Die HA-Alarmkarte erhält einen generischen Scharf-Knopf (`armed_away` als technischer HA-Zustand); dieser aktiviert das zuletzt verwendete Schutzprofil. Es ist keine Profilzuordnung erforderlich. Ein bestätigter Alarm meldet weiterhin `triggered`, Ein-/Ausgangsverzögerungen `pending` / `arming`. Beobachtung bleibt für die HA-Alarmkarte `disarmed`, auch wenn die Live-Bewertung hoch ist.
+
+Die Migration übernimmt vorhandene Profile, Auswahl, Regeln, Aktionen, PIN und Quarantäne. Frühere HA-Basismodi werden einmalig in explizite Profilregeln übersetzt und anschließend nicht mehr ausgewertet.
 
 ## Installation und Einrichtung
 
@@ -72,7 +78,7 @@ Unterstützt: **Home Assistant ab 2025.12.0**, geprüft mit 2025.12.5 und 2026.1
 
 Die gesamte Alarmkonfiguration erfolgt im Panel. Es sind keine HA-Automatisierungen und keine YAML-Regeln erforderlich. Änderungen an Räumen, Sensoren, Profilen und Aktionen sind im unscharfen Zustand möglich. Gleichzeitige Änderungen aus mehreren Browserfenstern werden über Konfigurationsrevisionen geschützt.
 
-Die Präsenzsimulation ist zusätzlich als native Schalter-Entität verfügbar und kann auch im Urlaubsmodus umgeschaltet werden. Sie verwendet lokale HA-Zeit, schaltet zufällig ausgewählte ausgeschaltete Lichter zwischen den gewählten Stunden ein und übernimmt keine bereits eingeschalteten Lichter.
+Die Präsenzsimulation ist zusätzlich als native Schalter-Entität verfügbar und benötigt zusätzlich die Freigabe des aktiven Schutzprofils. Sie verwendet lokale HA-Zeit, schaltet zufällig ausgewählte ausgeschaltete Lichter zwischen den gewählten Stunden ein und übernimmt keine bereits eingeschalteten Lichter.
 
 ### Kamera-Erkennung und Dateien
 
@@ -86,8 +92,8 @@ Dateien liegen außerhalb des öffentlichen `/local`-Bereichs und werden standar
 
 ### Aktionen und Tests
 
-- Stufe 1, Stufe 2 und Diagnose: normale Pushs, Licht, Rollos, Snapshots und Aufzeichnungen.
-- Stufe 3: zusätzlich Sirenen, Schalter, Skripte, TTS und kritische Mobile-App-Pushs.
+- Lautlose Stufen und Diagnose: normale Pushs, Licht, Rollos, Snapshots und Aufzeichnungen (nur bei freigegebenen Profilreaktionen).
+- Bestätigte, akustisch freigegebene Stufen: zusätzlich Sirenen, Schalter, Skripte, TTS und kritische Mobile-App-Pushs.
 - Freie Schalter-/Skript-/Sprachaktionen sind unteren Stufen nicht erlaubt, weil damit eine Innensirene indirekt ausgelöst werden könnte.
 - Kritische Pushs/Bilder brauchen einen passenden `notify.mobile_app_*`-Dienst. Generische `notify.*`-Entitäten unterstützen gewöhnliche Textnachrichten über `notify.send_message`.
 - Vorlagen unterstützen `{{room}}`, `{{sensor}}`, `{{level}}`, `{{reason}}`, `{{chain}}`, `{{mode}}` und den Profilnamen `{{profile}}`. Andere Jinja-Ausdrücke werden nicht ausgeführt.
@@ -99,23 +105,24 @@ PINs werden ausschließlich gesalzen und gehasht gespeichert. Wiederholt falsche
 
 Nach einem Neustart wird der gewählte Modus einschließlich Quarantäne und bestätigtem Alarm wiederhergestellt. Bereits gespeicherte Alarmaktionen werden nicht erneut abgespielt. Während des Herunterfahrens werden von IQAlarm übernommene Ausgänge ausgeschaltet. Ein während des Neustarts abgelaufener bestätigter Eingangstimer eskaliert nach dem Laden.
 
-**Override, Rauch und Panik:** Diese ausdrücklich gewählten Sensoren dürfen bei scharfer Anlage alleine Stufe 3 auslösen. Beim Override wird die normale Wartezeit auf einen zweiten Sensor bewusst aufgehoben. Rauch/Panik werden hier nur innerhalb des scharfen Alarmprofils verarbeitet; bestehende eigenständige Rauchmelderfunktionen bleiben erforderlich.
+**Override, Rauch und Panik:** Diese ausdrücklich gewählten Sensoren dürfen bei scharfer Anlage alleine die im Profil zugeordnete bestätigte Stufe auslösen. Beim Override wird die normale Wartezeit auf einen zweiten Sensor bewusst aufgehoben. Rauch/Panik werden hier nur innerhalb des scharfen Alarmprofils verarbeitet; bestehende eigenständige Rauchmelderfunktionen bleiben erforderlich.
 
 ## Native Schnittstellen
 
 | Schnittstelle | Funktion |
 | --- | --- |
-| `alarm_control_panel.iqalarm` | Unscharf, Zuhause, Nacht, Abwesend, Urlaub |
-| Diagnose-Sensoren | Alarmstufe, Anzahl isolierter Sensoren, letztes Ereignis |
+| `alarm_control_panel.iqalarm` | Generisches Scharf/Unscharf und tatsächlicher Alarm |
+| `binary_sensor.iqalarm_aktiv` | Reaktionen an / aus |
+| Diagnose-Sensoren | Alarmstufe samt Bezeichnung, aktuelles Profil, Anzahl isolierter Sensoren, letztes Ereignis |
 | Binary-Sensoren je Raum | Raumproblem, Vorfeld aktiv, Verdacht aktiv |
 | Simulationsschalter | Anwesenheitssimulation aktivieren/deaktivieren |
 | `iqalarm.set_mode` | Modus setzen, optional `code` zum Entschärfen |
 | `iqalarm.arm_profile` | Eigenes Profil über `profile_id` scharfschalten |
 | `iqalarm.clear_quarantine` | Einzelnen oder alle Sensoren freigeben |
-| `iqalarm.trigger_test_level` | Stufe `1`, `2`, `3` oder `diagnostic`, `dry_run` standardmäßig `true`, optional `profile_id` |
+| `iqalarm.trigger_test_level` | Eigene Stufen-ID oder `diagnostic`, `dry_run` standardmäßig `true`, optional `profile_id` |
 | `iqalarm_event` | Strukturierte Ereignisse mit Zeit, Modus, Profil, Entscheidung und Auslösekette |
 
-WebSocket-Befehle: `iqalarm/get`, `iqalarm/subscribe`, `iqalarm/catalog`, `iqalarm/config/save`, `iqalarm/crud`, `iqalarm/import_areas`, `iqalarm/set_mode`, `iqalarm/arm_profile`, `iqalarm/clear_quarantine`, `iqalarm/test_level`. CRUD unterstützt Räume, Sensoren, Aktionen und Profile. Alle Befehle verlangen einen Administrator. CRUD und Konfigurationsänderungen verlangen die aktuelle `revision`.
+WebSocket-Befehle: `iqalarm/get`, `iqalarm/subscribe`, `iqalarm/catalog`, `iqalarm/config/save`, `iqalarm/crud`, `iqalarm/import_areas`, `iqalarm/set_mode`, `iqalarm/arm_profile`, `iqalarm/clear_quarantine`, `iqalarm/test_level`. CRUD unterstützt Räume, Sensoren, Aktionen, Profile und Grundrisse. Stufen werden mit der gesamten Konfiguration gespeichert. Geschützte Bild-API: GET/POST `/api/iqalarm/floorplans/{id}/image`; Upload mit aktuellem `X-IQAlarm-Revision`-Header. Alle Befehle verlangen einen Administrator. CRUD und Konfigurationsänderungen verlangen die aktuelle `revision`.
 
 ## Entwicklung und Verifikation
 

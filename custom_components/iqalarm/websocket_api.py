@@ -10,8 +10,8 @@ from homeassistant.helpers import area_registry
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .compat import vol
-from .const import ALLOWED_SENSOR_DOMAINS, ARMED_MODES, DOMAIN, SIGNAL_UPDATE, Mode
-from .models import Action, Profile, Room, SensorConfig, construct
+from .const import ALLOWED_SENSOR_DOMAINS, DOMAIN, SIGNAL_UPDATE
+from .models import Action, FloorPlan, Profile, Room, SensorConfig, construct
 
 
 def runtime(hass):
@@ -80,7 +80,9 @@ async def ws_config(hass, connection, msg) -> None:
 @websocket_api.websocket_command(
     {
         "type": "iqalarm/crud",
-        vol.Required("collection"): vol.In(["rooms", "sensors", "actions", "profiles"]),
+        vol.Required("collection"): vol.In(
+            ["rooms", "sensors", "actions", "profiles", "floorplans"]
+        ),
         vol.Required("operation"): vol.In(["save", "delete"]),
         vol.Required("revision"): int,
         vol.Optional("item", default={}): dict,
@@ -98,8 +100,8 @@ async def ws_crud(hass, connection, msg) -> None:
             key = msg.get("key")
             if key not in data[collection]:
                 raise ValueError("Eintrag nicht vorhanden")
-            if collection == "profiles" and key in ARMED_MODES:
-                raise ValueError("HA-Standardprofile können umbenannt, aber nicht gelöscht werden")
+            if collection == "profiles" and key == data["settings"]["observation_profile_id"]:
+                raise ValueError("Zuerst ein anderes Hintergrund-Beobachtungsprofil auswählen")
             if collection == "rooms":
                 if any(
                     s["room_id"] == key or key in s["front_of"] for s in data["sensors"].values()
@@ -109,6 +111,8 @@ async def ws_crud(hass, connection, msg) -> None:
                     )
                 for room in data["rooms"].values():
                     room["adjacent"] = [r for r in room["adjacent"] if r != key]
+                for plan in data["floorplans"].values():
+                    plan["zones"].pop(key, None)
             reference = {"rooms": "room_ids", "sensors": "sensor_ids", "actions": "action_ids"}.get(
                 collection
             )
@@ -119,14 +123,19 @@ async def ws_crud(hass, connection, msg) -> None:
             del data[collection][key]
         else:
             item = dict(msg["item"])
-            if collection in ("rooms", "actions", "profiles"):
+            if collection in ("rooms", "actions", "profiles", "floorplans"):
                 item.setdefault("id", uuid4().hex)
             key = item["entity_id" if collection == "sensors" else "id"]
             if collection == "profiles":
                 item.pop("id")
                 construct(Profile, item)
             else:
-                cls = {"rooms": Room, "sensors": SensorConfig, "actions": Action}[collection]
+                cls = {
+                    "rooms": Room,
+                    "sensors": SensorConfig,
+                    "actions": Action,
+                    "floorplans": FloorPlan,
+                }[collection]
                 construct(cls, item)
             data[collection][key] = item
         await instance.update_config(data, msg["revision"])
@@ -164,7 +173,7 @@ async def ws_import_areas(hass, connection, msg) -> None:
 @websocket_api.websocket_command(
     {
         "type": "iqalarm/set_mode",
-        vol.Required("mode"): vol.In([m.value for m in Mode]),
+        vol.Required("mode"): str,
         vol.Optional("code"): str,
     }
 )
@@ -173,7 +182,10 @@ async def ws_import_areas(hass, connection, msg) -> None:
 async def ws_mode(hass, connection, msg) -> None:
     try:
         instance = runtime(hass)
-        await instance.set_mode(msg["mode"], msg.get("code"))
+        if msg["mode"] == "active":
+            await instance.activate()
+        else:
+            await instance.set_mode(msg["mode"], msg.get("code"))
         connection.send_result(msg["id"], instance.snapshot())
     except (ValueError, HomeAssistantError) as err:
         connection.send_error(msg["id"], "mode_failed", str(err))
@@ -206,7 +218,7 @@ async def ws_quarantine(hass, connection, msg) -> None:
 @websocket_api.websocket_command(
     {
         "type": "iqalarm/test_level",
-        vol.Required("level"): vol.In(["1", "2", "3", "diagnostic"]),
+        vol.Required("level"): str,
         vol.Optional("dry_run", default=True): bool,
         vol.Optional("profile_id"): str,
     }

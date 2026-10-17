@@ -3,13 +3,13 @@
 from copy import deepcopy
 
 import pytest
-from iqalarm_core.const import Level, Mode
+from iqalarm_core.const import Level
 from iqalarm_core.correlation_engine import CorrelationEngine
 from iqalarm_core.models import Configuration, Profile, SensorConfig
 
 
 def add_profile(config, **changes):
-    values = {"name": "Nacht mit Gästen", "base_mode": "armed_night", **changes}
+    values = {"name": "Nacht mit Gästen", "motion_mode": "after_contact", **changes}
     config.profiles["guests"] = Profile(**values)
     config.validate()
     return config.profiles["guests"]
@@ -19,7 +19,7 @@ def test_custom_profile_keeps_its_identity_with_native_night_state(engine):
     add_profile(engine.config)
     engine.set_profile("guests", 100)
     snapshot = engine.snapshot(100)
-    assert snapshot["mode"] == "armed_night"
+    assert snapshot["mode"] == "active"
     assert snapshot["profile_id"] == "guests"
     assert snapshot["profile_name"] == "Nacht mit Gästen"
     assert engine.events[0].profile_name == "Nacht mit Gästen"
@@ -62,11 +62,11 @@ def test_contact_in_selected_room_still_blocks_arming(engine):
     engine.seed("binary_sensor.window", True)
     with pytest.raises(ValueError, match="offen"):
         engine.set_profile("guests", 100)
-    assert engine.mode == Mode.DISARMED and engine.profile_id is None
+    assert not engine.reactions_enabled and engine.profile_id is None
 
 
 def test_scoped_home_profile_monitors_explicit_selection(engine):
-    add_profile(engine.config, base_mode="armed_home", room_ids=["living"])
+    add_profile(engine.config, motion_mode="always", room_ids=["living"])
     assert not engine.config.rooms["living"].home_enabled
     engine.set_profile("guests", 100)
     engine.feed("binary_sensor.window", True, 101)
@@ -89,7 +89,7 @@ def test_empty_explicit_scope_never_expands_to_all_sensors(engine, selection):
     add_profile(engine.config, **selection)
     with pytest.raises(ValueError, match="keine aktivierten Sensoren"):
         engine.set_profile("guests", 100)
-    assert engine.mode == Mode.DISARMED
+    assert not engine.reactions_enabled
 
 
 def test_scoped_global_perimeter_and_spatial_perimeter(engine):
@@ -127,7 +127,7 @@ def test_custom_profile_survives_restart_with_confirmation_chain(engine):
     restored = CorrelationEngine(engine.config)
     restored.seed("binary_sensor.motion", False)
     restored.restore(engine.persistent_state(), 105)
-    assert restored.profile_id == "guests" and restored.mode == Mode.NIGHT
+    assert restored.profile_id == "guests" and restored.reactions_enabled
     restored.feed("binary_sensor.motion", True, 113)
     assert restored.level == Level.BREACH
     assert restored.events[0].profile_name == "Nacht mit Gästen"
@@ -136,8 +136,22 @@ def test_custom_profile_survives_restart_with_confirmation_chain(engine):
 def test_version_one_configuration_and_armed_state_migrate_without_losing_rules(engine):
     old = engine.config.to_dict()
     for profile in old["profiles"].values():
-        for key in ("name", "base_mode", "room_ids", "sensor_ids", "action_ids"):
-            del profile[key]
+        for key in (
+            "name",
+            "motion_mode",
+            "motion_scope",
+            "perimeter_enabled",
+            "contacts_enabled",
+            "reactions_enabled",
+            "simulation_enabled",
+            "stage_targets",
+            "room_ids",
+            "sensor_ids",
+            "action_ids",
+        ):
+            profile.pop(key, None)
+    old["profiles"].pop("observe")
+    old["settings"].pop("observation_profile_id")
     old["profiles"]["armed_night"]["correlation_seconds"] = 47
     migrated = Configuration.from_dict(old)
     assert migrated.profiles["armed_night"].name == "Nacht"
@@ -150,9 +164,9 @@ def test_version_one_configuration_and_armed_state_migrate_without_losing_rules(
 def test_missing_or_mismatched_profile_does_not_silently_restore_default(engine):
     with pytest.raises(ValueError, match="fehlt"):
         engine.restore({"mode": "armed_night", "profile_id": "deleted"}, 100)
-    add_profile(engine.config, base_mode="armed_away")
-    with pytest.raises(ValueError, match="passt nicht"):
-        engine.restore({"mode": "armed_night", "profile_id": "guests"}, 101)
+    add_profile(engine.config, motion_mode="always")
+    engine.restore({"mode": "armed_night", "profile_id": "guests"}, 101)
+    assert engine.profile_id == "guests" and engine.profile.motion_mode == "always"
 
 
 @pytest.mark.parametrize(
@@ -160,7 +174,7 @@ def test_missing_or_mismatched_profile_does_not_silently_restore_default(engine)
     [
         {"name": ""},
         {"name": " nacht "},
-        {"base_mode": "disarmed"},
+        {"motion_mode": "invalid"},
         {"room_ids": ["unknown"]},
         {"room_ids": ["living", "living"]},
         {"sensor_ids": "binary_sensor.window"},
@@ -174,14 +188,15 @@ def test_invalid_custom_profile_is_rejected(config, values):
 
 
 def test_standard_profile_mapping_cannot_be_reassigned(config):
-    config.profiles["armed_night"].base_mode = "armed_away"
-    with pytest.raises(ValueError, match="Basismodus behalten"):
-        config.validate()
+    del config.profiles["armed_night"]
+    config.profiles["custom"] = Profile(name="Mein Profil", motion_mode="always")
+    config.validate()
+    assert "armed_night" not in config.profiles
 
 
 def test_profile_limit_is_enforced(config):
     for i in range(47):
-        config.profiles[f"profile_{i}"] = Profile(name=f"Profil {i}", base_mode="armed_night")
+        config.profiles[f"profile_{i}"] = Profile(name=f"Profil {i}", motion_mode="after_contact")
     with pytest.raises(ValueError, match="50 Profile"):
         config.validate()
 
@@ -197,4 +212,4 @@ def test_unknown_profile_does_not_change_armed_state(engine):
     engine.set_mode("armed_night", 100)
     with pytest.raises(ValueError, match="Unbekanntes"):
         engine.set_profile("unknown", 101)
-    assert engine.profile_id == "armed_night" and engine.mode == Mode.NIGHT
+    assert engine.profile_id == "armed_night" and engine.reactions_enabled

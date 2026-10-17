@@ -13,7 +13,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
 
-from .const import Mode
 from .models import Action, EventLog
 
 _LOGGER = logging.getLogger(__name__)
@@ -41,7 +40,7 @@ class ActionDispatcher:
         self.simulation_outputs = {
             target for target, owned in self.outputs.items() if owned.get("simulation")
         }
-        await self.cleanup(force=self.runtime.engine.mode == Mode.DISARMED)
+        await self.cleanup(force=not self.runtime.engine.reactions_enabled)
         await self.prune_media()
 
     def release_media_path(self) -> None:
@@ -106,9 +105,7 @@ class ActionDispatcher:
     async def dispatch(
         self, event: EventLog, generation: int, dry_run: bool = False, stage: str | None = None
     ) -> list[dict]:
-        stage = stage or (
-            "diagnostic" if event.kind == "quarantined_flapping" else str(event.level)
-        )
+        stage = stage or ("diagnostic" if event.kind == "quarantined_flapping" else event.stage_id)
         profile = self.runtime.config.profiles.get(event.profile_id)
         actions = [
             a
@@ -117,6 +114,14 @@ class ActionDispatcher:
             and a.level == stage
             and (profile is None or profile.action_ids is None or a.id in profile.action_ids)
         ]
+        if stage != "diagnostic":
+            configured_stage = self.runtime.config.stage(stage)
+            actions = [
+                action
+                for action in actions
+                if not (action.kind in {"siren", "switch", "script", "tts"} or action.critical)
+                or (event.confirmed and configured_stage.allow_loud)
+            ]
         plan = [{"id": a.id, "kind": a.kind, "target": a.target, "level": a.level} for a in actions]
         cameras = set()
         for evidence in event.chain:
@@ -125,7 +130,11 @@ class ActionDispatcher:
                 cameras.add(sensor.camera_entity_id)
             elif sensor and sensor.entity_id.startswith("camera."):
                 cameras.add(sensor.entity_id)
-        if stage == "1":
+        if (
+            event.kind != "test"
+            and event.chain
+            and all(e["role"].startswith("perimeter") for e in event.chain)
+        ):
             for camera in sorted(cameras):
                 if self.runtime.config.settings.auto_camera_snapshot:
                     plan.append({"kind": "snapshot", "target": camera, "automatic": True})
@@ -133,6 +142,15 @@ class ActionDispatcher:
                     plan.append({"kind": "record", "target": camera, "automatic": True})
         if dry_run:
             return plan
+        allowed = (
+            bool(profile and profile.reactions_enabled)
+            if event.kind == "test"
+            else event.reactions_enabled and self.runtime.engine.reactions_enabled
+        )
+        if not allowed:
+            if event.kind == "test":
+                raise ValueError("Dieses Profil erlaubt nur Beobachtung; kein realer Aktionstest")
+            return []
         variables = self.variables(event)
         throttle = asyncio.Semaphore(8)
 
@@ -277,7 +295,9 @@ class ActionDispatcher:
     async def simulate(self, local_hour: int) -> None:
         config = self.runtime.config.settings
         enabled = (
-            self.runtime.engine.mode == Mode.VACATION
+            self.runtime.engine.profile is not None
+            and self.runtime.engine.profile.simulation_enabled
+            and self.runtime.engine.reactions_enabled
             and config.simulation_enabled
             and config.simulation_start <= local_hour < config.simulation_end
         )
@@ -295,9 +315,10 @@ class ActionDispatcher:
             state = secrets.choice(available)
             generation = self.runtime.generation
             async with self.lock:
-                if (
-                    generation != self.runtime.generation
-                    or self.runtime.engine.mode != Mode.VACATION
+                if generation != self.runtime.generation or not (
+                    self.runtime.engine.profile
+                    and self.runtime.engine.profile.simulation_enabled
+                    and self.runtime.engine.reactions_enabled
                 ):
                     return
                 self.outputs[state.entity_id] = {

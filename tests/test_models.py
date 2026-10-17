@@ -25,13 +25,26 @@ from iqalarm_core.models import (
 )
 @pytest.mark.parametrize("level", ["1", "2", "diagnostic"])
 def test_loud_actions_cannot_bypass_silent_stages(kind, target, level):
-    with pytest.raises(ValueError, match="nur in Stufe 3"):
-        Action("a", level, kind, target)
+    with pytest.raises(ValueError):
+        config = Configuration(
+            actions={
+                "a": Action(
+                    "a",
+                    level,
+                    kind,
+                    target,
+                    media_player="media_player.speaker" if kind == "tts" else None,
+                )
+            }
+        )
+        config.validate()
 
 
 def test_critical_notification_cannot_bypass_silent_stage():
     with pytest.raises(ValueError):
-        Action("a", "2", "notify", "notify.phone", critical=True)
+        Configuration(
+            actions={"a": Action("a", "2", "notify", "notify.phone", critical=True)}
+        ).validate()
 
 
 @pytest.mark.parametrize("value", [math.nan, math.inf, -1, 3601, True, "60"])

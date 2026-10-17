@@ -86,7 +86,7 @@ def test_away_motion_before_window_is_valid(engine):
 
 
 def test_house_gate_still_respects_confirmation_topology(engine):
-    engine.config.profiles["armed_night"].night_motion_scope = "house"
+    engine.config.profiles["armed_night"].motion_scope = "house"
     engine.set_mode("armed_night", 100)
     engine.feed("binary_sensor.window", True, 101)
     engine.feed("binary_sensor.bed_motion", True, 103)

@@ -18,7 +18,8 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.service import async_register_admin_service
 
 from .compat import vol
-from .const import DOMAIN, PLATFORMS, VERSION, Mode
+from .const import DOMAIN, PLATFORMS, VERSION
+from .floorplans import IQAlarmFloorPlanView
 from .runtime import IQAlarmRuntime
 from .websocket_api import register, runtime
 
@@ -90,6 +91,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 ]
             )
             hass.http.register_view(IQAlarmMediaView())
+            hass.http.register_view(IQAlarmFloorPlanView())
             register(hass)
             data["api_registered"] = True
         if not data.get("services_registered"):
@@ -107,7 +109,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 partial(_set_mode, hass),
                 schema=vol.Schema(
                     {
-                        vol.Required("mode"): vol.In([m.value for m in Mode]),
+                        vol.Required("mode"): str,
                         vol.Optional("code"): str,
                     }
                 ),
@@ -126,7 +128,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 partial(_test_level, hass),
                 schema=vol.Schema(
                     {
-                        vol.Required("level"): vol.In(["1", "2", "3", "diagnostic"]),
+                        vol.Required("level"): str,
                         vol.Optional("dry_run", default=True): bool,
                         vol.Optional("profile_id"): str,
                     }
@@ -169,7 +171,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def _set_mode(hass: HomeAssistant, call: ServiceCall) -> None:
     try:
-        await runtime(hass).set_mode(call.data["mode"], call.data.get("code"))
+        if call.data["mode"] == "active":
+            await runtime(hass).activate()
+        else:
+            await runtime(hass).set_mode(call.data["mode"], call.data.get("code"))
     except ValueError as err:
         raise ServiceValidationError(str(err)) from err
 

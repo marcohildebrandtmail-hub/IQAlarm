@@ -191,9 +191,9 @@ async def verify(hass, target) -> str:
     )
 
     await hass.services.async_call(
-        "alarm_control_panel",
-        "alarm_arm_night",
-        {"entity_id": "alarm_control_panel.iqalarm"},
+        "iqalarm",
+        "arm_profile",
+        {"profile_id": "armed_night"},
         blocking=True,
     )
     hass.states.async_set("binary_sensor.motion", "on")
@@ -310,6 +310,9 @@ async def verify(hass, target) -> str:
         flush=True,
     )
     await verify_profiles(hass, entry, admin_token, user_token, calls)
+    from verify_v2 import verify_v2
+
+    await verify_v2(hass, entry, admin_token, user_token, calls)
     runtime = entry.runtime_data
 
     hass.states.async_set("binary_sensor.window", "off")
@@ -331,7 +334,7 @@ async def verify(hass, target) -> str:
                     message = await ws.receive_json()
                     restored_subscription = bool(message.get("event", {}).get("available"))
     await hass.async_block_till_done()
-    assert entry.runtime_data.engine.mode.value == "armed_night"
+    assert entry.runtime_data.engine.profile_id == "armed_night"
     await entry.runtime_data.set_mode("disarmed", "2468")
     assert await hass.config_entries.async_unload(entry.entry_id)
     assert "iqalarm" not in hass.data["frontend_panels"]
@@ -387,7 +390,7 @@ async def verify_profiles(hass, entry, admin_token, user_token, calls) -> None:
             custom.update(
                 id="guests",
                 name="Nacht mit Gästen",
-                base_mode="armed_night",
+                motion_mode="after_contact",
                 room_ids=["living"],
                 sensor_ids=["binary_sensor.window", "binary_sensor.motion"],
                 action_ids=["profile_push"],
@@ -395,18 +398,18 @@ async def verify_profiles(hass, entry, admin_token, user_token, calls) -> None:
             created = await crud("profiles", "save", item=custom)
             assert created["success"], created
             assert created["result"]["config"]["profiles"]["guests"]["name"] == custom["name"]
-            blocked = await crud("profiles", "delete", key="armed_night")
+            blocked = await crud("profiles", "delete", key="observe")
             assert not blocked["success"]
             before = len(calls)
             dry = await request("test_level", level="3", dry_run=True, profile_id="guests")
             assert dry["success"] and [p["id"] for p in dry["result"]["actions"]] == [
                 "profile_push"
             ]
-            assert len(calls) == before and entry.runtime_data.engine.mode.value == "disarmed"
+            assert len(calls) == before and entry.runtime_data.engine.mode.value == "inactive"
             assert (await request("arm_profile", profile_id="guests"))["success"]
             await hass.async_block_till_done()
             entity = hass.states.get("alarm_control_panel.iqalarm")
-            assert entity.state == "armed_night" and entity.attributes["profile_id"] == "guests"
+            assert entity.state == "armed_away" and entity.attributes["profile_id"] == "guests"
             assert entity.attributes["profile_name"] == "Nacht mit Gästen"
             switched = await request("set_mode", mode="armed_night")
             assert not switched["success"] and entry.runtime_data.engine.profile_id == "guests"
@@ -427,7 +430,7 @@ async def verify_profiles(hass, entry, admin_token, user_token, calls) -> None:
                     "test_phone",
                     {
                         "title": "IQAlarm · Stufe 3",
-                        "message": "Nacht mit Gästen / armed_night",
+                        "message": "Nacht mit Gästen / active",
                         "data": {},
                     },
                 )

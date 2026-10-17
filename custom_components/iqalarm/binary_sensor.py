@@ -16,6 +16,7 @@ PARALLEL_UPDATES = 0
 async def async_setup_entry(hass, entry, async_add_entities) -> None:
     known: dict[str, list] = {}
     runtime = entry.runtime_data
+    async_add_entities([IQAlarmActiveSensor(runtime)])
 
     @callback
     def add_rooms() -> None:
@@ -67,9 +68,21 @@ class IQAlarmRoomSensor(IQAlarmEntity, BinarySensorEntity):
     def is_on(self) -> bool:
         status = self.runtime.engine.room_status(self.room_id, time.time())
         if self.kind == "room":
-            return status["level"] >= 2 or bool(status["quarantined"])
+            return status["suspicion"] or status["confirmed"] or bool(status["quarantined"])
         return status[self.kind]
 
     @property
     def extra_state_attributes(self) -> dict:
         return self.runtime.engine.room_status(self.room_id, time.time())
+
+
+class IQAlarmActiveSensor(IQAlarmEntity, BinarySensorEntity):
+    _attr_name = "Aktiv"
+    _attr_icon = "mdi:shield-check"
+
+    def __init__(self, runtime):
+        super().__init__(runtime, "active")
+
+    @property
+    def is_on(self):
+        return self.runtime.engine.reactions_enabled
