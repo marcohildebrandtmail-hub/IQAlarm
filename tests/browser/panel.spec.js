@@ -419,3 +419,72 @@ test("save dialog creates a room and stores its corrected area together",async({
   expect(saved.config.floorplans.draft_new_room.zones[room.id]).toEqual(points);
   expect(saved.config.floorplans.draft_new_room.zones.living).toEqual([[.1,.1],[.45,.1],[.45,.9],[.1,.9]]);
 });
+
+test("assignment dialog lists fresh HA areas and atomically links only the selected area",async({page})=>{
+  await prepareDraftPlan(page,"ha_area_dialog");
+  const area=await page.evaluate(()=>window.iqTest.request({type:"config/area_registry/create",name:"Browser HA Esszimmer"}));
+  await page.getByRole("button",{name:"Neu zeichnen",exact:true}).click();
+  const svg=page.locator("#floorplan"),bounds=await svg.boundingBox();
+  for(const [x,y] of [[.2,.2],[.4,.2],[.4,.7],[.2,.7]]) await svg.click({position:{x:x*bounds.width,y:y*bounds.height}});
+  await page.locator('[data-draft-vertex="1"]').focus();await page.keyboard.press("ArrowRight");
+  const points=await page.locator("iqalarm-panel").evaluate(el=>structuredClone(el.points));
+  const before=await page.evaluate(()=>window.iqTest.request({type:"iqalarm/get"}));
+  await page.getByRole("button",{name:"Bereich speichern",exact:true}).click();
+  const choice=page.getByRole("dialog").getByLabel("Vorhandener Raum",{exact:true});
+  await expect(choice.locator('optgroup[label="Home-Assistant-Bereiche"] option')).toContainText([area.name]);
+  await choice.selectOption({label:area.name});
+  expect(await page.locator("iqalarm-panel").evaluate(el=>el.points)).toEqual(points);
+  const uncommitted=await page.evaluate(()=>window.iqTest.request({type:"iqalarm/get"}));
+  expect(uncommitted.config).toEqual(before.config);
+  await page.getByRole("dialog").getByRole("button",{name:"Speichern",exact:true}).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  const saved=await page.evaluate(()=>window.iqTest.request({type:"iqalarm/get"}));
+  const linked=Object.values(saved.config.rooms).filter(room=>room.area_id === area.area_id);
+  expect(linked).toHaveLength(1);expect(linked[0].name).toBe(area.name);
+  expect(Object.keys(saved.config.rooms)).toHaveLength(Object.keys(before.config.rooms).length+1);
+  expect(saved.config.floorplans.ha_area_dialog.zones[linked[0].id]).toEqual(points);
+  expect(saved.config.sensors).toEqual(before.config.sensors);
+  await expect(page.locator("#zone-room option").filter({hasText:area.name})).toHaveCount(1);
+  await page.getByRole("button",{name:"Bereich speichern",exact:true}).click();
+  const repeated=await page.evaluate(()=>window.iqTest.request({type:"iqalarm/get"}));
+  expect(Object.values(repeated.config.rooms).filter(room=>room.area_id === area.area_id)).toHaveLength(1);
+});
+
+test("HA area selection in the editor survives reload and preserves corrected points",async({page})=>{
+  const area=await page.evaluate(()=>window.iqTest.request({type:"config/area_registry/create",name:"Browser HA Hauswirtschaft"}));
+  await page.reload();
+  await expect(page.getByText("Live verbunden · lokal")).toBeVisible();
+  await prepareDraftPlan(page,"ha_area_reload");
+  await page.getByRole("button",{name:"Flächen erkennen",exact:true}).click();
+  await page.locator("#plan-candidate").selectOption("1");
+  await page.locator('[data-draft-vertex="0"]').focus();await page.keyboard.press("ArrowRight");
+  const edited=await page.locator("iqalarm-panel").evaluate(el=>structuredClone(el.points));
+  await page.locator("#zone-room").selectOption({label:area.name});
+  expect(await page.locator("iqalarm-panel").evaluate(el=>el.points)).toEqual(edited);
+  await page.reload();await page.getByRole("tab",{name:"Räume & Grundriss"}).click();
+  await expect(page.locator("#zone-room")).toHaveValue(`ha-area:${area.area_id}`);
+  expect(await page.locator("iqalarm-panel").evaluate(el=>el.points)).toEqual(edited);
+  await page.getByRole("button",{name:"Bereich speichern",exact:true}).click();
+  await expect(page.locator("#draft-status")).toHaveText("Bereich gespeichert");
+  const saved=await page.evaluate(()=>window.iqTest.request({type:"iqalarm/get"}));
+  const room=Object.values(saved.config.rooms).find(room=>room.area_id === area.area_id);
+  expect(saved.config.floorplans.ha_area_reload.zones[room.id]).toEqual(edited);
+});
+
+test("an HA area removed while the dialog is open leaves the entire draft intact",async({page})=>{
+  await prepareDraftPlan(page,"ha_area_removed");
+  const area=await page.evaluate(()=>window.iqTest.request({type:"config/area_registry/create",name:"Browser HA Entfernt"}));
+  await page.getByRole("button",{name:"Flächen erkennen",exact:true}).click();
+  await page.locator("#plan-candidate").selectOption("1");
+  const points=await page.locator("iqalarm-panel").evaluate(el=>structuredClone(el.points));
+  await page.getByRole("button",{name:"Bereich speichern",exact:true}).click();
+  await page.getByRole("dialog").getByLabel("Vorhandener Raum",{exact:true}).selectOption({label:area.name});
+  await page.evaluate(area_id=>window.iqTest.request({type:"config/area_registry/delete",area_id}),area.area_id);
+  const before=await page.evaluate(()=>window.iqTest.request({type:"iqalarm/get"}));
+  await page.getByRole("dialog").getByRole("button",{name:"Speichern",exact:true}).click();
+  await expect(page.locator("#toast")).toContainText("wurde entfernt");
+  await expect(page.getByRole("dialog")).toBeVisible();
+  expect(await page.locator("iqalarm-panel").evaluate(el=>el.points)).toEqual(points);
+  const after=await page.evaluate(()=>window.iqTest.request({type:"iqalarm/get"}));
+  expect(after.config).toEqual(before.config);
+});
