@@ -186,7 +186,7 @@ test("custom stage count, labels and rule targets are saved without HA mapping",
   await rows.last().getByLabel("Akustische / freie Aktionen erlauben",{exact:true}).check();
   await page.getByRole("button",{name:"Alarmstufen speichern",exact:true}).click();
   await page.getByRole("button",{name:new RegExp("Alarm nach Maß$")}).click();
-  await expect(page.getByRole("heading",{name:new RegExp("Alarm nach Maß$")})).toBeVisible();
+  await expect(page.getByRole("heading",{name:`LVL ${original} · Alarm nach Maß`,exact:true})).toBeVisible();
   await page.getByRole("tab",{name:"Profile & System"}).click();
   await expect(page.locator('[name="target_contact_motion"] option').filter({hasText:"Alarm nach Maß"})).toHaveCount(1);
   await page.locator('[name="target_contact_motion"]').selectOption({label:`${original} · Alarm nach Maß`});
