@@ -21,6 +21,7 @@ jobs:
         with:
           node-version: "24"
       - run: node --check custom_components/iqalarm/frontend/iqalarm-panel.js
+      - run: node --test tests/frontend/*.test.mjs
   home-assistant:
     runs-on: ubuntu-latest
     strategy:

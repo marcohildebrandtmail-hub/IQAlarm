@@ -4,7 +4,7 @@ Proposals are geometry only. They never create rooms, change security rules or
 claim to recognize room names. Open areas can be separated with the manual tool.
 """
 
-from collections import defaultdict, deque
+from collections import Counter, defaultdict, deque
 from math import hypot
 from pathlib import Path
 
@@ -89,21 +89,103 @@ def _polygon(cells: list[int], width: int) -> list[tuple[int, int]]:
         range(1, len(outline)),
         key=lambda i: hypot(outline[i][0] - outline[0][0], outline[i][1] - outline[0][1]),
     )
-    tolerance = max(1, width * 0.002)
+    tolerance = max(1.2, width * 0.006)
     for _ in range(8):
         result = (
             _simplify_line(outline[: split + 1], tolerance)[:-1]
             + _simplify_line(outline[split:] + [outline[0]], tolerance)[:-1]
         )
-        if len(result) <= 64:
+        if len(result) <= 32:
             return result if len(result) >= 3 else []
         tolerance *= 1.6
     return []
 
 
-def analyze_image(path: Path, gap: int = 18) -> dict:
+def _bridge_wall_continuations(mask: Image.Image, gap: int) -> Image.Image:
+    """Join aligned wall ends without eroding the interior of narrow rooms."""
+    width, height = mask.size
+    raw = mask.tobytes()
+    filled = bytearray(raw)
+    for vertical in (False, True):
+        count, length = (width, height) if vertical else (height, width)
+        for line in range(count):
+            runs = []
+            start = None
+            for offset in range(length + 1):
+                index = offset * width + line if vertical else line * width + offset
+                if offset < length and raw[index]:
+                    if start is None:
+                        start = offset
+                elif start is not None:
+                    runs.append((start, offset - 1))
+                    start = None
+            for first, second in zip(runs, runs[1:], strict=False):
+                if 0 < second[0] - first[1] - 1 <= gap and max(
+                    first[1] - first[0] + 1, second[1] - second[0] + 1
+                ) >= max(6, width // 80):
+                    for offset in range(first[1] + 1, second[0]):
+                        filled[offset * width + line if vertical else line * width + offset] = 255
+    return Image.frombytes("L", mask.size, bytes(filled))
+
+
+def _colored_structure(image: Image.Image, gap: int) -> Image.Image | None:
+    """Use a dominant structural wall color to exclude furniture and hatch marks."""
+    width, height = image.size
+    hsv = image.convert("HSV").tobytes()
+    histogram = Counter(
+        hsv[i] // 8 for i in range(0, len(hsv), 3) if hsv[i + 1] > 120 and hsv[i + 2] < 245
+    )
+    if not histogram:
+        return None
+    bucket, support = histogram.most_common(1)[0]
+    if support < width * height * 0.001 or support < sum(histogram.values()) * 0.35:
+        return None
+    hue = bucket * 8 + 4
+    pixels = bytes(
+        255
+        if min(abs(hsv[i] - hue), 256 - abs(hsv[i] - hue)) <= 12
+        and hsv[i + 1] > 100
+        and hsv[i + 2] < 245
+        else 0
+        for i in range(0, len(hsv), 3)
+    )
+    count = pixels.count(255)
+    structure = Image.frombytes("L", image.size, pixels)
+    bounds = structure.getbbox()
+    if (
+        not bounds
+        or not 0.0015 <= count / (width * height) <= 0.12
+        or bounds[2] - bounds[0] < width * 0.35
+        or bounds[3] - bounds[1] < height * 0.35
+    ):
+        return None
+    # Window frames and garage doors may be black. Accept a straight dark line
+    # only when both ends connect to the structural wall color, not to furniture.
+    near = structure.filter(ImageFilter.MaxFilter(15)).tobytes()
+    dark = image.convert("L").point(lambda value: 255 if value < 150 else 0).tobytes()
+    joined = bytearray(pixels)
+    for vertical in (False, True):
+        count, length = (width, height) if vertical else (height, width)
+        for line in range(count):
+            run = []
+            for offset in range(length + 1):
+                index = offset * width + line if vertical else line * width + offset
+                if offset < length and dark[index]:
+                    run.append(index)
+                else:
+                    if len(run) >= max(12, width // 40) and near[run[0]] and near[run[-1]]:
+                        for pixel in run:
+                            joined[pixel] = 255
+                    run = []
+    structure = Image.frombytes("L", image.size, bytes(joined))
+    if gap:
+        structure = _bridge_wall_continuations(structure, gap)
+    return structure.filter(ImageFilter.MaxFilter(3)).filter(ImageFilter.MinFilter(3))
+
+
+def analyze_image(path: Path, gap: int | None = None) -> dict:
     """Find bounded areas; at most 30 suggestions, each with at most 64 vertices."""
-    if type(gap) is not int or not 0 <= gap <= 40:
+    if gap is not None and (type(gap) is not int or not 0 <= gap <= 40):
         raise ValueError("Türöffnungs-Ausgleich muss zwischen 0 und 40 liegen")
     with Image.open(path) as source:
         if source.width * source.height > 32_000_000:
@@ -113,37 +195,42 @@ def analyze_image(path: Path, gap: int = 18) -> dict:
     width, height = image.size
     if min(width, height) < 24:
         return {"candidates": [], "analysis_width": width, "analysis_height": height}
-    # Retain dark structural lines and saturated wall fills. Thin lettering is
-    # removed before small door gaps are closed, limiting furniture fragments.
-    dark = image.convert("L").point(lambda value: 255 if value < 125 else 0)
-    solid = dark.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.MaxFilter(3))
-    raw = dark.tobytes()
-    lines = bytearray(width * height)
-    minimum_run = max(6, width // 90)
-    for vertical in (False, True):
-        count, length = (width, height) if vertical else (height, width)
-        for line in range(count):
-            run = []
-            for offset in range(length + 1):
-                index = offset * width + line if vertical else line * width + offset
-                if offset < length and raw[index]:
-                    run.append(index)
-                else:
-                    if len(run) >= minimum_run:
-                        for pixel in run:
-                            lines[pixel] = 255
-                    run = []
-    solid = ImageChops.lighter(solid, Image.frombytes("L", (width, height), bytes(lines)))
-    hsv = image.convert("HSV")
-    saturated = hsv.getchannel("S").point(lambda value: 255 if value > 130 else 0)
-    not_white = hsv.getchannel("V").point(lambda value: 255 if value < 245 else 0)
-    walls = ImageChops.lighter(solid, ImageChops.darker(saturated, not_white))
-    if gap:
-        size = gap // 2 * 2 + 1
-        walls = walls.filter(ImageFilter.MaxFilter(size)).filter(ImageFilter.MinFilter(size))
+    effective_gap = min(40, max(6, round(max(width, height) / 16))) if gap is None else gap
+    walls = _colored_structure(image, effective_gap)
+    method = "structural_color" if walls is not None else "monochrome_lines"
+    if walls is None:
+        gap = effective_gap
+        # Retain dark structural lines and saturated wall fills. Thin lettering is
+        # removed before small door gaps are closed, limiting furniture fragments.
+        dark = image.convert("L").point(lambda value: 255 if value < 125 else 0)
+        solid = dark.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.MaxFilter(3))
+        raw = dark.tobytes()
+        lines = bytearray(width * height)
+        minimum_run = max(6, width // 90)
+        for vertical in (False, True):
+            count, length = (width, height) if vertical else (height, width)
+            for line in range(count):
+                run = []
+                for offset in range(length + 1):
+                    index = offset * width + line if vertical else line * width + offset
+                    if offset < length and raw[index]:
+                        run.append(index)
+                    else:
+                        if len(run) >= minimum_run:
+                            for pixel in run:
+                                lines[pixel] = 255
+                        run = []
+        solid = ImageChops.lighter(solid, Image.frombytes("L", (width, height), bytes(lines)))
+        hsv = image.convert("HSV")
+        saturated = hsv.getchannel("S").point(lambda value: 255 if value > 130 else 0)
+        not_white = hsv.getchannel("V").point(lambda value: 255 if value < 245 else 0)
+        walls = ImageChops.lighter(solid, ImageChops.darker(saturated, not_white))
+        if gap:
+            size = gap // 2 * 2 + 1
+            walls = walls.filter(ImageFilter.MaxFilter(size)).filter(ImageFilter.MinFilter(size))
     blocked = walls.tobytes()
     visited = bytearray(width * height)
-    minimum = max(80, int(width * height * 0.003))
+    minimum = max(80, int(width * height * 0.004))
     candidates = []
     for first in range(width * height):
         if visited[first] or blocked[first]:
@@ -191,4 +278,6 @@ def analyze_image(path: Path, gap: int = 18) -> dict:
         ],
         "analysis_width": width,
         "analysis_height": height,
+        "method": method,
+        "gap": effective_gap,
     }

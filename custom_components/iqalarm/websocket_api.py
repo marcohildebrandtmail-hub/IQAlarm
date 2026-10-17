@@ -44,7 +44,7 @@ def register(hass) -> None:
     {
         "type": "iqalarm/floorplan/analyze",
         vol.Required("plan_id"): str,
-        vol.Optional("gap", default=28): vol.All(int, vol.Range(min=0, max=40)),
+        vol.Optional("gap", default=None): vol.Any(None, vol.All(int, vol.Range(min=0, max=40))),
     }
 )
 @websocket_api.require_admin

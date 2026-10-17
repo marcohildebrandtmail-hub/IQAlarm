@@ -160,3 +160,79 @@ def test_custom_icon_and_profile_order_survive_edit_copy_and_roundtrip(config):
 def test_profile_icon_rejects_invalid_or_executable_strings(icon):
     with pytest.raises(ValueError):
         Profile(name="Test", icon=icon)
+
+
+def contains(points, point):
+    x, y = point
+    inside = False
+    for a, b in zip(points, points[1:] + points[:1], strict=True):
+        if (a[1] > y) != (b[1] > y) and x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]:
+            inside = not inside
+    return inside
+
+
+def furnished_plan(tmp_path):
+    """Generic structural fixture; no personal floorplan is committed."""
+    image = Image.new("RGB", (640, 400), "white")
+    draw = ImageDraw.Draw(image)
+    wall = "#ba4012"
+    draw.rectangle((40, 40, 600, 360), outline=wall, width=7)
+    draw.line((360, 40, 360, 360), fill=wall, width=5)
+    draw.line((360, 180, 600, 180), fill=wall, width=5)
+    draw.rectangle((420, 176, 445, 184), fill="white")
+    draw.line((40, 250, 360, 250), fill=wall, width=5)
+    draw.rectangle((180, 246, 205, 254), fill="white")
+    draw.line((210, 250, 210, 360), fill=wall, width=5)
+    draw.rectangle((206, 280, 214, 300), fill="white")
+    draw.rectangle((90, 90, 160, 140), outline="#777777", width=2)
+    draw.rectangle((450, 220, 550, 330), outline="#444444", width=2)
+    draw.rectangle((70, 280, 130, 330), outline="#555555", width=2)
+    draw.text((100, 165), "LIVING / DINING", fill="black")
+    for y in range(4, 32, 5):
+        draw.line((40, y, 600, y), fill="#555555", width=1)
+    path = tmp_path / "furnished.png"
+    image.save(path)
+    return path
+
+
+def test_structural_color_separates_rooms_without_segmenting_furniture(tmp_path):
+    result = analyze_image(furnished_plan(tmp_path))
+    assert result["method"] == "structural_color"
+    assert len(result["candidates"]) == 5
+    anchors = [
+        (180 / 640, 150 / 400),
+        (130 / 640, 300 / 400),
+        (270 / 640, 300 / 400),
+        (480 / 640, 270 / 400),
+        (480 / 640, 100 / 400),
+    ]
+    matches = [
+        next(p["id"] for p in result["candidates"] if contains(p["points"], anchor))
+        for anchor in anchors
+    ]
+    assert len(set(matches)) == 5
+    for furniture, room_index in [
+        ((120 / 640, 110 / 400), 0),
+        ((490 / 640, 270 / 400), 3),
+        ((100 / 640, 310 / 400), 1),
+    ]:
+        assert (
+            next(p["id"] for p in result["candidates"] if contains(p["points"], furniture))
+            == matches[room_index]
+        )
+    assert not any(contains(p["points"], (0.5, 0.03)) for p in result["candidates"])
+    assert all(len(p["points"]) <= 32 for p in result["candidates"])
+
+
+def test_automatic_analysis_is_stable_for_resized_colored_drawings(tmp_path):
+    path = furnished_plan(tmp_path)
+    with Image.open(path) as image:
+        image.resize((1280, 800)).save(path)
+    result = analyze_image(path)
+    assert len(result["candidates"]) == 5
+    assert max(result["analysis_width"], result["analysis_height"]) <= 640
+
+
+def test_an_explicit_zero_gap_preserves_open_connections(tmp_path):
+    result = analyze_image(furnished_plan(tmp_path), 0)
+    assert len(result["candidates"]) < 5

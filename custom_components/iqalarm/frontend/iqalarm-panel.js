@@ -1,4 +1,5 @@
-/* IQAlarm 2.2.0 · native ES module · no CDN, framework or build required. */
+import {DraftJournal} from "./floorplan-drafts.js?v=2.2.1";
+/* IQAlarm 2.2.1 · native ES module · no CDN, framework or build required. */
 const RULES = {perimeter: "Vorfeld-Erkennung", single: "Unbestätigter Einzelsensor", flapping: "Sensor-Prellen", perimeter_contact: "Vorfeld + Öffnung", contact_motion: "Öffnung + Bewegung", multi_contact: "Zwei Öffnungssensoren", multi_motion: "Zwei Bewegungsmelder", immediate: "Freigegebene Einzelauslösung / Gefahr"};
 const PROFILE_ICONS = {"mdi:home-outline":"Zuhause", "mdi:weather-night":"Nacht", "mdi:home-export-outline":"Abwesend", "mdi:palm-tree":"Urlaub", "mdi:account-group-outline":"Besuch", "mdi:garage-variant":"Garage", "mdi:shield-check-outline":"Schutz", "mdi:eye-outline":"Beobachtung", "mdi:dog":"Haustiere", "mdi:briefcase-outline":"Arbeit", "mdi:bed-outline":"Schlafzimmer", "mdi:lock-outline":"Schloss", "mdi:home-floor-0":"Erdgeschoss", "mdi:home-floor-1":"Obergeschoss", "mdi:home-floor-b":"Keller", "mdi:tree-outline":"Garten"};
 const ROLES = {perimeter_camera: "Außenkamera / Person", perimeter_sensor: "Vorfeld-Sensor", entry_contact: "Tür / Fenster", lock_contact: "Schloss / Riegel", vibration_glass: "Glas / Vibration", interior_motion: "Bewegung innen", interior_mmwave: "Präsenz / mmWave", panic: "Panik", smoke: "Rauch / Gefahr"};
@@ -32,7 +33,8 @@ class IQAlarmPanel extends HTMLElement {
     super();
     this.attachShadow({mode: "open"});
     this.tab = 0; this.profile = "armed_night"; this.stage = "1"; this.catalogFilter = "all"; this.catalog = {entities: [], notify_services: [], areas: []};
-    this.plan = null; this.points = []; this.planAnalysis = null; this.selectedCandidate = ""; this.analysisGap = 28; this.manualDrawing = false; this.imageURLs = new Map(); this.imageLoading = new Set(); this.data = null; this._connected = false; this._subscribing = false; this._requestBusy = false; this._unsubscribe = null; this._reconnectTimer = null;
+    this.plan = null; this.points = []; this.planAnalysis = null; this.selectedCandidate = ""; this.analysisGap = null; this.manualDrawing = false; this.imageURLs = new Map(); this.imageLoading = new Set(); this.data = null; this._connected = false; this._subscribing = false; this._requestBusy = false; this._unsubscribe = null; this._reconnectTimer = null;
+    this._saveDraftOnLeave = () => this._storeDraft();
     this._onDisconnect = () => this._connection(false);
     this._onReady = () => { if (!this._unsubscribe) this._connect(); };
     this.shadowRoot.innerHTML = `<style>${CSS}</style><div class="shell"><header class="top"><div class="brand-row"><button class="icon-button" data-command="menu" aria-label="Seitenmenü öffnen">${icon("menu")}</button><div class="brandmark">IQ</div><div class="brand-copy"><div class="brand-title">IQAlarm</div><div class="eyebrow">Intelligenz vor dem Alarm</div></div><div class="connection" role="status"><span class="dot off"></span><span id="connection-text">Verbinde …</span></div></div><nav aria-label="IQAlarm Bereiche" role="tablist"></nav></header><main id="main"><div class="loading">IQAlarm wird verbunden …</div></main><div class="footer-note">IQAlarm · Lokal. Räumlich. Korrelierend.</div></div><dialog id="editor" aria-labelledby="dialog-title"></dialog><div id="toast" role="status" aria-live="polite"></div>`;
@@ -48,10 +50,10 @@ class IQAlarmPanel extends HTMLElement {
     this.shadowRoot.addEventListener("input", e => { if (e.target.id === "sensor-search") this._renderCatalog(e.target.value); if (e.target.name === "profile_icon") this._updateIconPreview(e.target.form); });
     this.shadowRoot.addEventListener("change", e => {
       if (e.target.name === "kind") this._actionVisibility(e.target.value);
-      if (e.target.id === "plan-select") { this.plan = e.target.value; this.points = []; this.zoneRoom = null; this.planAnalysis = null; this.selectedCandidate = ""; this._render(); }
-      if (e.target.id === "zone-room") { this.zoneRoom = e.target.value; const existing = this.data.config.floorplans[this.plan]?.zones[this.zoneRoom]; if (existing || !this.selectedCandidate) this.points = structuredClone(existing || []); this._render(); }
+      if (e.target.id === "plan-select") { this._selectPlan(e.target.value); this._render(); }
+      if (e.target.id === "zone-room") this._assignDraftRoom(e.target.value);
       if (e.target.id === "plan-candidate") this._chooseCandidate(e.target.value);
-      if (e.target.id === "analysis-gap") this.analysisGap = Number(e.target.value);
+      if (e.target.id === "analysis-gap") this.analysisGap = e.target.value === "auto" ? null : Number(e.target.value);
       if (e.target.id === "plan-upload") this._uploadPlan(e.target.files[0], e.target.dataset.plan);
       if (e.target.hasAttribute("data-scope")) this._scopeVisibility(e.target.form);
     });
@@ -71,8 +73,8 @@ class IQAlarmPanel extends HTMLElement {
     if (this.isConnected && !this._unsubscribe && !this._subscribing) this._connect();
   }
   get hass() { return this._hass; }
-  connectedCallback() { this._listenConnection(); if (this._hass) this._connect(); }
-  disconnectedCallback() { this._unlistenConnection(); this._connected = false; this._connectAttempt = (this._connectAttempt || 0) + 1; this._unsubscribe?.(); this._unsubscribe = null; clearTimeout(this._reconnectTimer); clearTimeout(this._toastTimer); for (const item of this.imageURLs.values()) URL.revokeObjectURL(item.url); this.imageURLs.clear(); }
+  connectedCallback() { window.addEventListener("pagehide", this._saveDraftOnLeave); this._listenConnection(); if (this._hass) this._connect(); }
+  disconnectedCallback() { this._storeDraft(); clearTimeout(this._draftPersistTimer); window.removeEventListener("pagehide", this._saveDraftOnLeave); this._unlistenConnection(); this._connected = false; this._connectAttempt = (this._connectAttempt || 0) + 1; this._unsubscribe?.(); this._unsubscribe = null; clearTimeout(this._reconnectTimer); clearTimeout(this._toastTimer); for (const item of this.imageURLs.values()) URL.revokeObjectURL(item.url); this.imageURLs.clear(); }
 
   _listenConnection() {
     const connection = this._hass?.connection;
@@ -137,7 +139,7 @@ class IQAlarmPanel extends HTMLElement {
 
   _updateLock() {
     const armed = this.data.status.active;
-    this.shadowRoot.querySelectorAll("[data-config]").forEach(e => {e.disabled = armed || this._requestBusy || !this._connected || (e.dataset.command === "floorplan-analyze" && this._analysisBusy);});
+    this.shadowRoot.querySelectorAll("[data-config]").forEach(e => {e.disabled = armed || this._requestBusy || !this._connected || (e.dataset.command === "floorplan-analyze" && this._analysisBusy) || (e.dataset.command === "draft-undo" && !this._draftJournal?.history.length) || (e.dataset.command === "draft-redo" && !this._draftJournal?.future.length);});
     this.shadowRoot.querySelectorAll(".armed-note").forEach(e => {e.hidden = !armed;});
     this.shadowRoot.querySelectorAll('[data-command="mode"], [data-command="profile-arm"]').forEach(button => {
       const target = button.dataset.id;
@@ -274,16 +276,76 @@ class IQAlarmPanel extends HTMLElement {
   }
   _floorplan(edit) {
     const plans = Object.values(this.data.config.floorplans);
-    if (!plans.some(plan => plan.id === this.plan)) { this.plan = plans[0]?.id || null; this.planAnalysis = null; this.points = []; }
+    if (!plans.some(plan => plan.id === this.plan)) {
+      let preferred; try {preferred=window.localStorage.getItem(this._lastPlanKey());} catch {preferred=null;}
+      this._selectPlan(plans.find(plan => plan.id === preferred)?.id || plans[0]?.id || null);
+    }
     const plan = this.data.config.floorplans[this.plan];
     if (!plan) return `<section class="card floorplan-intro" style="margin:20px 0"><h2>Dein Haus als Live-Grundriss</h2><p>Lade deinen bestehenden Grundriss als PNG oder JPG hoch. Der Assistent schlägt Raumflächen vor. Du prüfst die Flächen und verbindest sie mit deinen Räumen und Sensoren.</p><ol class="plan-steps"><li>Bild hochladen</li><li>Flächen prüfen & Räume zuordnen</li><li>Live-Status sehen</li></ol><div class="row"><button class="primary" data-command="floorplan-upload" data-config>${icon("upload")}Grundriss hochladen</button><button data-command="floorplan-new" data-config>Grundriss anlegen</button></div></section>`;
     if (this.planAnalysis && (this.planAnalysis.plan_id !== plan.id || this.planAnalysis.image !== plan.image)) { this.planAnalysis = null; this.selectedCandidate = ""; }
+    this._activatePlanDraft(plan);
     const cached = this.imageURLs.get(plan.id);
     if (plan.image && cached?.image !== plan.image) this._loadPlan(plan);
     const image = cached?.image === plan.image ? cached.url : "";
     const width = plan.width || 1000, height = plan.height || 600;
     const candidates = this.planAnalysis?.candidates || [];
-    return `<section class="card" style="margin:20px 0"><div class="row between"><h2>${edit ? "Grundriss-Assistent" : "Live-Grundriss"}</h2><label class="field">Etage<select id="plan-select">${options(Object.fromEntries(plans.map(p => [p.id,p.name])),plan.id)}</select></label></div><div class="row" style="margin-top:14px"><button class="${plan.image ? "" : "primary"}" data-command="floorplan-pick" data-config>${icon("upload")}${plan.image ? "Bild ersetzen" : "Grundriss hochladen"}</button><input type="file" id="plan-upload" data-plan="${esc(plan.id)}" accept="image/png,image/jpeg" hidden data-config><button data-command="floorplan-upload" data-config>Weitere Etage hochladen</button>${!edit ? '<button data-command="floorplan-editor">Räume im Grundriss bearbeiten</button>' : `<button data-command="floorplan-edit" data-id="${esc(plan.id)}" data-config>Umbenennen</button><button data-command="floorplan-delete" data-id="${esc(plan.id)}" data-config>Löschen</button>`}</div>${edit && image ? `<ol class="plan-steps"><li>Bild hochgeladen</li><li>Raumflächen prüfen und zuordnen</li><li>Bereich speichern</li></ol><div class="plan-assistant"><div class="row"><button class="primary" data-command="floorplan-analyze" data-config ${this._analysisBusy ? "disabled" : ""}>${icon("auto-fix")}${this._analysisBusy ? "Flächen werden gesucht …" : "Raumflächen vorschlagen"}</button><label class="field">Türöffnungen überbrücken<select id="analysis-gap" data-config>${options({0:"Keine",8:"Schmale Öffnungen",18:"Mittlere Öffnungen",28:"Normale Türen",40:"Breite Öffnungen"},String(this.analysisGap))}</select></label></div><p>Die lokale Bilderkennung schlägt Flächen vor. Möbel und offene Übergänge können Flächen teilen oder verbinden. Prüfe und korrigiere den Umriss vor dem Speichern.</p>${this.planAnalysis ? `<p role="status"><strong>${candidates.length ? `${candidates.length} Flächen vorgeschlagen` : "Keine geschlossenen Raumflächen gefunden"}</strong>${candidates.length ? " · Im Bild anklicken oder unten auswählen." : " · Türöffnungs-Ausgleich ändern oder Eckpunkte selbst setzen."}</p>` : ""}${candidates.length ? `<label class="field" style="margin-top:14px">Flächenvorschlag<select id="plan-candidate">${options(Object.fromEntries(candidates.map(item => [item.id,`Fläche ${item.id} · ${Math.round(item.area*1000)/10} % des Bildes`])),this.selectedCandidate,"Vorschlag auswählen")}</select></label>` : ""}</div><div class="row" style="margin-top:14px"><label class="field">Raum / Außenbereich<select id="zone-room">${this._roomsOptions(this.zoneRoom,"Raum auswählen")}</select></label><button data-command="room-new" data-config>${icon("plus")}Raum anlegen</button><button data-command="zone-clear" data-config>Neu zeichnen</button><button data-command="zone-undo" data-config>Letzter Punkt zurück</button><button class="primary" data-command="zone-save" data-config>Bereich speichern</button><button data-command="zone-delete" data-config>Bereich entfernen</button></div><p>Vorschlag anklicken oder Eckpunkte im Bild setzen. Eckpunkte mit Maus oder Finger verschieben; mit Pfeiltasten fein korrigieren, mit Entf löschen. Offene Wohnbereiche können als einzelne Räume markiert werden. Erst „Bereich speichern“ übernimmt die Zuordnung.</p>` : edit ? '<p style="margin-top:14px">Wähle zuerst dein Grundrissbild über den Hochladen-Button aus.</p>' : '<p style="margin-top:14px">Räume anklicken für Sensorstatus und Kamera. Auch vom Profil ignorierte Signale bleiben sichtbar.</p>'}${image ? `<div class="plan-wrap" style="aspect-ratio:${width}/${height}"><svg id="floorplan" role="img" aria-label="${esc(plan.name)}" data-edit="${edit}" viewBox="0 0 ${width} ${height}"><image href="${esc(image)}" width="${width}" height="${height}"/>${Object.entries(plan.zones).map(([room,points]) => this._zoneSVG(plan,room,points)).join("")}${edit && !this.manualDrawing ? candidates.map(item => `<g data-candidate="${esc(item.id)}" role="button" tabindex="0" aria-label="Fläche ${esc(item.id)} auswählen"><polygon class="plan-proposal ${this.selectedCandidate === item.id ? "chosen" : ""}" points="${item.points.map(([x,y]) => `${x*width},${y*height}`).join(" ")}"/><text x="${item.center[0]*width}" y="${item.center[1]*height}" text-anchor="middle" font-size="${Math.max(width,height)*.024}">${esc(item.id)}</text></g>`).join("") : ""}<polygon class="draft" points="${edit ? this.points.map(([x,y]) => `${x*width},${y*height}`).join(" ") : ""}"/><g class="draft-points">${edit ? this._draftHandles(plan) : ""}</g></svg></div>` : `<div class="empty" style="margin-top:16px">${plan.image ? "Bild wird geladen …" : "PNG / JPG auswählen · maximal 10 MB"}</div>`}</section>`;
+    return `<section class="card" style="margin:20px 0"><div class="row between"><h2>${edit ? "Grundriss-Assistent" : "Live-Grundriss"}</h2><label class="field">Etage<select id="plan-select">${options(Object.fromEntries(plans.map(p => [p.id,p.name])),plan.id)}</select></label></div><div class="row" style="margin-top:14px"><button class="${plan.image ? "" : "primary"}" data-command="floorplan-pick" data-config>${icon("upload")}${plan.image ? "Bild ersetzen" : "Grundriss hochladen"}</button><input type="file" id="plan-upload" data-plan="${esc(plan.id)}" accept="image/png,image/jpeg" hidden data-config><button data-command="floorplan-upload" data-config>Weitere Etage hochladen</button>${!edit ? '<button data-command="floorplan-editor">Räume im Grundriss bearbeiten</button>' : `<button data-command="floorplan-edit" data-id="${esc(plan.id)}" data-config>Umbenennen</button><button data-command="floorplan-delete" data-id="${esc(plan.id)}" data-config>Löschen</button>`}</div>${edit && image ? `<ol class="plan-steps"><li>Bild hochgeladen</li><li>Raumflächen prüfen und zuordnen</li><li>Bereich speichern</li></ol><div class="plan-assistant"><div class="row"><button class="primary" data-command="floorplan-analyze" data-config ${this._analysisBusy ? "disabled" : ""}>${icon("floor-plan")}${this._analysisBusy ? "Flächen werden gesucht …" : "Flächen erkennen"}</button><details><summary>Erweiterte Erkennung</summary><label class="field" style="margin-top:12px">Wandlücken schließen<select id="analysis-gap" data-config>${options({auto:"Automatisch",0:"Aus",8:"Kleine Lücken",18:"Mittlere Lücken",28:"Größere Lücken",40:"Große Lücken"},this.analysisGap == null ? "auto" : String(this.analysisGap))}</select><small>Automatisch passt die Bildauswertung an den Grundriss an. Diese Einstellung misst keine Türbreite.</small></label></details></div><p>Die lokale Bilderkennung schlägt Flächen vor. Möbel und offene Übergänge können Flächen teilen oder verbinden. Prüfe und korrigiere den Umriss vor dem Speichern.</p>${this.planAnalysis ? `<p role="status"><strong>${candidates.length ? `${candidates.length} Flächen vorgeschlagen` : "Keine geschlossenen Raumflächen gefunden"}</strong>${candidates.length ? " · Im Bild anklicken oder unten auswählen." : " · Türöffnungs-Ausgleich ändern oder Eckpunkte selbst setzen."}</p>` : ""}${candidates.length ? `<label class="field" style="margin-top:14px">Flächenvorschlag<select id="plan-candidate">${options(Object.fromEntries(candidates.map(item => [item.id,`Fläche ${item.id} · ${Math.round(item.area*1000)/10} % des Bildes`])),this.selectedCandidate,"Vorschlag auswählen")}</select></label>` : ""}</div><div class="row" style="margin-top:14px"><label class="field">Raum / Außenbereich<select id="zone-room" data-config>${this._roomsOptions(this.zoneRoom,"Raum auswählen")}</select></label><button data-command="room-new" data-config>${icon("plus")}Raum anlegen</button><button data-command="zone-clear" data-config>Neu zeichnen</button><button data-command="zone-undo" data-config>Letzter Punkt zurück</button><button data-command="draft-undo" data-config ${!this._draftJournal?.history.length ? "disabled" : ""}>Rückgängig</button><button data-command="draft-redo" data-config ${!this._draftJournal?.future.length ? "disabled" : ""}>Wiederholen</button><button class="primary" data-command="zone-save" data-config>Bereich speichern</button><button data-command="zone-delete" data-config>Bereich entfernen</button></div><p id="draft-status" role="status">${this._draftJournal?.dirty ? (this._draftJournal.available ? "Ungespeicherter Entwurf · im Browser gesichert" : "Ungespeicherter Entwurf · Browser-Sicherung nicht verfügbar") : "Raumauswahl ordnet die aktuelle Fläche zu und behält alle Eckpunkte."}</p><p>Vorschlag anklicken oder Eckpunkte im Bild setzen. Eckpunkte mit Maus oder Finger verschieben; mit Pfeiltasten fein korrigieren, mit Entf löschen. Offene Wohnbereiche können als einzelne Räume markiert werden. Erst „Bereich speichern“ übernimmt die Zuordnung.</p>` : edit ? '<p style="margin-top:14px">Wähle zuerst dein Grundrissbild über den Hochladen-Button aus.</p>' : '<p style="margin-top:14px">Räume anklicken für Sensorstatus und Kamera. Auch vom Profil ignorierte Signale bleiben sichtbar.</p>'}${image ? `<div class="plan-wrap" style="aspect-ratio:${width}/${height}"><svg id="floorplan" role="img" aria-label="${esc(plan.name)}" data-edit="${edit}" viewBox="0 0 ${width} ${height}"><image href="${esc(image)}" width="${width}" height="${height}"/>${Object.entries(plan.zones).map(([room,points]) => this._zoneSVG(plan,room,points)).join("")}${edit && !this.manualDrawing ? candidates.map(item => `<g data-candidate="${esc(item.id)}" role="button" tabindex="0" aria-label="Fläche ${esc(item.id)} auswählen"><polygon class="plan-proposal ${this.selectedCandidate === item.id ? "chosen" : ""}" points="${item.points.map(([x,y]) => `${x*width},${y*height}`).join(" ")}"/><text x="${item.center[0]*width}" y="${item.center[1]*height}" text-anchor="middle" font-size="${Math.max(width,height)*.024}">${esc(item.id)}</text></g>`).join("") : ""}<polygon class="draft" points="${edit ? this.points.map(([x,y]) => `${x*width},${y*height}`).join(" ") : ""}"/><g class="draft-points">${edit ? this._draftHandles(plan) : ""}</g></svg></div>` : `<div class="empty" style="margin-top:16px">${plan.image ? "Bild wird geladen …" : "PNG / JPG auswählen · maximal 10 MB"}</div>`}</section>`;
+  }
+  _draftSnapshot() { return {points:structuredClone(this.points),roomId:this.zoneRoom || null,candidateId:this.selectedCandidate || "",manual:!!this.manualDrawing}; }
+  _applyDraft(state) { this.points=structuredClone(state.points); this.zoneRoom=state.roomId; this.selectedCandidate=state.candidateId; this.manualDrawing=state.manual; }
+  _lastPlanKey() { return `iqalarm:last-plan:${location.origin}:${this._hass?.user?.id || "local"}`; }
+  _activatePlanDraft(plan) {
+    try {window.localStorage.setItem(this._lastPlanKey(),plan.id);} catch {this._draftStorageUnavailable=true;}
+    const key=`iqalarm:draft:v1:${location.origin}:${this._hass?.user?.id || "local"}:${plan.id}:${plan.image || "empty"}`;
+    if (this._draftKey === key) return;
+    this._storeDraft(); this._draftKey=key;
+    let storage; try {storage=window.localStorage;} catch {storage=null;}
+    this._draftJournal=new DraftJournal(key,storage);
+    this._applyDraft(this._draftJournal.state);
+    if (this.zoneRoom && !this.data.config.rooms[this.zoneRoom]) this.zoneRoom=null;
+    if (!this._draftJournal.dirty && this.zoneRoom) {
+      this.points=structuredClone(plan.zones[this.zoneRoom] || []);
+      this._draftJournal.markSaved(this._draftSnapshot());
+    }
+  }
+  _selectPlan(id) {
+    this._storeDraft(); this._draftJournal=null; this._draftKey=null;
+    this.plan=id; this.points=[]; this.zoneRoom=null; this.selectedCandidate=""; this.manualDrawing=false; this.planAnalysis=null;
+  }
+  _storeDraft(persist = true) {
+    if (!this._draftJournal) return;
+    this._draftJournal.update(this._draftSnapshot(),persist);
+    clearTimeout(this._draftPersistTimer);
+    if (!persist) this._draftPersistTimer=setTimeout(() => this._draftJournal?.flush(),250);
+    const status=this.shadowRoot.getElementById("draft-status");
+    if (status) status.textContent=this._draftJournal.dirty ? (this._draftJournal.available ? "Ungespeicherter Entwurf · im Browser gesichert" : "Ungespeicherter Entwurf · Browser-Sicherung nicht verfügbar") : "Bereich gespeichert";
+    if (this.data) this._updateLock();
+  }
+  _recordDraft() { this._draftJournal?.checkpoint(this._draftSnapshot()); }
+  _undoDraft(redo = false) {
+    const state=redo ? this._draftJournal?.redo() : this._draftJournal?.undo();
+    if (state) {this._applyDraft(state); this._render();}
+  }
+  _assignDraftRoom(id) {
+    this._recordDraft(); this.zoneRoom=id || null;
+    // Assigning a room never replaces geometry the user has already edited.
+    if (!this.points.length && id) this.points=structuredClone(this.data.config.floorplans[this.plan]?.zones[id] || []);
+    this._storeDraft(); this._render();
+  }
+  _zoneAssignmentDialog() {
+    this._storeDraft();
+    this._dialog("Fläche einem Raum zuordnen",`<p>Deine ${this.points.length} Eckpunkte bleiben erhalten. Wähle den zugehörigen Raum oder benenne einen neuen.</p><label class="field" style="margin-top:18px">Vorhandener Raum<select name="zone_room">${this._roomsOptions("","Raum auswählen")}</select></label><label class="field" style="margin-top:18px">Oder neuen Raum anlegen<input name="zone_new_room" maxlength="100" placeholder="z. B. Wohnzimmer"></label>`,"zone-assignment");
+  }
+  async _saveDraftZone(roomId, newName = "", revision = this._viewRevision) {
+    if (this.points.length < 3) throw new Error("Mindestens drei Eckpunkte markieren");
+    if (roomId && newName) throw new Error("Bitte einen vorhandenen Raum wählen oder einen neuen benennen");
+    if (!roomId && !newName) throw new Error("Bitte einen Raum auswählen oder einen Namen eingeben. Dein Entwurf bleibt erhalten.");
+    const config=structuredClone(this.data.config), id=newName ? crypto.randomUUID().replaceAll("-","") : roomId;
+    if (newName) config.rooms[id]={id,name:newName,adjacent:[],area_id:null,home_enabled:false};
+    if (!config.rooms[id]) throw new Error("Der gewählte Raum wurde entfernt. Dein Entwurf bleibt erhalten.");
+    config.floorplans[this.plan].zones[id]=structuredClone(this.points);
+    this.data=await this._call("config/save",{config,revision}); this.zoneRoom=id;
+    this._draftJournal?.markSaved(this._draftSnapshot()); this._render(); this._toast("Bereich gespeichert");
   }
   _draftHandles(plan) {
     return this.points.map(([x,y],index) => `<circle data-draft-vertex="${index}" cx="${x*plan.width}" cy="${y*plan.height}" r="${Math.max(plan.width,plan.height)*.007}" role="button" tabindex="0" aria-label="Eckpunkt ${index+1} verschieben"/>`).join("");
@@ -298,15 +360,16 @@ class IQAlarmPanel extends HTMLElement {
     this._analysisBusy = true; this._render();
     try {
       const result = await this._call("floorplan/analyze",{plan_id:plan.id,gap:this.analysisGap});
-      if (this.plan === plan.id && this.data.config.floorplans[plan.id]?.image === result.image) { this.planAnalysis=result; this.selectedCandidate=""; this.manualDrawing=false; }
+      if (this.plan === plan.id && this.data.config.floorplans[plan.id]?.image === result.image) { this.planAnalysis=result; }
     } catch(err) { this._toast(err.message || "Flächenanalyse fehlgeschlagen",true); }
     finally { this._analysisBusy=false; if (this.isConnected && this.tab === 1) this._render(); }
   }
   _chooseCandidate(id) {
     const candidate=this.planAnalysis?.candidates.find(item => item.id === id);
-    this.selectedCandidate=candidate?.id || "";
-    if (candidate) { this.points=structuredClone(candidate.points); this.manualDrawing=false; }
-    this._render();
+    if (!candidate || (this.selectedCandidate === id && this.points.length)) return;
+    this._recordDraft(); this.selectedCandidate=candidate.id;
+    this.points=structuredClone(candidate.points); this.manualDrawing=false;
+    this._storeDraft(); this._render();
   }
   _zoneSVG(plan,room,points) {
     const status = this.data.status.rooms[room] || {}, roomName = this.data.config.rooms[room]?.name || room;
@@ -333,7 +396,7 @@ class IQAlarmPanel extends HTMLElement {
     const response = await this._hass.fetchWithAuth(path,{method:"POST",headers:{"X-IQAlarm-Revision":String(revision),"Content-Type":file.type || "application/octet-stream"},body:file});
     let data; try { data = await response.json(); } catch { throw new Error(`Upload fehlgeschlagen (${response.status}). Bitte Verbindung und Dateigröße prüfen.`); }
     if (!response.ok) throw new Error(data.message || `Upload fehlgeschlagen (${response.status})`);
-    this.data=data; this.plan=data.uploaded_plan_id || planId; this.points=[]; this.zoneRoom=null; this.planAnalysis=null; this.selectedCandidate=""; this.tab=1; this._render();
+    this._storeDraft(); this._draftJournal=null; this._draftKey=null; this.data=data; this.plan=data.uploaded_plan_id || planId; this.points=[]; this.zoneRoom=null; this.planAnalysis=null; this.selectedCandidate=""; this.tab=1; this._render();
     this._toast("Grundriss hochgeladen. Raumflächen werden gesucht …");
     await this._analyzePlan();
   }
@@ -353,14 +416,16 @@ class IQAlarmPanel extends HTMLElement {
     if (this._ignorePlanClick) { this._ignorePlanClick=false; return; }
     if (svg.dataset.edit === "true") {
       if (this.data.status.active || this._requestBusy || event.target.closest("[data-draft-vertex]")) return;
+      const room=event.target.closest("[data-room]");
+      if (room && !this.manualDrawing) {this._assignDraftRoom(room.dataset.room); return;}
       const candidate=event.target.closest("[data-candidate]");
       if (candidate) { this._chooseCandidate(candidate.dataset.candidate); return; }
-      if (!this.zoneRoom) { this._toast("Bitte zuerst den Raum auswählen"); return; }
       if (this.points.length >= 64) { this._toast("Maximal 64 Eckpunkte pro Raum"); return; }
-      this.points.push(this._planPosition(event,svg)); this._refreshDraft();
+      this._recordDraft(); this.points.push(this._planPosition(event,svg)); this._refreshDraft();
     } else { const zone=event.target.closest("[data-room]"); if (zone) this._liveDialog(zone.dataset.room); }
   }
-  _refreshDraft() {
+  _refreshDraft(persist = true) {
+    this._storeDraft(persist);
     const plan=this.data.config.floorplans[this.plan]; if (!plan) return;
     const svg=this.shadowRoot.getElementById("floorplan"); if (!svg) return;
     svg.querySelector(".draft")?.setAttribute("points",this.points.map(([x,y]) => `${x*plan.width},${y*plan.height}`).join(" "));
@@ -371,28 +436,31 @@ class IQAlarmPanel extends HTMLElement {
   }
   _vertexDown(event) {
     const handle=event.target.closest("[data-draft-vertex]"); if (!handle || this.data.status.active || this._requestBusy) return;
-    event.preventDefault();
+    event.preventDefault(); this._recordDraft();
     const svg=handle.closest("svg");
     this._dragVertex={index:Number(handle.dataset.draftVertex),svg,pointer:event.pointerId};
     svg.setPointerCapture(event.pointerId); handle.focus();
   }
   _vertexMove(event) {
     const drag=this._dragVertex; if (!drag || drag.pointer !== event.pointerId) return;
-    event.preventDefault(); this.points[drag.index]=this._planPosition(event,drag.svg); this._refreshDraft();
+    event.preventDefault(); this.points[drag.index]=this._planPosition(event,drag.svg); this._refreshDraft(false);
   }
   _vertexEnd(event) {
     const drag=this._dragVertex; if (!drag || drag.pointer !== event.pointerId) return;
     if (drag.svg.hasPointerCapture(event.pointerId)) drag.svg.releasePointerCapture(event.pointerId);
-    this._dragVertex=null; this._ignorePlanClick=true;
+    this._dragVertex=null; this._ignorePlanClick=true; this._storeDraft();
   }
   _vertexKey(event) {
+    if ((event.ctrlKey || event.metaKey) && ["z","y"].includes(event.key.toLowerCase()) && event.target.closest("#floorplan")) {
+      event.preventDefault(); this._undoDraft(event.key.toLowerCase() === "y" || event.shiftKey); return;
+    }
     const candidate=event.target.closest("[data-candidate]");
     if (candidate && ["Enter"," "].includes(event.key)) {event.preventDefault(); this._chooseCandidate(candidate.dataset.candidate); return;}
     const handle=event.target.closest("[data-draft-vertex]"); if (!handle || this.data.status.active || this._requestBusy) return;
     const index=Number(handle.dataset.draftVertex), delta=event.shiftKey ? .01 : .002;
     const change={ArrowLeft:[-delta,0],ArrowRight:[delta,0],ArrowUp:[0,-delta],ArrowDown:[0,delta]}[event.key];
-    if (change) {event.preventDefault(); this.points[index]=this.points[index].map((value,i) => Math.max(0,Math.min(1,value+change[i]))); this._refreshDraft();}
-    else if (["Delete","Backspace"].includes(event.key)) {event.preventDefault(); this.points.splice(index,1); this._refreshDraft();}
+    if (change) {event.preventDefault(); this._recordDraft(); this.points[index]=this.points[index].map((value,i) => Math.max(0,Math.min(1,value+change[i]))); this._refreshDraft();}
+    else if (["Delete","Backspace"].includes(event.key)) {event.preventDefault(); this._recordDraft(); this.points.splice(index,1); this._refreshDraft();}
   }
   _liveDialog(room) {
     const data = this.data.config.rooms[room]; if (!data) return;
@@ -468,15 +536,20 @@ class IQAlarmPanel extends HTMLElement {
       else if (command === "floorplan-analyze") await this._analyzePlan();
       else if (command === "floorplan-editor") { this.tab = 1; this._render(); }
       else if (command === "floorplan-new" || command === "floorplan-edit") this._dialog(id ? "Grundriss bearbeiten" : "Grundriss anlegen", `<label class="field">Etage / Name<input name="name" maxlength="100" required value="${esc(this.data.config.floorplans[id]?.name || "")}"></label>`, "floorplan", id);
-      else if (command === "zone-save" || command === "zone-delete") {
-        if (!this.zoneRoom) throw new Error("Bitte einen Raum auswählen");
-        const item = structuredClone(this.data.config.floorplans[this.plan]);
-        if (command === "zone-save") { if (this.points.length < 3) throw new Error("Mindestens drei Eckpunkte markieren"); item.zones[this.zoneRoom] = this.points; }
-        else { delete item.zones[this.zoneRoom]; this.points = []; this.selectedCandidate = ""; }
-        this.data = await this._call("crud", {collection:"floorplans",operation:"save",item,revision:this._viewRevision}); this._render();
+      else if (command === "zone-save") {
+        if (this.points.length < 3) throw new Error("Mindestens drei Eckpunkte markieren");
+        if (!this.zoneRoom) this._zoneAssignmentDialog();
+        else await this._saveDraftZone(this.zoneRoom);
       }
-      else if (command === "zone-undo") { this.points.pop(); this._refreshDraft(); }
-      else if (command === "zone-clear") { this.points = []; this.selectedCandidate = ""; this.manualDrawing = true; this._render(); this._refreshDraft(); }
+      else if (command === "zone-delete") {
+        if (!this.zoneRoom) throw new Error("Bitte den Raum des gespeicherten Bereichs auswählen");
+        const item=structuredClone(this.data.config.floorplans[this.plan]); delete item.zones[this.zoneRoom];
+        this.data=await this._call("crud",{collection:"floorplans",operation:"save",item,revision:this._viewRevision});
+        this._recordDraft(); this.points=[]; this.selectedCandidate=""; this._storeDraft(); this._draftJournal?.markSaved(this._draftSnapshot()); this._render();
+      }
+      else if (command === "draft-undo" || command === "draft-redo") this._undoDraft(command === "draft-redo");
+      else if (command === "zone-undo") { this._recordDraft(); this.points.pop(); this._refreshDraft(); }
+      else if (command === "zone-clear") { this._recordDraft(); this.points = []; this.selectedCandidate = ""; this.manualDrawing = true; this._storeDraft(); this._render(); }
       else if (command === "stage-add" || command === "stage-remove") this._changeStageRows(command === "stage-add");
       else if (command === "profile-move") {
         const dir = Number(button.dataset.dir), entries = Object.entries(this.data.config.profiles), idx = entries.findIndex(([k]) => k === this.profile), target = idx + dir;
@@ -566,7 +639,10 @@ class IQAlarmPanel extends HTMLElement {
         this.data = await this._call("config/save", {config, revision: this._viewRevision});
       } else if (form.id === "editor-form") {
         const type = form.dataset.type, id = form.dataset.id;
-        if (type === "floorplan-upload") {
+        if (type === "zone-assignment") {
+          await this._saveDraftZone(get("zone_room"), get("zone_new_room").trim(), this._dialogRevision);
+        }
+        else if (type === "floorplan-upload") {
           const file = form.elements.image.files[0];
           if (!file) throw new Error("Bitte ein PNG- oder JPG-Bild auswählen");
           if (button) button.textContent = "Wird hochgeladen …";
@@ -594,7 +670,7 @@ class IQAlarmPanel extends HTMLElement {
         }
         this.shadowRoot.getElementById("editor").close();
       }
-      this._render(); this._toast("Gespeichert");
+      this._storeDraft(); this._render(); this._toast("Gespeichert");
     } catch (err) {this._toast(err.message || String(err), true);}
     finally {this._requestBusy = false; if (button?.isConnected) {button.disabled = false; if (form.dataset.type === "floorplan-upload") button.textContent="Hochladen";} this._updateLock();}
   }

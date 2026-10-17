@@ -317,3 +317,88 @@ test("direct upload opens file picker and room proposals remain editable until s
   await expect(page.getByRole("button",{name:"Bild ersetzen",exact:true})).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+async function prepareDraftPlan(page, id) {
+  await page.evaluate(async id => {
+    const data=await window.iqTest.request({type:"iqalarm/get"});
+    const source=Object.values(data.config.floorplans).find(plan=>plan.image);
+    if (!source) throw new Error("Fixture image is missing");
+    data.config.rooms.draft_hall={id:"draft_hall",name:"Entwurf Flur",adjacent:[],area_id:null,home_enabled:false};
+    data.config.floorplans[id]={...structuredClone(source),id,name:`Entwurf ${id}`,zones:{living:[[.1,.1],[.45,.1],[.45,.9],[.1,.9]],draft_hall:[[.55,.1],[.9,.1],[.9,.9],[.55,.9]]}};
+    await window.iqTest.request({type:"iqalarm/config/save",config:data.config,revision:data.config.revision});
+  },id);
+  await page.getByRole("tab",{name:"Räume & Grundriss"}).click();
+  await page.locator("#plan-select").selectOption(id);
+  await expect(page.locator("#floorplan")).toBeVisible();
+}
+
+test("saving an unassigned edited area and selecting an existing room never resets points", async ({page})=>{
+  await prepareDraftPlan(page,"draft_loss");
+  await page.getByRole("button",{name:"Neu zeichnen",exact:true}).click();
+  const svg=page.locator("#floorplan"), bounds=await svg.boundingBox();
+  for(const [x,y] of [[.15,.15],[.4,.15],[.4,.8],[.15,.8]]) await svg.click({position:{x:x*bounds.width,y:y*bounds.height}});
+  const handle=page.locator('[data-draft-vertex="1"]');await handle.focus();await page.keyboard.press("ArrowRight");
+  await page.locator('[data-draft-vertex="2"]').focus();await page.keyboard.press("Delete");
+  const edited=await page.locator("iqalarm-panel").evaluate(el=>structuredClone(el.points));
+  expect(edited).toHaveLength(3);
+  await page.getByRole("button",{name:"Bereich speichern",exact:true}).click();
+  await expect(page.getByRole("dialog").getByRole("heading",{name:"Fläche einem Raum zuordnen"})).toBeVisible();
+  expect(await page.locator("iqalarm-panel").evaluate(el=>el.points)).toEqual(edited);
+  await page.getByRole("button",{name:"Abbrechen",exact:true}).click();
+  await page.locator("#zone-room").selectOption("living");
+  expect(await page.locator("iqalarm-panel").evaluate(el=>el.points)).toEqual(edited);
+  await page.getByRole("button",{name:"Bereich speichern",exact:true}).click();
+  const saved=await page.evaluate(()=>window.iqTest.request({type:"iqalarm/get"}));
+  expect(saved.config.floorplans.draft_loss.zones.living).toEqual(edited);
+  expect(saved.config.floorplans.draft_loss.zones.draft_hall).toEqual([[.55,.1],[.9,.1],[.9,.9],[.55,.9]]);
+});
+
+test("room reassignment, another floor, analysis and reload retain unsaved edits with undo",async({page})=>{
+  await prepareDraftPlan(page,"draft_reload");
+  await page.locator("#zone-room").selectOption("living");
+  const original=await page.locator("iqalarm-panel").evaluate(el=>structuredClone(el.points));
+  await page.locator('[data-draft-vertex="0"]').focus();await page.keyboard.press("ArrowRight");
+  const edited=await page.locator("iqalarm-panel").evaluate(el=>structuredClone(el.points));
+  expect(edited).not.toEqual(original);
+  await page.locator("#zone-room").selectOption("draft_hall");
+  expect(await page.locator("iqalarm-panel").evaluate(el=>el.points)).toEqual(edited);
+  await page.getByRole("button",{name:"Rückgängig",exact:true}).click();
+  await expect(page.locator("#zone-room")).toHaveValue("living");
+  expect(await page.locator("iqalarm-panel").evaluate(el=>el.points)).toEqual(edited);
+  await page.getByRole("button",{name:"Rückgängig",exact:true}).click();
+  expect(await page.locator("iqalarm-panel").evaluate(el=>el.points)).toEqual(original);
+  await page.getByRole("button",{name:"Wiederholen",exact:true}).click();
+  expect(await page.locator("iqalarm-panel").evaluate(el=>el.points)).toEqual(edited);
+  await page.getByRole("button",{name:"Flächen erkennen",exact:true}).click();
+  await expect(page.getByText(/Flächen vorgeschlagen/)).toBeVisible();
+  expect(await page.locator("iqalarm-panel").evaluate(el=>el.points)).toEqual(edited);
+  const other=await page.locator("#plan-select option").first().getAttribute("value");
+  await page.locator("#plan-select").selectOption(other);
+  await page.locator("#plan-select").selectOption("draft_reload");
+  expect(await page.locator("iqalarm-panel").evaluate(el=>el.points)).toEqual(edited);
+  await page.reload();
+  await page.getByRole("tab",{name:"Räume & Grundriss"}).click();
+  await expect(page.locator("#plan-select")).toHaveValue("draft_reload");
+  expect(await page.locator("iqalarm-panel").evaluate(el=>el.points)).toEqual(edited);
+  await expect(page.locator("#draft-status")).toContainText("im Browser gesichert");
+  await page.getByRole("button",{name:"Bereich speichern",exact:true}).click();
+  const saved=await page.evaluate(()=>window.iqTest.request({type:"iqalarm/get"}));
+  expect(saved.config.floorplans.draft_reload.zones.living).toEqual(edited);
+  await page.screenshot({path:"test-results/floorplan-restored-draft.png",fullPage:true});
+});
+
+test("save dialog assigns an existing room directly without discarding edited proposal",async({page})=>{
+  await prepareDraftPlan(page,"draft_dialog");
+  await page.getByRole("button",{name:"Flächen erkennen",exact:true}).click();
+  await page.locator("#plan-candidate").selectOption("1");
+  await page.locator('[data-draft-vertex="0"]').focus();await page.keyboard.press("ArrowRight");
+  const edited=await page.locator("iqalarm-panel").evaluate(el=>structuredClone(el.points));
+  await page.locator("#plan-candidate").selectOption("1");
+  expect(await page.locator("iqalarm-panel").evaluate(el=>el.points)).toEqual(edited);
+  await page.getByRole("button",{name:"Bereich speichern",exact:true}).click();
+  await page.getByRole("dialog").getByLabel("Vorhandener Raum",{exact:true}).selectOption("living");
+  await page.getByRole("dialog").getByRole("button",{name:"Speichern",exact:true}).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  const saved=await page.evaluate(()=>window.iqTest.request({type:"iqalarm/get"}));
+  expect(saved.config.floorplans.draft_dialog.zones.living).toEqual(edited);
+});
