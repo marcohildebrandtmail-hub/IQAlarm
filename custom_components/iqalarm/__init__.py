@@ -19,7 +19,7 @@ from homeassistant.helpers.service import async_register_admin_service
 
 from .compat import vol
 from .const import DOMAIN, PLATFORMS, VERSION
-from .floorplans import IQAlarmFloorPlanView
+from .floorplans import IQAlarmFloorPlanUploadView, IQAlarmFloorPlanView
 from .runtime import IQAlarmRuntime
 from .websocket_api import register, runtime
 
@@ -92,6 +92,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
             hass.http.register_view(IQAlarmMediaView())
             hass.http.register_view(IQAlarmFloorPlanView())
+            hass.http.register_view(IQAlarmFloorPlanUploadView())
             register(hass)
             data["api_registered"] = True
         if not data.get("services_registered"):

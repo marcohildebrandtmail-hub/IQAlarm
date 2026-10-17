@@ -1,5 +1,6 @@
-/* IQAlarm 2.1.0 · native ES module · no CDN, framework or build required. */
+/* IQAlarm 2.2.0 · native ES module · no CDN, framework or build required. */
 const RULES = {perimeter: "Vorfeld-Erkennung", single: "Unbestätigter Einzelsensor", flapping: "Sensor-Prellen", perimeter_contact: "Vorfeld + Öffnung", contact_motion: "Öffnung + Bewegung", multi_contact: "Zwei Öffnungssensoren", multi_motion: "Zwei Bewegungsmelder", immediate: "Freigegebene Einzelauslösung / Gefahr"};
+const PROFILE_ICONS = {"mdi:home-outline":"Zuhause", "mdi:weather-night":"Nacht", "mdi:home-export-outline":"Abwesend", "mdi:palm-tree":"Urlaub", "mdi:account-group-outline":"Besuch", "mdi:garage-variant":"Garage", "mdi:shield-check-outline":"Schutz", "mdi:eye-outline":"Beobachtung", "mdi:dog":"Haustiere", "mdi:briefcase-outline":"Arbeit", "mdi:bed-outline":"Schlafzimmer", "mdi:lock-outline":"Schloss", "mdi:home-floor-0":"Erdgeschoss", "mdi:home-floor-1":"Obergeschoss", "mdi:home-floor-b":"Keller", "mdi:tree-outline":"Garten"};
 const ROLES = {perimeter_camera: "Außenkamera / Person", perimeter_sensor: "Vorfeld-Sensor", entry_contact: "Tür / Fenster", lock_contact: "Schloss / Riegel", vibration_glass: "Glas / Vibration", interior_motion: "Bewegung innen", interior_mmwave: "Präsenz / mmWave", panic: "Panik", smoke: "Rauch / Gefahr"};
 const KINDS = {notify: "Push-Benachrichtigung", siren: "Sirene", switch: "Schalter", script: "Skript", light: "Licht", cover: "Rollos öffnen", snapshot: "Kamera-Snapshot", record: "Kamera-Aufzeichnung", tts: "Sprachausgabe"};
 const TABS = [
@@ -22,6 +23,7 @@ const CSS = `
 @media(max-width:1000px){.grid.two{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}nav{gap:0;padding:0 12px}nav button{padding:14px 11px}nav button ha-icon{display:none}}
 @media(max-width:600px){main{padding:18px 14px}.brand-row{padding:12px 14px;gap:9px}.brand-title{font-size:21px}.connection span:not(.dot){display:none}.eyebrow{font-size:9px;letter-spacing:1px}.hero{padding:22px 18px;gap:17px;flex-wrap:wrap}.hero-copy{min-width:0;overflow-wrap:anywhere}.hero h2{font-size:23px}.level-ring{width:80px;height:80px;border-width:5px}.level-ring strong{font-size:28px}.hero .pill{display:none}.hero-copy{flex:1;min-width:150px}.mode-buttons{width:100%;gap:7px}.mode-buttons button{flex:1;min-width:90px;padding:9px;font-size:12px}.card{padding:18px}.metrics{gap:10px}.metric{padding:14px 11px;gap:8px}.metric>ha-icon{display:none}.metric strong{font-size:21px}.form-grid{grid-template-columns:1fr}.event{grid-template-columns:76px 24px minmax(0,1fr);gap:8px}.event>div{min-width:0;overflow-wrap:anywhere}.event time{font-size:10px}.banner{flex-wrap:wrap}.banner button{margin-left:33px}.dialog-body{padding:18px}.dialog-head,.dialog-foot{padding:16px 18px}h1{font-size:22px}.page-head>button{width:100%}}
 .level-display{display:flex;flex-direction:column;align-items:center;gap:10px;max-width:170px;text-align:center}.level-caption{font-weight:700;font-size:13px;color:var(--level-color);overflow-wrap:anywhere}.plan-wrap{position:relative;width:100%;background:var(--primary-background-color,#f3f6fa);border-radius:12px;overflow:hidden;margin-top:16px}.plan-wrap svg{display:block;width:100%;height:100%}.plan-wrap polygon{cursor:pointer;stroke-width:2}.plan-wrap .draft{pointer-events:none;fill:#2986bb40;stroke:#2986bb;stroke-dasharray:6 4}.plan-wrap text{pointer-events:none;paint-order:stroke;stroke:var(--iq-surface);stroke-width:3px;stroke-linejoin:round;fill:var(--primary-text-color,#122);font-weight:650}.stage-row{padding:16px 0;border-bottom:1px solid var(--iq-border)}.stage-row .form-grid{grid-template-columns:80px minmax(0,1fr)}.rule-box{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border:1px solid var(--iq-border);border-radius:10px;background:var(--primary-background-color,#f3f6fa)}
+.icon-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:7px;margin-top:12px}.icon-options button{font-size:11px;justify-content:flex-start}.icon-options button.active{border-color:var(--iq-accent);background:color-mix(in srgb,var(--iq-accent) 12%,var(--iq-surface))}.plan-steps{display:flex;gap:20px;flex-wrap:wrap;padding:0;margin:20px 0;list-style:none;counter-reset:step}.plan-steps li{font-size:12px;color:var(--iq-muted);display:flex;align-items:center;gap:8px}.plan-steps li::before{counter-increment:step;content:counter(step);border:1px solid var(--iq-accent);border-radius:50%;width:24px;height:24px;display:grid;place-items:center;color:var(--iq-accent);flex-shrink:0}.plan-assistant{padding:16px;border:1px solid var(--iq-border);border-radius:12px;background:var(--primary-background-color,#f3f6fa)}.plan-wrap .plan-proposal{fill:#33a7c01a;stroke:#2986bb;stroke-dasharray:7 5;vector-effect:non-scaling-stroke}.plan-wrap .plan-proposal.chosen{fill:#33a7c055;stroke-width:3}.draft-points circle{fill:var(--iq-surface);stroke:#087e9b;stroke-width:2;cursor:grab;touch-action:none;vector-effect:non-scaling-stroke}.draft-points circle:focus{fill:#50c6d1;outline:none;stroke-width:4}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 `;
 
@@ -30,20 +32,27 @@ class IQAlarmPanel extends HTMLElement {
     super();
     this.attachShadow({mode: "open"});
     this.tab = 0; this.profile = "armed_night"; this.stage = "1"; this.catalogFilter = "all"; this.catalog = {entities: [], notify_services: [], areas: []};
-    this.plan = null; this.points = []; this.imageURLs = new Map(); this.imageLoading = new Set(); this.data = null; this._connected = false; this._subscribing = false; this._requestBusy = false; this._unsubscribe = null; this._reconnectTimer = null;
+    this.plan = null; this.points = []; this.planAnalysis = null; this.selectedCandidate = ""; this.analysisGap = 28; this.manualDrawing = false; this.imageURLs = new Map(); this.imageLoading = new Set(); this.data = null; this._connected = false; this._subscribing = false; this._requestBusy = false; this._unsubscribe = null; this._reconnectTimer = null;
     this._onDisconnect = () => this._connection(false);
     this._onReady = () => { if (!this._unsubscribe) this._connect(); };
     this.shadowRoot.innerHTML = `<style>${CSS}</style><div class="shell"><header class="top"><div class="brand-row"><button class="icon-button" data-command="menu" aria-label="Seitenmenü öffnen">${icon("menu")}</button><div class="brandmark">IQ</div><div class="brand-copy"><div class="brand-title">IQAlarm</div><div class="eyebrow">Intelligenz vor dem Alarm</div></div><div class="connection" role="status"><span class="dot off"></span><span id="connection-text">Verbinde …</span></div></div><nav aria-label="IQAlarm Bereiche" role="tablist"></nav></header><main id="main"><div class="loading">IQAlarm wird verbunden …</div></main><div class="footer-note">IQAlarm · Lokal. Räumlich. Korrelierend.</div></div><dialog id="editor" aria-labelledby="dialog-title"></dialog><div id="toast" role="status" aria-live="polite"></div>`;
     this.shadowRoot.addEventListener("click", e => this._click(e));
     this.shadowRoot.addEventListener("click", e => this._planClick(e));
     this.shadowRoot.addEventListener("keydown", e => { const zone=e.target.closest("[data-room]"); if (zone && ["Enter"," "].includes(e.key)) {e.preventDefault(); this._liveDialog(zone.dataset.room);} });
+    this.shadowRoot.addEventListener("pointerdown", e => this._vertexDown(e));
+    this.shadowRoot.addEventListener("pointermove", e => this._vertexMove(e));
+    this.shadowRoot.addEventListener("pointerup", e => this._vertexEnd(e));
+    this.shadowRoot.addEventListener("pointercancel", e => this._vertexEnd(e));
+    this.shadowRoot.addEventListener("keydown", e => this._vertexKey(e));
     this.shadowRoot.addEventListener("submit", e => this._submit(e));
-    this.shadowRoot.addEventListener("input", e => { if (e.target.id === "sensor-search") this._renderCatalog(e.target.value); });
+    this.shadowRoot.addEventListener("input", e => { if (e.target.id === "sensor-search") this._renderCatalog(e.target.value); if (e.target.name === "profile_icon") this._updateIconPreview(e.target.form); });
     this.shadowRoot.addEventListener("change", e => {
       if (e.target.name === "kind") this._actionVisibility(e.target.value);
-      if (e.target.id === "plan-select") { this.plan = e.target.value; this.points = []; this._render(); }
-      if (e.target.id === "zone-room") { this.zoneRoom = e.target.value; this.points = structuredClone(this.data.config.floorplans[this.plan]?.zones[this.zoneRoom] || []); this._render(); }
-      if (e.target.id === "plan-upload") this._uploadPlan(e.target.files[0]);
+      if (e.target.id === "plan-select") { this.plan = e.target.value; this.points = []; this.zoneRoom = null; this.planAnalysis = null; this.selectedCandidate = ""; this._render(); }
+      if (e.target.id === "zone-room") { this.zoneRoom = e.target.value; const existing = this.data.config.floorplans[this.plan]?.zones[this.zoneRoom]; if (existing || !this.selectedCandidate) this.points = structuredClone(existing || []); this._render(); }
+      if (e.target.id === "plan-candidate") this._chooseCandidate(e.target.value);
+      if (e.target.id === "analysis-gap") this.analysisGap = Number(e.target.value);
+      if (e.target.id === "plan-upload") this._uploadPlan(e.target.files[0], e.target.dataset.plan);
       if (e.target.hasAttribute("data-scope")) this._scopeVisibility(e.target.form);
     });
     this.shadowRoot.querySelector("nav").addEventListener("keydown", e => {
@@ -128,7 +137,7 @@ class IQAlarmPanel extends HTMLElement {
 
   _updateLock() {
     const armed = this.data.status.active;
-    this.shadowRoot.querySelectorAll("[data-config]").forEach(e => {e.disabled = armed || this._requestBusy || !this._connected;});
+    this.shadowRoot.querySelectorAll("[data-config]").forEach(e => {e.disabled = armed || this._requestBusy || !this._connected || (e.dataset.command === "floorplan-analyze" && this._analysisBusy);});
     this.shadowRoot.querySelectorAll(".armed-note").forEach(e => {e.hidden = !armed;});
     this.shadowRoot.querySelectorAll('[data-command="mode"], [data-command="profile-arm"]').forEach(button => {
       const target = button.dataset.id;
@@ -152,7 +161,7 @@ class IQAlarmPanel extends HTMLElement {
     const quarantine = Object.entries(s.quarantine).map(([id]) => `<div class="banner" role="alert">${icon("connection")}<div><strong>Prell-Schutz aktiv: ${esc(c.sensors[id]?.name || id)}</strong><p>Sensor isoliert. Er liefert keine Einbruchsbestätigung für diese Scharfschalt-Periode.</p></div><button class="small" data-command="clear-quarantine" data-id="${esc(id)}">Quarantäne aufheben</button></div>`).join("");
     const open = sensors.filter(x => ["entry_contact", "lock_contact", "vibration_glass"].includes(x.role) && s.raw[x.entity_id] === true).length;
     const offline = sensors.filter(x => s.raw[x.entity_id] == null).length;
-    const profileButtons = `<button data-command="mode" data-mode="inactive" class="${!s.profile_id ? "active" : ""}">${icon("shield-off-outline")}Aus</button>` + Object.entries(c.profiles).map(([id, p]) => `<button data-command="profile-arm" data-id="${esc(id)}" class="${s.profile_id === id ? "active" : ""}">${icon(p.reactions_enabled ? "shield-check-outline" : "eye-outline")}${esc(p.name)}</button>`).join("");
+    const profileButtons = `<button data-command="mode" data-mode="inactive" class="${!s.profile_id ? "active" : ""}">${icon("power")}Aus</button>` + Object.entries(c.profiles).map(([id, p]) => `<button data-command="profile-arm" data-id="${esc(id)}" class="${s.profile_id === id ? "active" : ""}">${this._profileSymbol(p)}${esc(p.name)}</button>`).join("");
     return this._head("Dein Haus im Überblick") + quarantine +
       `<section class="card hero" style="--level-color:${this._color(s.level)}"><div class="level-display"><div class="level-caption">${esc(s.stage_name)}</div><div class="level-ring" aria-label="${esc(s.stage_name)}: ${s.level}"><strong>${s.level}</strong></div></div><div class="hero-copy"><h2>${s.profile_name ? esc(s.profile_name) : "Anlage aus"}</h2><p>${s.active ? "Alarmreaktionen aktiv" : "Live-Status aktiv · keine Geräteaktionen"}</p><p>${s.monitored_sensors.length} Sensoren ausgewertet · Home Assistant: ${s.active ? "An" : "Aus"}</p>${s.pending_until ? `<div class="countdown">Eingangsverzögerung bis ${date(s.pending_until)}</div>` : s.arming_until ? `<div class="countdown">Scharf ab ${date(s.arming_until)}</div>` : ""}<div class="mode-buttons">${profileButtons}</div></div></section>` + this._floorplan(false) +
       `<div class="metrics">${[["floor-plan", rooms.length, "Räume verbunden"], ["shield-check-outline", !s.active ? sensors.length : s.monitored_sensors.length, !s.active ? "Sensoren eingerichtet" : "Sensoren im Profil"], ["window-open-variant", open, "Kontakte geöffnet"], ["connection", Object.keys(s.quarantine).length + offline, "Störungen / isoliert"]].map(([symbol, n, title]) => `<div class="card metric">${icon(symbol)}<div><strong>${n}</strong><span>${title}</span></div></div>`).join("")}</div>` +
@@ -235,7 +244,7 @@ class IQAlarmPanel extends HTMLElement {
     const c = this.data.config, keys = Object.keys(c.profiles), idx = keys.indexOf(this.profile), p = c.profiles[this.profile], s = c.settings;
     const names = collection => Object.fromEntries(Object.entries(collection).map(([id, item]) => [id, item.name || item.entity_id || `${KINDS[item.kind]} · ${item.target} · ${item.level}`]));
     return this._head("Profile & System", "Profile bestimmen die gesamte Steuerung. Namen, Reihenfolge und Regeln sind frei wählbar.", `<button class="primary" data-command="profile-new" data-config>${icon("plus")}Profil anlegen</button>`) + this._lockNote() +
-      `<div class="row between" style="margin-bottom:20px"><div class="chips">${Object.entries(c.profiles).map(([id,item]) => `<button data-profile="${esc(id)}" class="${id === this.profile ? "active" : ""}">${icon(item.reactions_enabled ? "shield-check-outline" : "eye-outline")}${esc(item.name)}</button>`).join("")}</div><div class="row"><button type="button" class="small" data-command="profile-move" data-dir="-1" aria-label="Profil nach links verschieben" ${idx <= 0 ? "disabled" : ""} data-config>${icon("arrow-left")}Nach links</button><button type="button" class="small" data-command="profile-move" data-dir="1" aria-label="Profil nach rechts verschieben" ${idx < 0 || idx >= keys.length - 1 ? "disabled" : ""} data-config>Nach rechts${icon("arrow-right")}</button></div></div><div class="grid two"><form id="rules-form" class="card"><fieldset data-config><div class="row between"><h2>${esc(p.name)}</h2><div class="row"><button type="button" class="small" data-command="profile-copy">Duplizieren</button><button type="button" class="small danger" data-command="profile-delete" data-id="${esc(this.profile)}">Löschen</button></div></div><div class="form-grid" style="margin-top:20px"><label class="field wide">Profilname<input name="profile_name" value="${esc(p.name)}" required maxlength="100"></label><div class="wide checks">${this._checkbox("reactions_enabled", "Alarmreaktionen und Geräteaktionen erlauben", p.reactions_enabled)}${this._checkbox("perimeter_enabled", "Vorfeld auswerten", p.perimeter_enabled)}${this._checkbox("contacts_enabled", "Öffnungs- und Schlosssensoren auswerten", p.contacts_enabled)}${this._checkbox("simulation_enabled", "Anwesenheitssimulation in diesem Profil erlauben", p.simulation_enabled)}</div><label class="field">Bewegung auswerten<select name="motion_mode">${options({always:"Immer",after_contact:"Erst nach einem Öffnungssignal",ignore:"Nur live anzeigen"},p.motion_mode)}</select></label><label class="field">Freigabe nach Öffnung<select name="motion_scope">${options({room:"Raum und freigegebene Nachbarräume",house:"Gesamtes Haus"},p.motion_scope)}</select></label>${this._profileScope("room_ids", "Räume", p.room_ids, names(c.rooms))}${this._profileScope("sensor_ids", "Sensoren", p.sensor_ids, names(c.sensors))}${this._profileScope("action_ids", "Aktionen", p.action_ids, names(c.actions))}${this._number("perimeter_seconds","Vorfeld-Gedächtnis (Sekunden)",p.perimeter_seconds,1,3600)}${this._number("correlation_seconds","Korrelationsfenster (Sekunden)",p.correlation_seconds,1,3600)}${this._number("entry_seconds","Eingangsverzögerung (Sekunden)",p.entry_seconds,0,600)}${this._number("exit_seconds","Ausgangsverzögerung (Sekunden)",p.exit_seconds,0,600)}</div><div class="checks" style="margin-top:24px">${["perimeter_contact","contact_motion","multi_contact","multi_motion"].map(key => this._checkbox(key,RULES[key],p[key])).join("")}${this._checkbox("adjacent_rooms","Angrenzende Räume für Öffnung + Bewegung einbeziehen",p.adjacent_rooms)}</div><h3 style="margin-top:24px">Ereignis → Alarmstufe</h3><div class="form-grid" style="margin-top:16px">${Object.entries(RULES).map(([key,name]) => `<label class="field">${esc(name)}<select name="target_${key}">${options(Object.fromEntries(c.stages.filter(stage => !["perimeter","single","flapping"].includes(key) || !stage.requires_confirmation).map(stage => [stage.id,`${c.stages.indexOf(stage)} · ${stage.name}`])),p.stage_targets[key])}</select></label>`).join("")}</div><div class="save-row"><button class="primary" type="submit">Profil speichern</button></div></fieldset></form>` +
+      `<div class="row between" style="margin-bottom:20px"><div class="chips">${Object.entries(c.profiles).map(([id,item]) => `<button data-profile="${esc(id)}" class="${id === this.profile ? "active" : ""}">${this._profileSymbol(item)}${esc(item.name)}</button>`).join("")}</div><div class="row"><button type="button" class="small" data-command="profile-move" data-dir="-1" aria-label="Profil nach links verschieben" ${idx <= 0 ? "disabled" : ""} data-config>${icon("arrow-left")}Nach links</button><button type="button" class="small" data-command="profile-move" data-dir="1" aria-label="Profil nach rechts verschieben" ${idx < 0 || idx >= keys.length - 1 ? "disabled" : ""} data-config>Nach rechts${icon("arrow-right")}</button></div></div><div class="grid two"><form id="rules-form" class="card"><fieldset data-config><div class="row between"><h2>${esc(p.name)}</h2><div class="row"><button type="button" class="small" data-command="profile-copy">Duplizieren</button><button type="button" class="small danger" data-command="profile-delete" data-id="${esc(this.profile)}">Löschen</button></div></div><div class="form-grid" style="margin-top:20px"><label class="field wide">Profilname<input name="profile_name" value="${esc(p.name)}" required maxlength="100"></label>${this._profileIconField(p.icon)}<div class="wide checks">${this._checkbox("reactions_enabled", "Alarmreaktionen und Geräteaktionen erlauben", p.reactions_enabled)}${this._checkbox("perimeter_enabled", "Vorfeld auswerten", p.perimeter_enabled)}${this._checkbox("contacts_enabled", "Öffnungs- und Schlosssensoren auswerten", p.contacts_enabled)}${this._checkbox("simulation_enabled", "Anwesenheitssimulation in diesem Profil erlauben", p.simulation_enabled)}</div><label class="field">Bewegung auswerten<select name="motion_mode">${options({always:"Immer",after_contact:"Erst nach einem Öffnungssignal",ignore:"Nur live anzeigen"},p.motion_mode)}</select></label><label class="field">Freigabe nach Öffnung<select name="motion_scope">${options({room:"Raum und freigegebene Nachbarräume",house:"Gesamtes Haus"},p.motion_scope)}</select></label>${this._profileScope("room_ids", "Räume", p.room_ids, names(c.rooms))}${this._profileScope("sensor_ids", "Sensoren", p.sensor_ids, names(c.sensors))}${this._profileScope("action_ids", "Aktionen", p.action_ids, names(c.actions))}${this._number("perimeter_seconds","Vorfeld-Gedächtnis (Sekunden)",p.perimeter_seconds,1,3600)}${this._number("correlation_seconds","Korrelationsfenster (Sekunden)",p.correlation_seconds,1,3600)}${this._number("entry_seconds","Eingangsverzögerung (Sekunden)",p.entry_seconds,0,600)}${this._number("exit_seconds","Ausgangsverzögerung (Sekunden)",p.exit_seconds,0,600)}</div><div class="checks" style="margin-top:24px">${["perimeter_contact","contact_motion","multi_contact","multi_motion"].map(key => this._checkbox(key,RULES[key],p[key])).join("")}${this._checkbox("adjacent_rooms","Angrenzende Räume für Öffnung + Bewegung einbeziehen",p.adjacent_rooms)}</div><h3 style="margin-top:24px">Ereignis → Alarmstufe</h3><div class="form-grid" style="margin-top:16px">${Object.entries(RULES).map(([key,name]) => `<label class="field">${esc(name)}<select name="target_${key}">${options(Object.fromEntries(c.stages.filter(stage => !["perimeter","single","flapping"].includes(key) || !stage.requires_confirmation).map(stage => [stage.id,`${c.stages.indexOf(stage)} · ${stage.name}`])),p.stage_targets[key])}</select></label>`).join("")}</div><div class="save-row"><button class="primary" type="submit">Profil speichern</button></div></fieldset></form>` +
       `<form id="settings-form" class="card"><fieldset data-config><h2>System & Anwesenheitssimulation</h2><div class="checks" style="margin:20px 0">${this._checkbox("live_evaluation", "Live-Status-Auswertung auch im ausgeschalteten Zustand mitlaufen lassen", s.observation_profile_id != null)}${this._checkbox("diagnose_disarmed", "Prell-Diagnose auch im unscharfen Zustand", s.diagnose_disarmed)}${this._checkbox("block_open_on_arm", "Scharfschalten bei geöffneten Kontakten verhindern", s.block_open_on_arm)}${this._checkbox("block_unavailable_on_arm", "Scharfschalten bei nicht verfügbaren Sensoren verhindern", s.block_unavailable_on_arm)}${this._checkbox("auto_camera_snapshot", "Bei Vorfeld automatisch verknüpfte Kamera fotografieren", s.auto_camera_snapshot)}${this._checkbox("auto_camera_record", "Bei Vorfeld zusätzlich 30 Sekunden Kamera aufnehmen", s.auto_camera_record)}${this._checkbox("simulation_enabled", "Anwesenheitssimulation global freigeben (zusätzlich pro Profil)", s.simulation_enabled)}</div><div class="form-grid">${this._number("simulation_start", "Lichtsimulation ab (Stunde)", s.simulation_start, 0, 23)}${this._number("simulation_end", "Lichtsimulation bis (Stunde)", s.simulation_end, 1, 24)}<label class="field wide">Simulationslichter<select name="simulation_lights" multiple>${this._entities(["light"]).map(e => `<option value="${esc(e.entity_id)}"${s.simulation_lights.includes(e.entity_id) ? " selected" : ""}>${esc(e.name)}</option>`).join("")}</select><small>Mehrfachauswahl mit Strg / ⌘. Bereits eingeschaltete Lichter werden nicht übernommen.</small></label>${this._number("retention_days", "Kameradateien aufbewahren (Tage)", s.retention_days, 1, 90)}</div><details style="margin-top:20px"><summary>Standard-Entprellzeiten nach Rolle</summary><div class="form-grid" style="margin-top:14px">${Object.entries(ROLES).map(([key, name]) => this._number(`debounce_${key}`, `${name} (ms)`, s.debounce_by_role[key] || 0, 0, 60000)).join("")}</div></details><div class="help">Kameradateien bleiben im geschützten IQAlarm-Verzeichnis. Aufzeichnungen benötigen eine Kamera mit stream-Unterstützung. Die Alarmkonfiguration erfolgt vollständig hier.</div><div class="save-row"><button type="submit" class="primary">${icon("content-save-outline")}System speichern</button></div></fieldset></form></div>`;
   }
 
@@ -250,16 +259,54 @@ class IQAlarmPanel extends HTMLElement {
     if (add && count < 32) rows.insertAdjacentHTML("beforeend",this._stageRow({id:crypto.randomUUID().replaceAll("-",""),name:`Stufe ${count}`,color:"#2986bb",requires_confirmation:false,allow_loud:false,latch:false},count));
     else if (!add && count > 1) rows.lastElementChild.remove();
   }
+  _profileSymbol(profile) {
+    const value = profile.icon || (profile.reactions_enabled ? "mdi:shield-check-outline" : "mdi:eye-outline");
+    return `<ha-icon icon="${esc(value)}" aria-hidden="true"></ha-icon>`;
+  }
+  _profileIconField(value) {
+    return `<div class="wide icon-picker"><label class="field">Profilsymbol<input name="profile_icon" value="${esc(value || "")}" placeholder="Automatisch nach Profilname" maxlength="84" pattern="mdi:[a-z0-9][a-z0-9-]{0,79}" list="profile-icon-list"><small>Symbol auswählen oder eine eigene MDI-Kennung eingeben. Leer: passend zum Profilnamen.</small></label><datalist id="profile-icon-list">${Object.entries(PROFILE_ICONS).map(([id,label]) => `<option value="${id}">${esc(label)}</option>`).join("")}</datalist><div class="icon-options" role="group" aria-label="Profilsymbole">${Object.entries(PROFILE_ICONS).map(([id,label]) => `<button type="button" class="small ${value === id ? "active" : ""}" data-command="profile-icon" data-id="${id}" aria-label="Symbol ${esc(label)}" title="${esc(label)}" aria-pressed="${value === id}">${this._profileSymbol({icon:id})}<span>${esc(label)}</span></button>`).join("")}</div><div class="row" style="margin-top:10px"><ha-icon data-icon-preview icon="${esc(value || "mdi:shield-check-outline")}"></ha-icon><small>Vorschau des gewählten Symbols</small></div></div>`;
+  }
+  _updateIconPreview(form) {
+    const value = form.elements.profile_icon.value.trim();
+    if (value && !/^mdi:[a-z0-9][a-z0-9-]{0,79}$/.test(value)) return;
+    form.querySelector("[data-icon-preview]")?.setAttribute("icon", value || "mdi:shield-check-outline");
+    form.querySelectorAll('[data-command="profile-icon"]').forEach(button => { const active=button.dataset.id === value; button.classList.toggle("active",active); button.setAttribute("aria-pressed",String(active)); });
+  }
   _floorplan(edit) {
     const plans = Object.values(this.data.config.floorplans);
-    if (!plans.some(plan => plan.id === this.plan)) this.plan = plans[0]?.id || null;
+    if (!plans.some(plan => plan.id === this.plan)) { this.plan = plans[0]?.id || null; this.planAnalysis = null; this.points = []; }
     const plan = this.data.config.floorplans[this.plan];
-    if (!plan) return `<section class="card" style="margin:20px 0"><h2>Dein Haus als Live-Grundriss</h2><p>PNG oder JPG pro Etage hochladen und Räume einmal markieren. Fenster, Bewegung und Personen erscheinen aus den vorhandenen Sensorzuordnungen.</p><button style="margin-top:16px" data-command="floorplan-new" data-config>Grundriss anlegen</button></section>`;
+    if (!plan) return `<section class="card floorplan-intro" style="margin:20px 0"><h2>Dein Haus als Live-Grundriss</h2><p>Lade deinen bestehenden Grundriss als PNG oder JPG hoch. Der Assistent schlägt Raumflächen vor. Du prüfst die Flächen und verbindest sie mit deinen Räumen und Sensoren.</p><ol class="plan-steps"><li>Bild hochladen</li><li>Flächen prüfen & Räume zuordnen</li><li>Live-Status sehen</li></ol><div class="row"><button class="primary" data-command="floorplan-upload" data-config>${icon("upload")}Grundriss hochladen</button><button data-command="floorplan-new" data-config>Grundriss anlegen</button></div></section>`;
+    if (this.planAnalysis && (this.planAnalysis.plan_id !== plan.id || this.planAnalysis.image !== plan.image)) { this.planAnalysis = null; this.selectedCandidate = ""; }
     const cached = this.imageURLs.get(plan.id);
     if (plan.image && cached?.image !== plan.image) this._loadPlan(plan);
     const image = cached?.image === plan.image ? cached.url : "";
     const width = plan.width || 1000, height = plan.height || 600;
-    return `<section class="card" style="margin:20px 0"><div class="row between"><h2>${edit ? "Grundrisse & Raum-Markierungen" : "Live-Grundriss"}</h2><label class="field">Etage<select id="plan-select">${options(Object.fromEntries(plans.map(p => [p.id,p.name])),plan.id)}</select></label></div>${edit ? `<div class="row" style="margin-top:14px"><button data-command="floorplan-new" data-config>Etage hinzufügen</button><button data-command="floorplan-edit" data-id="${esc(plan.id)}" data-config>Umbenennen</button><button data-command="floorplan-delete" data-id="${esc(plan.id)}" data-config>Löschen</button><label class="field">PNG / JPG hochladen (max. 10 MB)<input type="file" id="plan-upload" accept="image/png,image/jpeg" data-config></label></div><p style="margin-top:14px">Raum auswählen und seine Eckpunkte im Bild anklicken. Auch Außenbereiche lassen sich als Raum markieren. Anschließend „Bereich speichern“.</p><div class="row" style="margin-top:14px"><label class="field">Raum / Außenbereich<select id="zone-room">${this._roomsOptions(this.zoneRoom,"Raum auswählen")}</select></label><button data-command="zone-undo" data-config>Letzter Punkt zurück</button><button data-command="zone-clear" data-config>Neu zeichnen</button><button class="primary" data-command="zone-save" data-config>Bereich speichern</button><button data-command="zone-delete" data-config>Bereich entfernen</button></div>` : `<p>Räume anklicken für Sensorstatus und Kamera. Auch vom Profil ignorierte Signale bleiben sichtbar.</p>`}${image ? `<div class="plan-wrap" style="aspect-ratio:${width}/${height}"><svg id="floorplan" role="img" aria-label="${esc(plan.name)}" data-edit="${edit}" viewBox="0 0 ${width} ${height}"><image href="${esc(image)}" width="${width}" height="${height}"/>${Object.entries(plan.zones).map(([room,points]) => this._zoneSVG(plan,room,points)).join("")}<polygon class="draft" points="${edit ? this.points.map(([x,y]) => `${x*width},${y*height}`).join(" ") : ""}"/></svg></div>` : `<div class="empty" style="margin-top:16px">${plan.image ? "Bild wird geladen …" : "Lade den Grundriss unter Räume & Grundriss hoch."}</div>`}</section>`;
+    const candidates = this.planAnalysis?.candidates || [];
+    return `<section class="card" style="margin:20px 0"><div class="row between"><h2>${edit ? "Grundriss-Assistent" : "Live-Grundriss"}</h2><label class="field">Etage<select id="plan-select">${options(Object.fromEntries(plans.map(p => [p.id,p.name])),plan.id)}</select></label></div><div class="row" style="margin-top:14px"><button class="${plan.image ? "" : "primary"}" data-command="floorplan-pick" data-config>${icon("upload")}${plan.image ? "Bild ersetzen" : "Grundriss hochladen"}</button><input type="file" id="plan-upload" data-plan="${esc(plan.id)}" accept="image/png,image/jpeg" hidden data-config><button data-command="floorplan-upload" data-config>Weitere Etage hochladen</button>${!edit ? '<button data-command="floorplan-editor">Räume im Grundriss bearbeiten</button>' : `<button data-command="floorplan-edit" data-id="${esc(plan.id)}" data-config>Umbenennen</button><button data-command="floorplan-delete" data-id="${esc(plan.id)}" data-config>Löschen</button>`}</div>${edit && image ? `<ol class="plan-steps"><li>Bild hochgeladen</li><li>Raumflächen prüfen und zuordnen</li><li>Bereich speichern</li></ol><div class="plan-assistant"><div class="row"><button class="primary" data-command="floorplan-analyze" data-config ${this._analysisBusy ? "disabled" : ""}>${icon("auto-fix")}${this._analysisBusy ? "Flächen werden gesucht …" : "Raumflächen vorschlagen"}</button><label class="field">Türöffnungen überbrücken<select id="analysis-gap" data-config>${options({0:"Keine",8:"Schmale Öffnungen",18:"Mittlere Öffnungen",28:"Normale Türen",40:"Breite Öffnungen"},String(this.analysisGap))}</select></label></div><p>Die lokale Bilderkennung schlägt Flächen vor. Möbel und offene Übergänge können Flächen teilen oder verbinden. Prüfe und korrigiere den Umriss vor dem Speichern.</p>${this.planAnalysis ? `<p role="status"><strong>${candidates.length ? `${candidates.length} Flächen vorgeschlagen` : "Keine geschlossenen Raumflächen gefunden"}</strong>${candidates.length ? " · Im Bild anklicken oder unten auswählen." : " · Türöffnungs-Ausgleich ändern oder Eckpunkte selbst setzen."}</p>` : ""}${candidates.length ? `<label class="field" style="margin-top:14px">Flächenvorschlag<select id="plan-candidate">${options(Object.fromEntries(candidates.map(item => [item.id,`Fläche ${item.id} · ${Math.round(item.area*1000)/10} % des Bildes`])),this.selectedCandidate,"Vorschlag auswählen")}</select></label>` : ""}</div><div class="row" style="margin-top:14px"><label class="field">Raum / Außenbereich<select id="zone-room">${this._roomsOptions(this.zoneRoom,"Raum auswählen")}</select></label><button data-command="room-new" data-config>${icon("plus")}Raum anlegen</button><button data-command="zone-clear" data-config>Neu zeichnen</button><button data-command="zone-undo" data-config>Letzter Punkt zurück</button><button class="primary" data-command="zone-save" data-config>Bereich speichern</button><button data-command="zone-delete" data-config>Bereich entfernen</button></div><p>Vorschlag anklicken oder Eckpunkte im Bild setzen. Eckpunkte mit Maus oder Finger verschieben; mit Pfeiltasten fein korrigieren, mit Entf löschen. Offene Wohnbereiche können als einzelne Räume markiert werden. Erst „Bereich speichern“ übernimmt die Zuordnung.</p>` : edit ? '<p style="margin-top:14px">Wähle zuerst dein Grundrissbild über den Hochladen-Button aus.</p>' : '<p style="margin-top:14px">Räume anklicken für Sensorstatus und Kamera. Auch vom Profil ignorierte Signale bleiben sichtbar.</p>'}${image ? `<div class="plan-wrap" style="aspect-ratio:${width}/${height}"><svg id="floorplan" role="img" aria-label="${esc(plan.name)}" data-edit="${edit}" viewBox="0 0 ${width} ${height}"><image href="${esc(image)}" width="${width}" height="${height}"/>${Object.entries(plan.zones).map(([room,points]) => this._zoneSVG(plan,room,points)).join("")}${edit && !this.manualDrawing ? candidates.map(item => `<g data-candidate="${esc(item.id)}" role="button" tabindex="0" aria-label="Fläche ${esc(item.id)} auswählen"><polygon class="plan-proposal ${this.selectedCandidate === item.id ? "chosen" : ""}" points="${item.points.map(([x,y]) => `${x*width},${y*height}`).join(" ")}"/><text x="${item.center[0]*width}" y="${item.center[1]*height}" text-anchor="middle" font-size="${Math.max(width,height)*.024}">${esc(item.id)}</text></g>`).join("") : ""}<polygon class="draft" points="${edit ? this.points.map(([x,y]) => `${x*width},${y*height}`).join(" ") : ""}"/><g class="draft-points">${edit ? this._draftHandles(plan) : ""}</g></svg></div>` : `<div class="empty" style="margin-top:16px">${plan.image ? "Bild wird geladen …" : "PNG / JPG auswählen · maximal 10 MB"}</div>`}</section>`;
+  }
+  _draftHandles(plan) {
+    return this.points.map(([x,y],index) => `<circle data-draft-vertex="${index}" cx="${x*plan.width}" cy="${y*plan.height}" r="${Math.max(plan.width,plan.height)*.007}" role="button" tabindex="0" aria-label="Eckpunkt ${index+1} verschieben"/>`).join("");
+  }
+  _uploadDialog() {
+    this._dialog("Grundriss hochladen", `<p>Dein Bild wird als Grundriss-Hintergrund übernommen. Danach schlägt der Assistent Raumflächen vor.</p><label class="field" style="margin-top:18px">Etage / Name<input name="name" maxlength="100" required value="" placeholder="z. B. Erdgeschoss"></label><label class="field" style="margin-top:18px">Grundrissbild auswählen<input type="file" name="image" required accept="image/png,image/jpeg"><small>PNG oder JPG · maximal 10 MB · bis 8192 Pixel pro Seite.</small></label>`,"floorplan-upload");
+    this.shadowRoot.querySelector('#editor [type="submit"]').textContent="Hochladen";
+  }
+  async _analyzePlan() {
+    if (this._analysisBusy) return;
+    const plan = this.data.config.floorplans[this.plan]; if (!plan?.image) return;
+    this._analysisBusy = true; this._render();
+    try {
+      const result = await this._call("floorplan/analyze",{plan_id:plan.id,gap:this.analysisGap});
+      if (this.plan === plan.id && this.data.config.floorplans[plan.id]?.image === result.image) { this.planAnalysis=result; this.selectedCandidate=""; this.manualDrawing=false; }
+    } catch(err) { this._toast(err.message || "Flächenanalyse fehlgeschlagen",true); }
+    finally { this._analysisBusy=false; if (this.isConnected && this.tab === 1) this._render(); }
+  }
+  _chooseCandidate(id) {
+    const candidate=this.planAnalysis?.candidates.find(item => item.id === id);
+    this.selectedCandidate=candidate?.id || "";
+    if (candidate) { this.points=structuredClone(candidate.points); this.manualDrawing=false; }
+    this._render();
   }
   _zoneSVG(plan,room,points) {
     const status = this.data.status.rooms[room] || {}, roomName = this.data.config.rooms[room]?.name || room;
@@ -279,26 +326,73 @@ class IQAlarmPanel extends HTMLElement {
       this.imageURLs.set(plan.id,{image:plan.image,url:URL.createObjectURL(blob)}); if (this.tab === 0 || this.tab === 1) this._render();
     } catch (err) { this._toast(err.message,true); } finally { this.imageLoading.delete(key); }
   }
-  async _uploadPlan(file) {
-    if (!file) return;
-    try {
-      if (file.size > 10*1024*1024) throw new Error("Bild maximal 10 MB");
-      const response = await this._hass.fetchWithAuth(`/api/iqalarm/floorplans/${encodeURIComponent(this.plan)}/image`,{method:"POST",headers:{"X-IQAlarm-Revision":String(this._viewRevision),"Content-Type":file.type},body:file});
-      const data = await response.json(); if (!response.ok) throw new Error(data.message || "Upload fehlgeschlagen");
-      this.data = data; this.points = []; this._render(); this._toast("Grundriss gespeichert");
-    } catch(err) { this._toast(err.message,true); }
+  async _sendPlanImage(file, planId, name, revision) {
+    if (file.size > 10*1024*1024) throw new Error("Bild maximal 10 MB");
+    if (!file.size) throw new Error("Die ausgewählte Datei ist leer");
+    const path = planId ? `/api/iqalarm/floorplans/${encodeURIComponent(planId)}/image` : `/api/iqalarm/floorplans/upload?name=${encodeURIComponent(name)}`;
+    const response = await this._hass.fetchWithAuth(path,{method:"POST",headers:{"X-IQAlarm-Revision":String(revision),"Content-Type":file.type || "application/octet-stream"},body:file});
+    let data; try { data = await response.json(); } catch { throw new Error(`Upload fehlgeschlagen (${response.status}). Bitte Verbindung und Dateigröße prüfen.`); }
+    if (!response.ok) throw new Error(data.message || `Upload fehlgeschlagen (${response.status})`);
+    this.data=data; this.plan=data.uploaded_plan_id || planId; this.points=[]; this.zoneRoom=null; this.planAnalysis=null; this.selectedCandidate=""; this.tab=1; this._render();
+    this._toast("Grundriss hochgeladen. Raumflächen werden gesucht …");
+    await this._analyzePlan();
+  }
+  async _uploadPlan(file, planId) {
+    if (!file || this._requestBusy) return;
+    this._requestBusy=true; this._updateLock();
+    try { await this._sendPlanImage(file,planId,"",this._viewRevision); }
+    catch(err) { this._toast(err.message,true); }
+    finally { this._requestBusy=false; this._updateLock(); const input=this.shadowRoot.getElementById("plan-upload"); if (input) input.value=""; }
+  }
+  _planPosition(event, svg) {
+    const rect=svg.getBoundingClientRect();
+    return [Math.max(0,Math.min(1,(event.clientX-rect.left)/rect.width)),Math.max(0,Math.min(1,(event.clientY-rect.top)/rect.height))];
   }
   _planClick(event) {
-    const svg = event.target.closest("#floorplan"); if (!svg) return;
+    const svg=event.target.closest("#floorplan"); if (!svg) return;
+    if (this._ignorePlanClick) { this._ignorePlanClick=false; return; }
     if (svg.dataset.edit === "true") {
-      if (this.data.status.active || !this.zoneRoom || this.points.length >= 64) return;
-      const rect = svg.getBoundingClientRect();
-      this.points.push([Math.max(0,Math.min(1,(event.clientX-rect.left)/rect.width)),Math.max(0,Math.min(1,(event.clientY-rect.top)/rect.height))]); this._refreshDraft();
-    } else { const zone = event.target.closest("[data-room]"); if (zone) this._liveDialog(zone.dataset.room); }
+      if (this.data.status.active || this._requestBusy || event.target.closest("[data-draft-vertex]")) return;
+      const candidate=event.target.closest("[data-candidate]");
+      if (candidate) { this._chooseCandidate(candidate.dataset.candidate); return; }
+      if (!this.zoneRoom) { this._toast("Bitte zuerst den Raum auswählen"); return; }
+      if (this.points.length >= 64) { this._toast("Maximal 64 Eckpunkte pro Raum"); return; }
+      this.points.push(this._planPosition(event,svg)); this._refreshDraft();
+    } else { const zone=event.target.closest("[data-room]"); if (zone) this._liveDialog(zone.dataset.room); }
   }
   _refreshDraft() {
-    const plan = this.data.config.floorplans[this.plan];
-    this.shadowRoot.querySelector("#floorplan .draft")?.setAttribute("points",this.points.map(([x,y]) => `${x*plan.width},${y*plan.height}`).join(" "));
+    const plan=this.data.config.floorplans[this.plan]; if (!plan) return;
+    const svg=this.shadowRoot.getElementById("floorplan"); if (!svg) return;
+    svg.querySelector(".draft")?.setAttribute("points",this.points.map(([x,y]) => `${x*plan.width},${y*plan.height}`).join(" "));
+    const handles=svg.querySelector(".draft-points");
+    if (!handles) return;
+    if (handles.children.length !== this.points.length) handles.innerHTML=this._draftHandles(plan);
+    else [...handles.children].forEach((circle,index) => {circle.setAttribute("cx",this.points[index][0]*plan.width); circle.setAttribute("cy",this.points[index][1]*plan.height);});
+  }
+  _vertexDown(event) {
+    const handle=event.target.closest("[data-draft-vertex]"); if (!handle || this.data.status.active || this._requestBusy) return;
+    event.preventDefault();
+    const svg=handle.closest("svg");
+    this._dragVertex={index:Number(handle.dataset.draftVertex),svg,pointer:event.pointerId};
+    svg.setPointerCapture(event.pointerId); handle.focus();
+  }
+  _vertexMove(event) {
+    const drag=this._dragVertex; if (!drag || drag.pointer !== event.pointerId) return;
+    event.preventDefault(); this.points[drag.index]=this._planPosition(event,drag.svg); this._refreshDraft();
+  }
+  _vertexEnd(event) {
+    const drag=this._dragVertex; if (!drag || drag.pointer !== event.pointerId) return;
+    if (drag.svg.hasPointerCapture(event.pointerId)) drag.svg.releasePointerCapture(event.pointerId);
+    this._dragVertex=null; this._ignorePlanClick=true;
+  }
+  _vertexKey(event) {
+    const candidate=event.target.closest("[data-candidate]");
+    if (candidate && ["Enter"," "].includes(event.key)) {event.preventDefault(); this._chooseCandidate(candidate.dataset.candidate); return;}
+    const handle=event.target.closest("[data-draft-vertex]"); if (!handle || this.data.status.active || this._requestBusy) return;
+    const index=Number(handle.dataset.draftVertex), delta=event.shiftKey ? .01 : .002;
+    const change={ArrowLeft:[-delta,0],ArrowRight:[delta,0],ArrowUp:[0,-delta],ArrowDown:[0,delta]}[event.key];
+    if (change) {event.preventDefault(); this.points[index]=this.points[index].map((value,i) => Math.max(0,Math.min(1,value+change[i]))); this._refreshDraft();}
+    else if (["Delete","Backspace"].includes(event.key)) {event.preventDefault(); this.points.splice(index,1); this._refreshDraft();}
   }
   _liveDialog(room) {
     const data = this.data.config.rooms[room]; if (!data) return;
@@ -324,7 +418,7 @@ class IQAlarmPanel extends HTMLElement {
   _profileDialog(copy = false) {
     const current = this.data.config.profiles[this.profile];
     this._profileTemplate = copy ? this.profile : null;
-    this._dialog(copy ? "Profil duplizieren" : "Profil anlegen", `<label class="field">Profilname<input name="name" value="${copy ? esc(current.name.slice(0,85)+" Kopie") : ""}" required maxlength="100" autofocus></label><p style="margin-top:18px">${copy ? "Sensoren, Aktionen und Regeln werden kopiert." : "Lege anschließend Räume, Sensoren, Regeln und Reaktionen für dieses Profil fest."}</p>`, "profile");
+    this._dialog(copy ? "Profil duplizieren" : "Profil anlegen", `<label class="field">Profilname<input name="name" value="${copy ? esc(current.name.slice(0,85)+" Kopie") : ""}" required maxlength="100" autofocus></label>${this._profileIconField(copy ? current.icon : null)}<p style="margin-top:18px">${copy ? "Sensoren, Aktionen und Regeln werden kopiert." : "Lege anschließend Räume, Sensoren, Regeln und Reaktionen für dieses Profil fest."}</p>`, "profile");
   }
 
   _sensorDialog(id, forcePerimeter = false) {
@@ -368,16 +462,21 @@ class IQAlarmPanel extends HTMLElement {
       else if (command === "sensor-new-perimeter") this._sensorDialog(id, true);
       else if (command === "filter-perimeter") { this.catalogFilter = "perimeter"; this._render(); this.shadowRoot.getElementById("sensor-search")?.scrollIntoView({behavior: "smooth"}); }
       else if (command === "action-new" || command === "action-edit") this._actionDialog(id);
+      else if (command === "profile-icon") { const form = button.closest("form"); form.elements.profile_icon.value = id; this._updateIconPreview(form); }
+      else if (command === "floorplan-upload") this._uploadDialog();
+      else if (command === "floorplan-pick") this.shadowRoot.getElementById("plan-upload").click();
+      else if (command === "floorplan-analyze") await this._analyzePlan();
+      else if (command === "floorplan-editor") { this.tab = 1; this._render(); }
       else if (command === "floorplan-new" || command === "floorplan-edit") this._dialog(id ? "Grundriss bearbeiten" : "Grundriss anlegen", `<label class="field">Etage / Name<input name="name" maxlength="100" required value="${esc(this.data.config.floorplans[id]?.name || "")}"></label>`, "floorplan", id);
       else if (command === "zone-save" || command === "zone-delete") {
         if (!this.zoneRoom) throw new Error("Bitte einen Raum auswählen");
         const item = structuredClone(this.data.config.floorplans[this.plan]);
         if (command === "zone-save") { if (this.points.length < 3) throw new Error("Mindestens drei Eckpunkte markieren"); item.zones[this.zoneRoom] = this.points; }
-        else { delete item.zones[this.zoneRoom]; this.points = []; }
+        else { delete item.zones[this.zoneRoom]; this.points = []; this.selectedCandidate = ""; }
         this.data = await this._call("crud", {collection:"floorplans",operation:"save",item,revision:this._viewRevision}); this._render();
       }
       else if (command === "zone-undo") { this.points.pop(); this._refreshDraft(); }
-      else if (command === "zone-clear") { this.points = []; this._refreshDraft(); }
+      else if (command === "zone-clear") { this.points = []; this.selectedCandidate = ""; this.manualDrawing = true; this._render(); this._refreshDraft(); }
       else if (command === "stage-add" || command === "stage-remove") this._changeStageRows(command === "stage-add");
       else if (command === "profile-move") {
         const dir = Number(button.dataset.dir), entries = Object.entries(this.data.config.profiles), idx = entries.findIndex(([k]) => k === this.profile), target = idx + dir;
@@ -450,7 +549,7 @@ class IQAlarmPanel extends HTMLElement {
         const config = structuredClone(this.data.config);
         if (form.id === "rules-form") {
           const p = config.profiles[this.profile];
-          p.name = get("profile_name").trim();
+          p.name = get("profile_name").trim(); p.icon = get("profile_icon").trim() || null;
           p.motion_mode = get("motion_mode"); p.motion_scope = get("motion_scope");
           p.stage_targets = Object.fromEntries(Object.keys(RULES).map(key => [key,get(`target_${key}`)]));
           ["room_ids", "sensor_ids", "action_ids"].forEach(key => p[key] = bool(`all_${key}`) ? null : fields.getAll(key));
@@ -467,7 +566,13 @@ class IQAlarmPanel extends HTMLElement {
         this.data = await this._call("config/save", {config, revision: this._viewRevision});
       } else if (form.id === "editor-form") {
         const type = form.dataset.type, id = form.dataset.id;
-        if (type === "disarm") this.data = await this._call("set_mode", {mode: "disarmed", code: get("code")});
+        if (type === "floorplan-upload") {
+          const file = form.elements.image.files[0];
+          if (!file) throw new Error("Bitte ein PNG- oder JPG-Bild auswählen");
+          if (button) button.textContent = "Wird hochgeladen …";
+          await this._sendPlanImage(file, null, get("name").trim(), this._dialogRevision);
+        }
+        else if (type === "disarm") this.data = await this._call("set_mode", {mode: "disarmed", code: get("code")});
         else if (type.startsWith("delete-")) this.data = await this._call("crud", {collection: type.slice(7), operation: "delete", key: id, revision: this._dialogRevision});
         else {
           let item, collection;
@@ -480,7 +585,7 @@ class IQAlarmPanel extends HTMLElement {
           } else if (type === "profile") {
             collection = "profiles";
             item = this._profileTemplate ? structuredClone(this.data.config.profiles[this._profileTemplate]) : {reactions_enabled:true, action_ids:null, motion_mode:"always"};
-            item.name = get("name").trim();
+            item.name = get("name").trim(); item.icon = get("profile_icon").trim() || null;
           } else if (type === "floorplan") { collection = "floorplans"; item = {...(this.data.config.floorplans[id] || {}), name:get("name")}; if (id) item.id = id; } else throw new Error("Unbekanntes Formular");
           this.data = await this._call("crud", {collection, operation: "save", item, revision: this._dialogRevision});
           if (type === "profile") this.profile = Object.keys(this.data.config.profiles).find(key => this.data.config.profiles[key].name === item.name);
@@ -489,7 +594,7 @@ class IQAlarmPanel extends HTMLElement {
       }
       this._render(); this._toast("Gespeichert");
     } catch (err) {this._toast(err.message || String(err), true);}
-    finally {this._requestBusy = false; if (button?.isConnected) button.disabled = false; this._updateLock();}
+    finally {this._requestBusy = false; if (button?.isConnected) {button.disabled = false; if (form.dataset.type === "floorplan-upload") button.textContent="Hochladen";} this._updateLock();}
   }
 }
 

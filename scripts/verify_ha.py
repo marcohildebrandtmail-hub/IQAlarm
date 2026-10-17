@@ -313,6 +313,9 @@ async def verify(hass, target) -> str:
     from verify_v2 import verify_v2
 
     await verify_v2(hass, entry, admin_token, user_token, calls)
+    from verify_floorplan_assistant import verify_floorplan_assistant
+
+    await verify_floorplan_assistant(hass, entry, admin_token, user_token)
     runtime = entry.runtime_data
 
     hass.states.async_set("binary_sensor.window", "off")

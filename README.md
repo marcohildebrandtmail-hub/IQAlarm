@@ -4,7 +4,7 @@
 
 ## Frei konfigurierbare Alarmstufen
 
-Die folgenden vier Stufen sind Startvorgaben. Unter **Alarmstufen & Regeln → Alarmstufen** lassen sich 1–32 Stufen mit eigenen Namen und Farben festlegen. Die Reihenfolge bestimmt die Zahl im Kreis; die Bezeichnung steht darüber. Jedes Profil ordnet die Ereignisarten seinen Stufen zu. Aktionen verweisen auf feste Stufenkennungen, sodass Umbenennungen keine Zuordnungen lösen. Vor dem Entfernen einer verwendeten Stufe müssen Regeln und Aktionen umgestellt werden.
+Die folgenden vier Stufen sind Startvorgaben. Unter **Profile & System → Alarmstufen** lassen sich 1–32 Stufen mit eigenen Namen und Farben festlegen. Die Reihenfolge bestimmt die Zahl im Kreis; die Bezeichnung steht darüber. Jedes Profil ordnet die Ereignisarten seinen Stufen zu. Aktionen verweisen auf feste Stufenkennungen, sodass Umbenennungen keine Zuordnungen lösen. Vor dem Entfernen einer verwendeten Stufe müssen Regeln und Aktionen umgestellt werden.
 
 | Stufe | Bedeutung | Standardlogik |
 | --- | --- | --- |
@@ -53,9 +53,15 @@ Bei „erst nach Öffnung“ zählt eine frühere Bewegung nicht rückwirkend. B
 
 **Aus · Live** deaktiviert Alarmreaktionen. Ein wählbares Hintergrundprofil wertet weiterhin Signale und Korrelation aus und zeigt die erreichte Stufe. Das automatisch angelegte Profil „Live-Beobachtung“ schaltet keine Geräte, sendet keine Pushs, speichert keine Kameraaufnahmen und simuliert keine Anwesenheit. Bestätigungen laufen hier wieder aus. Weitere Beobachtungsprofile können eigene Sensoren und Regeln verwenden. Ohne Hintergrundprofil bleiben die Rohzustände sichtbar.
 
-Unter **Räume & Topologie** je Etage einen Grundriss anlegen und PNG/JPG hochladen (maximal 10 MB, 8192 Pixel pro Seite, 32 Megapixel). Raum auswählen, seine Eckpunkte im Bild markieren und speichern. Außenbereiche werden ebenso als Raum markiert. Die bestehenden Sensorzuordnungen liefern automatisch Fenster-/Türstatus, Bewegung, Personen und Quarantäne. Markierungen bleiben bei Größenänderungen proportional erhalten. Der Live-Grundriss zeigt auch Signale, die ein Profil nur anzeigt. Ein Klick auf den Raum öffnet Sensorstatus und gegebenenfalls die verknüpfte HA-Kamera.
+Unter **Räume & Grundriss → Grundriss hochladen** direkt eine PNG-/JPG-Datei auswählen und der Etage einen Namen geben (maximal 10 MB, 8192 Pixel pro Seite, 32 Megapixel). Bild und Etage werden zusammen gespeichert; ein fehlgeschlagener Upload hinterlässt keinen leeren Eintrag. Vorhandene Etagen haben einen sichtbaren Button **Bild ersetzen**.
+
+Der Assistent schlägt anschließend lokal Raumflächen vor. Es werden keine Bilder an einen externen Dienst übertragen. Einen Vorschlag auswählen, einen vorhandenen IQAlarm-Raum zuordnen und den Umriss prüfen. Eckpunkte lassen sich mit Maus oder Finger verschieben sowie per Pfeiltasten korrigieren und mit Entf entfernen. **Neu zeichnen** erlaubt eine vollständig eigene Fläche, etwa für offene Wohn-/Küchenbereiche oder die Terrasse. Die Einstellung **Türöffnungen überbrücken** passt die Vorschläge an. Möbel, Beschriftungen und offene Übergänge können unpassende Flächen ergeben; Raumtypen und Namen werden nicht automatisch erkannt. Erst **Bereich speichern** übernimmt die Zuordnung. Außenbereiche werden ebenso als Raum markiert. Die bestehenden Sensorzuordnungen liefern automatisch Fenster-/Türstatus, Bewegung, Personen und Quarantäne. Markierungen bleiben bei Größenänderungen proportional erhalten. Der Live-Grundriss zeigt auch Signale, die ein Profil nur anzeigt. Ein Klick auf den Raum öffnet Sensorstatus und gegebenenfalls die verknüpfte HA-Kamera.
 
 Grundrissbilder werden als bereinigte PNG-Dateien privat unter `.iqalarm_floorplans` gespeichert. Abrufe und Uploads benötigen einen HA-Administrator. Bilder und Markierungen bleiben bei Neustarts und HACS-Updates erhalten.
+
+### Profilsymbole
+
+Unter **Profile & System** hat jedes Profil ein eigenes, frei wählbares Symbol. Die Vorgaben sind Haus (Zuhause), Mond (Nacht), Haus mit Ausgang (Abwesend), Palme (Urlaub) und Personengruppe (Besuch). Der Aus-Schalter verwendet das Power-Symbol. Die Auswahl enthält eine grafische Vorschau und erlaubt zusätzliche MDI-Kennungen wie `mdi:dog`. Eigene Symbole und die Profilreihenfolge bleiben beim Bearbeiten, Duplizieren und nach Neustarts erhalten. Symbole ändern keine Alarmregeln.
 
 ### Einfache HA-Anbindung
 
@@ -72,8 +78,8 @@ Unterstützt: **Home Assistant ab 2025.12.0**, geprüft mit 2025.12.5 und 2026.1
 3. Unter **Einstellungen → Geräte & Dienste → Integration hinzufügen → IQAlarm** einrichten. Optional eine 4–12-stellige PIN zum Entschärfen vergeben.
 4. Im Seitenmenü **IQAlarm** öffnen. Das Konfigurationspanel ist Administratoren vorbehalten.
 5. Räume aus HA importieren oder anlegen, Nachbarräume verknüpfen und Sensoren zuweisen. Der Import übernimmt zunächst nur die Räume; Sensorrollen werden bewusst zugeordnet.
-6. Unter **Alarmstufen & Regeln** Zeiten und Regeln kontrollieren. Standardmäßig verhindern offene Kontakte und nicht verfügbare Sensoren das Scharfschalten.
-7. Unter **Aktionen & Push** die eigenen Dienste und Geräte zuweisen. Es werden keine Sirenen oder Benachrichtigungsziele automatisch ausgewählt.
+6. Unter **Profile & System** Zeiten und Regeln kontrollieren. Standardmäßig verhindern offene Kontakte und nicht verfügbare Sensoren das Scharfschalten.
+7. Unter **Level-Konfiguration** die eigenen Dienste und Geräte zuweisen. Es werden keine Sirenen oder Benachrichtigungsziele automatisch ausgewählt.
 8. Trockenläufe ausführen und anschließend mit bewusst gewähltem realem Aktionstest die eigenen Geräte prüfen.
 
 Die gesamte Alarmkonfiguration erfolgt im Panel. Es sind keine HA-Automatisierungen und keine YAML-Regeln erforderlich. Änderungen an Räumen, Sensoren, Profilen und Aktionen sind im unscharfen Zustand möglich. Gleichzeitige Änderungen aus mehreren Browserfenstern werden über Konfigurationsrevisionen geschützt.
@@ -122,12 +128,12 @@ Nach einem Neustart wird der gewählte Modus einschließlich Quarantäne und bes
 | `iqalarm.trigger_test_level` | Eigene Stufen-ID oder `diagnostic`, `dry_run` standardmäßig `true`, optional `profile_id` |
 | `iqalarm_event` | Strukturierte Ereignisse mit Zeit, Modus, Profil, Entscheidung und Auslösekette |
 
-WebSocket-Befehle: `iqalarm/get`, `iqalarm/subscribe`, `iqalarm/catalog`, `iqalarm/config/save`, `iqalarm/crud`, `iqalarm/import_areas`, `iqalarm/set_mode`, `iqalarm/arm_profile`, `iqalarm/clear_quarantine`, `iqalarm/test_level`. CRUD unterstützt Räume, Sensoren, Aktionen, Profile und Grundrisse. Stufen werden mit der gesamten Konfiguration gespeichert. Geschützte Bild-API: GET/POST `/api/iqalarm/floorplans/{id}/image`; Upload mit aktuellem `X-IQAlarm-Revision`-Header. Alle Befehle verlangen einen Administrator. CRUD und Konfigurationsänderungen verlangen die aktuelle `revision`.
+WebSocket-Befehle: `iqalarm/get`, `iqalarm/subscribe`, `iqalarm/catalog`, `iqalarm/config/save`, `iqalarm/crud`, `iqalarm/import_areas`, `iqalarm/set_mode`, `iqalarm/arm_profile`, `iqalarm/clear_quarantine`, `iqalarm/test_level`, `iqalarm/floorplan/analyze`. CRUD unterstützt Räume, Sensoren, Aktionen, Profile und Grundrisse. Stufen werden mit der gesamten Konfiguration gespeichert. Neue Etage mit Bild: POST `/api/iqalarm/floorplans/upload?name=Etagenname`. Die Flächenanalyse ist schreibgeschützt. Geschützte Bild-API: GET/POST `/api/iqalarm/floorplans/{id}/image`; Upload mit aktuellem `X-IQAlarm-Revision`-Header. Alle Befehle verlangen einen Administrator. CRUD und Konfigurationsänderungen verlangen die aktuelle `revision`.
 
 ## Entwicklung und Verifikation
 
 ```powershell
-python -m pip install pytest pytest-cov ruff PyYAML voluptuous
+python -m pip install pytest pytest-cov ruff PyYAML voluptuous Pillow
 python -m pytest -q
 python -m ruff check .
 python -m ruff format --check .

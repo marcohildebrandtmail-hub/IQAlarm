@@ -152,6 +152,27 @@ class SensorConfig:
             entity(self.camera_entity_id, {"camera"})
 
 
+def profile_icon(name: str, key: str = "", reactions_enabled: bool = True) -> str:
+    """Choose presentation defaults once; icon/name never determine security rules."""
+    words = name.casefold()
+    for terms, symbol in (
+        (("nacht", "night"), "weather-night"),
+        (("urlaub", "vacation", "reise"), "palm-tree"),
+        (("besuch", "gast", "gäste", "gaeste", "guest"), "account-group-outline"),
+        (("abwesend", "away"), "home-export-outline"),
+        (("zuhause", "home", "anwesend"), "home-outline"),
+        (("garage",), "garage-variant"),
+    ):
+        if any(term in words for term in terms):
+            return "mdi:" + symbol
+    return {
+        "armed_home": "mdi:home-outline",
+        "armed_night": "mdi:weather-night",
+        "armed_away": "mdi:home-export-outline",
+        "armed_vacation": "mdi:palm-tree",
+    }.get(key, "mdi:shield-check-outline" if reactions_enabled else "mdi:eye-outline")
+
+
 @dataclass
 class Profile:
     perimeter_seconds: float = 180
@@ -164,6 +185,7 @@ class Profile:
     multi_motion: bool = True
     adjacent_rooms: bool = True
     name: str = ""
+    icon: str | None = None
     motion_mode: str = "always"
     motion_scope: str = "room"
     perimeter_enabled: bool = True
@@ -198,6 +220,11 @@ class Profile:
         if self.motion_mode not in ("always", "after_contact", "ignore"):
             raise ValueError("Ungültige Bewegungsauswertung")
         text(self.name, "Profilname", 100, empty=True)
+        if self.icon is not None and (
+            not isinstance(self.icon, str)
+            or not re.fullmatch(r"mdi:[a-z0-9][a-z0-9-]{0,79}", self.icon)
+        ):
+            raise ValueError("Profilsymbol muss eine MDI-Kennung wie mdi:home-outline sein")
         if not isinstance(self.stage_targets, dict) or set(self.stage_targets) - RULE_NAMES.keys():
             raise ValueError("Ungültige Stufenzuordnungen")
         if any(not isinstance(value, str) for value in self.stage_targets.values()):
@@ -477,6 +504,8 @@ class Configuration:
                 raise ValueError("Ungültige Profil-ID")
             profile.name = profile.name.strip() or MODE_NAMES.get(key, "")
             text(profile.name, "Profilname", 100)
+            if profile.icon is None:
+                profile.icon = profile_icon(profile.name, key, profile.reactions_enabled)
             for rule, target in defaults.items():
                 profile.stage_targets.setdefault(rule, target)
             if set(profile.stage_targets.values()) - stage_ids:

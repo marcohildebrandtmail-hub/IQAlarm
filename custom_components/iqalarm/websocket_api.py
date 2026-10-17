@@ -1,6 +1,7 @@
 """Admin-scoped, validated API with revision control and live subscriptions."""
 
 from copy import deepcopy
+from pathlib import Path
 from uuid import uuid4
 
 from homeassistant.components import websocket_api
@@ -11,6 +12,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .compat import vol
 from .const import ALLOWED_SENSOR_DOMAINS, DOMAIN, SIGNAL_UPDATE
+from .floorplan_analysis import analyze_image
 from .models import Action, FloorPlan, Profile, Room, SensorConfig, construct
 
 
@@ -33,8 +35,45 @@ def register(hass) -> None:
         ws_quarantine,
         ws_test,
         ws_catalog,
+        ws_analyze_floorplan,
     ):
         websocket_api.async_register_command(hass, handler)
+
+
+@websocket_api.websocket_command(
+    {
+        "type": "iqalarm/floorplan/analyze",
+        vol.Required("plan_id"): str,
+        vol.Optional("gap", default=28): vol.All(int, vol.Range(min=0, max=40)),
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_analyze_floorplan(hass, connection, msg) -> None:
+    """Return local geometry proposals without persisting or changing assignments."""
+    try:
+        instance = runtime(hass)
+        plan = instance.config.floorplans.get(msg["plan_id"])
+        if plan is None or not plan.image:
+            raise ValueError("Zuerst ein Grundrissbild hochladen")
+        image = plan.image
+        result = await hass.async_add_executor_job(
+            analyze_image, Path(hass.config.path(".iqalarm_floorplans", image)), msg["gap"]
+        )
+        current = instance.config.floorplans.get(plan.id)
+        if current is None or current.image != image:
+            raise ValueError("Grundriss wurde inzwischen geändert; Analyse erneut starten")
+        connection.send_result(
+            msg["id"],
+            {
+                **result,
+                "plan_id": plan.id,
+                "image": image,
+                "revision": instance.config.revision,
+            },
+        )
+    except (ValueError, OSError, HomeAssistantError) as err:
+        connection.send_error(msg["id"], "floorplan_analysis_failed", str(err))
 
 
 @websocket_api.websocket_command({"type": "iqalarm/get"})
