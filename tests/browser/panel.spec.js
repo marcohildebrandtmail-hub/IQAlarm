@@ -402,3 +402,20 @@ test("save dialog assigns an existing room directly without discarding edited pr
   const saved=await page.evaluate(()=>window.iqTest.request({type:"iqalarm/get"}));
   expect(saved.config.floorplans.draft_dialog.zones.living).toEqual(edited);
 });
+
+test("save dialog creates a room and stores its corrected area together",async({page})=>{
+  await prepareDraftPlan(page,"draft_new_room");
+  await page.getByRole("button",{name:"Neu zeichnen",exact:true}).click();
+  const svg=page.locator("#floorplan"),bounds=await svg.boundingBox();
+  for(const [x,y] of [[.16,.16],[.39,.16],[.39,.7],[.16,.7]]) await svg.click({position:{x:x*bounds.width,y:y*bounds.height}});
+  const points=await page.locator("iqalarm-panel").evaluate(el=>structuredClone(el.points));
+  await page.getByRole("button",{name:"Bereich speichern",exact:true}).click();
+  await page.getByRole("dialog").getByLabel("Oder neuen Raum anlegen",{exact:true}).fill("Neuer Grundrissraum");
+  await page.getByRole("dialog").getByRole("button",{name:"Speichern",exact:true}).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  const saved=await page.evaluate(()=>window.iqTest.request({type:"iqalarm/get"}));
+  const room=Object.values(saved.config.rooms).find(room=>room.name === "Neuer Grundrissraum");
+  expect(room).toBeDefined();
+  expect(saved.config.floorplans.draft_new_room.zones[room.id]).toEqual(points);
+  expect(saved.config.floorplans.draft_new_room.zones.living).toEqual([[.1,.1],[.45,.1],[.45,.9],[.1,.9]]);
+});
