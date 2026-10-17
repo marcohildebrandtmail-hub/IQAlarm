@@ -28,6 +28,7 @@ class CorrelationEngine:
     def __init__(self, config: Configuration) -> None:
         self.config = config
         self.mode = Mode.DISARMED
+        self.profile_id: str | None = None
         self.level = Level.SECURE
         self.raw: dict[str, bool | None] = {}
         self.edges: dict[str, deque[float]] = defaultdict(lambda: deque(maxlen=101))
@@ -44,7 +45,7 @@ class CorrelationEngine:
 
     @property
     def profile(self):
-        return self.config.profiles.get(self.mode.value)
+        return self.config.profiles.get(self.profile_id or self.mode.value)
 
     def _time(self, now: float) -> float:
         # A wall-clock correction must never resurrect already expired evidence.
@@ -73,6 +74,8 @@ class CorrelationEngine:
             chain[-1].room_id if chain else None,
             entity_id or (chain[-1].entity_id if chain else None),
             [asdict(e) for e in chain],
+            profile_id=self.profile_id,
+            profile_name=self.profile.name if self.profile else "",
         )
         self.events.appendleft(event)
         self._outbox.append(event)
@@ -84,13 +87,16 @@ class CorrelationEngine:
     def arm_blockers(self) -> list[str]:
         """List contact openings and unavailable inputs under the selected policy."""
         result = []
-        for sensor in self.config.sensors.values():
-            if not sensor.enabled or sensor.entity_id in self.quarantine:
+        included = [sensor for sensor in self.config.sensors.values() if self._included(sensor)]
+        if (
+            self.profile
+            and (self.profile.room_ids is not None or self.profile.sensor_ids is not None)
+            and not included
+        ):
+            result.append("Profil enthält keine aktivierten Sensoren in seiner Auswahl")
+        for sensor in included:
+            if sensor.entity_id in self.quarantine:
                 continue
-            if self.mode == Mode.HOME and sensor.role not in PERIMETER_ROLES:
-                room = self.config.rooms.get(sensor.room_id)
-                if room is None or not room.home_enabled:
-                    continue
             state = self.raw.get(sensor.entity_id)
             if state is None and self.config.settings.block_unavailable_on_arm:
                 result.append(f"{sensor.name or sensor.entity_id}: nicht verfügbar")
@@ -103,18 +109,28 @@ class CorrelationEngine:
         return result
 
     def set_mode(self, mode: str, now: float, *, restore: bool = False) -> None:
-        now = self._time(now)
+        """Standard HA commands always address their corresponding default profile."""
         target = Mode(mode)
-        if target == self.mode:
+        self.set_profile(None if target == Mode.DISARMED else target.value, now, restore=restore)
+
+    def set_profile(self, profile_id: str | None, now: float, *, restore: bool = False) -> None:
+        """Arm an explicit profile without confusing profiles sharing a HA state."""
+        now = self._time(now)
+        if profile_id is not None and profile_id not in self.config.profiles:
+            raise ValueError("Unbekanntes Alarmprofil")
+        profile = self.config.profiles.get(profile_id)
+        target = Mode(profile.base_mode or profile_id) if profile else Mode.DISARMED
+        if target == self.mode and profile_id == self.profile_id:
             return
         if self.mode != Mode.DISARMED and target != Mode.DISARMED:
             raise ValueError("Vor einem Profilwechsel zuerst entschärfen")
-        previous = self.mode
-        self.mode = target
+        previous, previous_profile = self.mode, self.profile_id
+        self.mode, self.profile_id = target, profile_id
         if target != Mode.DISARMED and not restore:
             blockers = self.arm_blockers()
             if blockers:
                 self.mode = previous
+                self.profile_id = previous_profile
                 raise ValueError("Scharfschalten verhindert: " + "; ".join(blockers))
         self.level = Level.SECURE
         self.evidence.clear()
@@ -128,7 +144,9 @@ class CorrelationEngine:
             self.quarantine.clear()
         elif not restore and self.profile.exit_seconds:
             self.arming_until = now + self.profile.exit_seconds
-        self._log(now, "mode_changed", f"Modus: {target.value}")
+        self._log(
+            now, "mode_changed", f"Profil: {profile.name or profile_id}" if profile else "Unscharf"
+        )
 
     def clear_quarantine(self, entity_id: str | None, now: float) -> None:
         now = self._time(now)
@@ -173,13 +191,34 @@ class CorrelationEngine:
         )
         return 0 <= now - evidence.timestamp < duration
 
-    def _enabled(self, sensor) -> bool:
-        if not sensor.enabled or self.mode == Mode.DISARMED or self.arming_until is not None:
+    def _included(self, sensor) -> bool:
+        """Intersect profile scopes before blockers, evidence and correlation."""
+        profile = self.profile
+        if not sensor.enabled or self.mode == Mode.DISARMED or profile is None:
             return False
-        if self.mode == Mode.HOME and sensor.role not in PERIMETER_ROLES:
+        if profile.sensor_ids is not None and sensor.entity_id not in profile.sensor_ids:
+            return False
+        if profile.room_ids is not None:
+            rooms = set(profile.room_ids)
+            if sensor.role in PERIMETER_ROLES:
+                spaces = set(sensor.front_of or ([sensor.room_id] if sensor.room_id else []))
+                # A global perimeter belongs to every non-empty room selection.
+                if not rooms or (spaces and not rooms.intersection(spaces)):
+                    return False
+            elif sensor.room_id not in rooms:
+                return False
+        if (
+            self.mode == Mode.HOME
+            and sensor.role not in PERIMETER_ROLES
+            and profile.room_ids is None
+            and profile.sensor_ids is None
+        ):
             room = self.config.rooms.get(sensor.room_id)
             return bool(room and room.home_enabled)
         return True
+
+    def _enabled(self, sensor) -> bool:
+        return self.arming_until is None and self._included(sensor)
 
     def _has_flap_confirmation(self, entity_id: str, now: float) -> bool:
         sensor = self.config.sensors[entity_id]
@@ -467,6 +506,13 @@ class CorrelationEngine:
     def snapshot(self, now: float) -> dict:
         return {
             "mode": self.mode.value,
+            "profile_id": self.profile_id,
+            "profile_name": self.profile.name if self.profile else None,
+            "monitored_sensors": [
+                sensor.entity_id
+                for sensor in self.config.sensors.values()
+                if self._included(sensor)
+            ],
             "level": int(self.level),
             "level_state": LEVEL_STATES[int(self.level)],
             "arming_until": self.arming_until,
@@ -482,6 +528,7 @@ class CorrelationEngine:
         """Preserve arming, quarantine, confirmed alarm and log across HA restarts."""
         return {
             "mode": self.mode.value,
+            "profile_id": self.profile_id,
             "level": int(self.level),
             "quarantine": self.quarantine,
             "pending_until": self.pending_until,
@@ -495,6 +542,15 @@ class CorrelationEngine:
     def restore(self, data: dict, now: float) -> None:
         """Restore evidence only within its original window; never replay actions."""
         self.mode = Mode(data.get("mode", Mode.DISARMED))
+        self.profile_id = (
+            data.get("profile_id", self.mode.value) if self.mode != Mode.DISARMED else None
+        )
+        if self.mode != Mode.DISARMED:
+            if self.profile_id not in self.config.profiles:
+                raise ValueError("Gespeichertes Alarmprofil fehlt; Konfiguration prüfen")
+            profile = self.config.profiles[self.profile_id]
+            if Mode(profile.base_mode or self.profile_id) != self.mode:
+                raise ValueError("Gespeichertes Alarmprofil passt nicht zum HA-Modus")
         self.level = Level(data.get("level", 0))
         self.quarantine = {
             k: v for k, v in data.get("quarantine", {}).items() if k in self.config.sensors

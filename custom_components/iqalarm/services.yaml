@@ -1,3 +1,13 @@
+arm_profile:
+  name: Profil scharfschalten
+  description: Ein eigenes IQAlarm-Profil anhand seiner ID aktivieren. Vor Profilwechseln zuerst entschärfen.
+  fields:
+    profile_id:
+      name: Profil-ID
+      description: Im IQAlarm-Panel unter Alarmstufen und Regeln angezeigt.
+      required: true
+      selector:
+        text:
 set_mode:
   name: Modus setzen
   description: Scharfschalten oder entschärfen. Vor Profilwechseln zuerst entschärfen.
@@ -34,6 +44,11 @@ trigger_test_level:
   name: Alarmstufe testen
   description: Standardmäßig Trockenlauf ohne Geräteaktionen. dry_run=false führt die konfigurierten Aktionen tatsächlich aus.
   fields:
+    profile_id:
+      name: Profil-ID
+      description: Optional die Aktionsauswahl dieses Profils testen, ohne es scharfzuschalten.
+      selector:
+        text:
     level:
       name: Stufe
       required: true

@@ -6,7 +6,15 @@ from dataclasses import asdict, dataclass, field, fields
 from typing import Any
 from uuid import uuid4
 
-from .const import ALLOWED_SENSOR_DOMAINS, ARMED_MODES, CONTACT_ROLES, PERIMETER_ROLES, Mode, Role
+from .const import (
+    ALLOWED_SENSOR_DOMAINS,
+    ARMED_MODES,
+    CONTACT_ROLES,
+    MODE_NAMES,
+    PERIMETER_ROLES,
+    Mode,
+    Role,
+)
 
 ENTITY_RE = re.compile(r"^[a-z_][a-z0-9_]*\.[a-z0-9_]+$")
 ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,100}$")
@@ -154,6 +162,11 @@ class Profile:
     adjacent_rooms: bool = True
     night_motion_requires_contact: bool = True
     night_motion_scope: str = "room"
+    name: str = ""
+    base_mode: str = ""
+    room_ids: list[str] | None = None
+    sensor_ids: list[str] | None = None
+    action_ids: list[str] | None = None
 
     def __post_init__(self) -> None:
         for key in ("perimeter_seconds", "correlation_seconds"):
@@ -172,6 +185,17 @@ class Profile:
                 raise ValueError(f"{key} muss boolesch sein")
         if self.night_motion_scope not in ("room", "house"):
             raise ValueError("Nacht-Scharfschaltung muss room oder house sein")
+        text(self.name, "Profilname", 100, empty=True)
+        if self.base_mode and self.base_mode not in ARMED_MODES:
+            raise ValueError("Profil benötigt einen scharfen HA-Basismodus")
+        for key in ("room_ids", "sensor_ids", "action_ids"):
+            values = getattr(self, key)
+            if values is not None and (
+                not isinstance(values, list)
+                or any(not isinstance(value, str) for value in values)
+                or len(set(values)) != len(values)
+            ):
+                raise ValueError(f"{key}: eindeutige Liste erforderlich; null bedeutet alle")
 
 
 @dataclass
@@ -292,7 +316,9 @@ class Settings:
 def default_profiles() -> dict[str, Profile]:
     return {
         m.value: Profile(
-            **({"correlation_seconds": 45, "entry_seconds": 5} if m == Mode.VACATION else {})
+            name=MODE_NAMES[m],
+            base_mode=m.value,
+            **({"correlation_seconds": 45, "entry_seconds": 5} if m == Mode.VACATION else {}),
         )
         for m in ARMED_MODES
     }
@@ -320,8 +346,33 @@ class Configuration:
                 raise ValueError("Sensor verweist auf unbekannten Raum")
             if set(sensor.front_of) - self.rooms.keys():
                 raise ValueError("Vorfeld verweist auf unbekannten Raum")
-        if set(self.profiles) != {m.value for m in ARMED_MODES}:
-            raise ValueError("Alle vier scharfen Profile sind erforderlich")
+        if not {m.value for m in ARMED_MODES} <= self.profiles.keys():
+            raise ValueError("Die vier HA-Standardprofile sind erforderlich")
+        if len(self.profiles) > 50:
+            raise ValueError("Maximal 50 Profile erlaubt")
+        for key, profile in self.profiles.items():
+            if not isinstance(key, str) or not ID_RE.fullmatch(key) or key == Mode.DISARMED:
+                raise ValueError("Ungültige Profil-ID")
+            if key in ARMED_MODES:
+                # Version 1.0 stored rules directly under their standard mode.
+                profile.name = profile.name.strip() or MODE_NAMES[Mode(key)]
+                profile.base_mode = profile.base_mode or key
+                if profile.base_mode != key:
+                    raise ValueError("HA-Standardprofil muss seinen Basismodus behalten")
+            text(profile.name, "Profilname", 100)
+            if profile.base_mode not in ARMED_MODES:
+                raise ValueError("Profil benötigt einen scharfen HA-Basismodus")
+            for field_name, known in (
+                ("room_ids", self.rooms),
+                ("sensor_ids", self.sensors),
+                ("action_ids", self.actions),
+            ):
+                values = getattr(profile, field_name)
+                if values is not None and set(values) - known.keys():
+                    raise ValueError(f"Profil {profile.name}: unbekannte Zuordnung in {field_name}")
+        names = [profile.name.strip().casefold() for profile in self.profiles.values()]
+        if len(set(names)) != len(names):
+            raise ValueError("Profilnamen müssen eindeutig sein")
         if any(key != action.id for key, action in self.actions.items()):
             raise ValueError("Aktions-ID stimmt nicht überein")
         if type(self.revision) is not int or self.revision < 0:
@@ -375,6 +426,8 @@ class EventLog:
     entity_id: str | None = None
     chain: list[dict] = field(default_factory=list)
     id: str = field(default_factory=lambda: uuid4().hex)
+    profile_id: str | None = None
+    profile_name: str = ""
 
     def to_dict(self) -> dict:
         return asdict(self)

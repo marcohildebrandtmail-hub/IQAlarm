@@ -2,9 +2,10 @@
 
 ## Erfolgreich geprüft
 
-- **83 pytest-Tests** für Korrelationslogik, Nachtbetrieb, Konfigurationsgrenzen, Archivierung, Repository-Metadaten und Deployment-Rollback.
+- **108 pytest-Tests** für Korrelationslogik, Nachtbetrieb, eigene Profile, Konfigurationsgrenzen, Archivierung, Repository-Metadaten und Deployment-Rollback.
 - Alle fünf geforderten Pflichtszenarien: MACO-Prellen, einzelnes Fenster, Fenster + Bewegung nach zwölf Sekunden, nächtlicher Toilettengang und Vorfeld + Fenster nach vierzig Sekunden.
 - Zusätzliche Fälle: unabhängige Signalquellen, unpassende Kamera-Zuordnung, Nachbarräume, ausgeschaltete Regeln, veraltete Ereignisse, Debounce, Ausfälle/Wiederkehr, Scharf-/Eingangs-/Ausgangszeiten, Quarantänefreigabe und Neustart-Wiederherstellung.
+- Eigene Profile: unverwechselbare Profil-ID bei gleichem HA-Modus, Raum-/Sensorfilter vor Scharfschaltprüfung und Korrelation, getrennte Timer, leere Auswahlen, Migration aus Version 1.0 sowie Wiederherstellung und Schutz vor Profilwechseln im scharfen Zustand.
 - **96 % Zeilenabdeckung der eigenständigen Korrelations-Engine** durch die pytest-Suite. Diese Zahl beschreibt ausschließlich die Engine; die HA-Anbindung wird zusätzlich durch den realen Core-Prüfer geprüft.
 - **Home Assistant 2025.12.5 und 2026.10.2**, jeweils im offiziellen Linux-Container: Config Flow, PIN-Hash, Einzelinstanz, Panel, native Entitäten, dynamische Räume, Dienste, persistenter Zustand und vollständiges Entladen/Neuladen.
 - Echte authentifizierte HTTP-/WebSocket-Verbindungen: Status, Katalog, CRUD, Area-Import, Trockenlauf, Subscription und Rechtebegrenzung. Live-Abonnements überleben einen Integrations-Reload.
@@ -23,7 +24,7 @@ Das Zielrepository ist [marcohildebrandtmail-hub/IQAlarm](https://github.com/mar
 
 Die GitHub-Workflows prüfen HACS, hassfest, Python, Browser und beide HA-Versionen. Der aktuelle Remote-Status ist unter [Actions](https://github.com/marcohildebrandtmail-hub/IQAlarm/actions) einsehbar. Eine Aufnahme in den öffentlichen Standardkatalog und ein Brand-Eintrag sind nicht vorgenommen worden.
 
-**Die Installation auf der persönlichen Home-Assistant-Instanz steht aus**, bis der Zugang einzeln festgelegt ist. Es wurden keine Zugangsdaten im Repository gespeichert.
+Version 1.0 wurde auf der persönlichen Home-Assistant-Instanz über HACS installiert und nach Neustart im unscharfen Zustand geprüft. Der Prüfstand für spätere Updates ist über die jeweiligen GitHub-Actions-Läufe nachvollziehbar. Es werden keine Zugangsdaten im Repository gespeichert.
 
 ## Reproduzieren
 

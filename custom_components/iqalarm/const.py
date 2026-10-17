@@ -4,7 +4,7 @@ from enum import IntEnum, StrEnum
 
 DOMAIN = "iqalarm"
 NAME = "IQAlarm"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 STORAGE_VERSION = 1
 EVENT_TYPE = "iqalarm_event"
 SIGNAL_UPDATE = "iqalarm_update"
@@ -49,4 +49,10 @@ CONTACT_ROLES = frozenset((Role.ENTRY, Role.LOCK, Role.GLASS))
 INTERIOR_ROLES = frozenset((Role.MOTION, Role.MMWAVE))
 PERIMETER_ROLES = frozenset((Role.PERIMETER_CAMERA, Role.PERIMETER_SENSOR))
 ARMED_MODES = tuple(m for m in Mode if m != Mode.DISARMED)
+MODE_NAMES = {
+    Mode.HOME: "Zuhause",
+    Mode.NIGHT: "Nacht",
+    Mode.AWAY: "Abwesend",
+    Mode.VACATION: "Urlaub",
+}
 ALLOWED_SENSOR_DOMAINS = frozenset(("binary_sensor", "lock", "camera", "image_processing"))

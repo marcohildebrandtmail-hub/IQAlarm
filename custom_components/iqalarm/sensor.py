@@ -46,4 +46,8 @@ class IQAlarmSensor(IQAlarmEntity, SensorEntity):
                 "reason": engine.events[0].reason if engine.events else "",
                 "timestamp": engine.events[0].timestamp if engine.events else None,
             }
-        return {"mode": engine.mode.value}
+        return {
+            "mode": engine.mode.value,
+            "profile_id": engine.profile_id,
+            "profile_name": engine.profile.name if engine.profile else None,
+        }

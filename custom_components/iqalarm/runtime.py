@@ -179,7 +179,15 @@ class IQAlarmRuntime:
         async_dispatcher_send(self.hass, SIGNAL_UPDATE)
 
     def report(self, kind: str, reason: str) -> None:
-        event = EventLog(time.time(), kind, int(self.engine.level), self.engine.mode.value, reason)
+        event = EventLog(
+            time.time(),
+            kind,
+            int(self.engine.level),
+            self.engine.mode.value,
+            reason,
+            profile_id=self.engine.profile_id,
+            profile_name=self.engine.profile.name if self.engine.profile else "",
+        )
         self.engine.events.appendleft(event)
         self.hass.bus.async_fire(EVENT_TYPE, event.to_dict())
         self.publish()
@@ -230,15 +238,18 @@ class IQAlarmRuntime:
 
     async def set_mode(self, mode: str, code: str | None = None) -> None:
         target = Mode(mode)
-        if target == Mode.DISARMED:
+        await self.set_profile(None if target == Mode.DISARMED else target.value, code)
+
+    async def set_profile(self, profile_id: str | None, code: str | None = None) -> None:
+        if profile_id is None:
             await self.validate_code(code)
         async with self.lock:
-            previous = self.engine.mode
-            self.engine.set_mode(target.value, time.time())
-            if previous != self.engine.mode:
+            previous = (self.engine.mode, self.engine.profile_id)
+            self.engine.set_profile(profile_id, time.time())
+            if previous != (self.engine.mode, self.engine.profile_id):
                 self.generation += 1
             await self.flush()
-        if target == Mode.DISARMED:
+        if profile_id is None:
             await self.dispatcher.cleanup(force=True)
             await self.persist()
 
@@ -266,15 +277,23 @@ class IQAlarmRuntime:
             self.report("configuration_changed", "Konfiguration gespeichert")
             await self.persist()
 
-    async def test_level(self, stage: str, dry_run: bool = True) -> list[dict]:
+    async def test_level(
+        self, stage: str, dry_run: bool = True, profile_id: str | None = None
+    ) -> list[dict]:
         if stage not in ("1", "2", "3", "diagnostic"):
             raise ValueError("Ungültige Teststufe")
+        if profile_id is not None and profile_id not in self.config.profiles:
+            raise ValueError("Unbekanntes Alarmprofil")
+        profile_id = profile_id or self.engine.profile_id
+        profile = self.config.profiles.get(profile_id)
         event = EventLog(
             time.time(),
             "test",
             0 if stage == "diagnostic" else int(stage),
-            self.engine.mode.value,
+            profile.base_mode if profile else self.engine.mode.value,
             "Manueller Aktionstest",
+            profile_id=profile_id,
+            profile_name=profile.name if profile else "",
         )
         result = await self.dispatcher.dispatch(
             event, self.generation, dry_run=dry_run, stage=stage

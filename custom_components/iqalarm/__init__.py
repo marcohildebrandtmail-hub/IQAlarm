@@ -96,6 +96,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             async_register_admin_service(
                 hass,
                 DOMAIN,
+                "arm_profile",
+                partial(_arm_profile, hass),
+                schema=vol.Schema({vol.Required("profile_id"): str}),
+            )
+            async_register_admin_service(
+                hass,
+                DOMAIN,
                 "set_mode",
                 partial(_set_mode, hass),
                 schema=vol.Schema(
@@ -121,6 +128,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     {
                         vol.Required("level"): vol.In(["1", "2", "3", "diagnostic"]),
                         vol.Optional("dry_run", default=True): bool,
+                        vol.Optional("profile_id"): str,
                     }
                 ),
             )
@@ -166,6 +174,13 @@ async def _set_mode(hass: HomeAssistant, call: ServiceCall) -> None:
         raise ServiceValidationError(str(err)) from err
 
 
+async def _arm_profile(hass: HomeAssistant, call: ServiceCall) -> None:
+    try:
+        await runtime(hass).set_profile(call.data["profile_id"])
+    except ValueError as err:
+        raise ServiceValidationError(str(err)) from err
+
+
 async def _clear_quarantine(hass: HomeAssistant, call: ServiceCall) -> None:
     instance = runtime(hass)
     instance.engine.clear_quarantine(call.data.get("entity_id"), time.time())
@@ -173,4 +188,6 @@ async def _clear_quarantine(hass: HomeAssistant, call: ServiceCall) -> None:
 
 
 async def _test_level(hass: HomeAssistant, call: ServiceCall) -> None:
-    await runtime(hass).test_level(call.data["level"], call.data["dry_run"])
+    await runtime(hass).test_level(
+        call.data["level"], call.data["dry_run"], call.data.get("profile_id")
+    )

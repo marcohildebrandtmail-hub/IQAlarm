@@ -48,6 +48,8 @@ class IQAlarmPanel(IQAlarmEntity, AlarmControlPanelEntity):
         return {
             "alarm_level": int(engine.level),
             "armed_mode": engine.mode.value,
+            "profile_id": engine.profile_id,
+            "profile_name": engine.profile.name if engine.profile else None,
             "quarantined_flapping": list(engine.quarantine),
             "entry_deadline": engine.pending_until,
             "exit_deadline": engine.arming_until,

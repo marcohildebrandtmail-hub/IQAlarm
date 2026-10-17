@@ -309,6 +309,8 @@ async def verify(hass, target) -> str:
         "PASS real authenticated HTTP/WS, CRUD, area import, subscriptions, admin boundaries and private snapshots",
         flush=True,
     )
+    await verify_profiles(hass, entry, admin_token, user_token, calls)
+    runtime = entry.runtime_data
 
     hass.states.async_set("binary_sensor.window", "off")
     hass.states.async_set("binary_sensor.motion", "off")
@@ -341,6 +343,134 @@ async def verify(hass, target) -> str:
     )
     print("HA INTEGRATION VERIFICATION PASSED", flush=True)
     return admin_token
+
+
+async def verify_profiles(hass, entry, admin_token, user_token, calls) -> None:
+    """Exercise profile identity, real actions, native compatibility and migration."""
+    from copy import deepcopy
+
+    saved = entry.runtime_data.config.to_dict()
+    for entity_id in saved["sensors"]:
+        hass.states.async_set(entity_id, "off")
+    await hass.async_block_till_done()
+    async with aiohttp.ClientSession() as session:
+        async with session.ws_connect("http://127.0.0.1:18123/api/websocket") as ws:
+            await ws.receive_json()
+            await ws.send_json({"type": "auth", "access_token": admin_token})
+            assert (await ws.receive_json())["type"] == "auth_ok"
+            next_id = 0
+
+            async def request(kind, **kwargs):
+                nonlocal next_id
+                next_id += 1
+                await ws.send_json({"id": next_id, "type": f"iqalarm/{kind}", **kwargs})
+                return await ws.receive_json()
+
+            async def crud(collection, operation, **kwargs):
+                return await request(
+                    "crud",
+                    collection=collection,
+                    operation=operation,
+                    revision=entry.runtime_data.config.revision,
+                    **kwargs,
+                )
+
+            action = {
+                "id": "profile_push",
+                "level": "3",
+                "kind": "notify",
+                "target": "notify.test_phone",
+                "message": "{{profile}} / {{mode}}",
+            }
+            assert (await crud("actions", "save", item=action))["success"]
+            custom = deepcopy(saved["profiles"]["armed_night"])
+            custom.update(
+                id="guests",
+                name="Nacht mit Gästen",
+                base_mode="armed_night",
+                room_ids=["living"],
+                sensor_ids=["binary_sensor.window", "binary_sensor.motion"],
+                action_ids=["profile_push"],
+            )
+            created = await crud("profiles", "save", item=custom)
+            assert created["success"], created
+            assert created["result"]["config"]["profiles"]["guests"]["name"] == custom["name"]
+            blocked = await crud("profiles", "delete", key="armed_night")
+            assert not blocked["success"]
+            before = len(calls)
+            dry = await request("test_level", level="3", dry_run=True, profile_id="guests")
+            assert dry["success"] and [p["id"] for p in dry["result"]["actions"]] == [
+                "profile_push"
+            ]
+            assert len(calls) == before and entry.runtime_data.engine.mode.value == "disarmed"
+            assert (await request("arm_profile", profile_id="guests"))["success"]
+            await hass.async_block_till_done()
+            entity = hass.states.get("alarm_control_panel.iqalarm")
+            assert entity.state == "armed_night" and entity.attributes["profile_id"] == "guests"
+            assert entity.attributes["profile_name"] == "Nacht mit Gästen"
+            switched = await request("set_mode", mode="armed_night")
+            assert not switched["success"] and entry.runtime_data.engine.profile_id == "guests"
+            changed = await crud("profiles", "save", item={**custom, "name": "Changed"})
+            assert not changed["success"]
+            hass.states.async_set("binary_sensor.window", "on")
+            await hass.async_block_till_done()
+            await asyncio.wait_for(entry.runtime_data.queue.join(), 5)
+            assert entry.runtime_data.engine.level == 2
+            assert len(calls) == before, "Excluded suspicion actions were executed"
+            hass.states.async_set("binary_sensor.motion", "on")
+            await hass.async_block_till_done()
+            await asyncio.wait_for(entry.runtime_data.queue.join(), 5)
+            assert hass.states.get("alarm_control_panel.iqalarm").state == "triggered"
+            assert calls[before:] == [
+                (
+                    "notify",
+                    "test_phone",
+                    {
+                        "title": "IQAlarm · Stufe 3",
+                        "message": "Nacht mit Gästen / armed_night",
+                        "data": {},
+                    },
+                )
+            ], calls[before:]
+            assert await hass.config_entries.async_reload(entry.entry_id)
+            await hass.async_block_till_done()
+            restored = entry.runtime_data
+            assert restored.engine.profile_id == "guests" and restored.engine.level == 3
+            assert restored.engine.events[0].profile_name == "Nacht mit Gästen"
+            assert len(calls) == before + 1, "Restart replayed profile actions"
+            refused = await request("set_mode", mode="disarmed", code="0000")
+            assert not refused["success"] and restored.engine.profile_id == "guests"
+            assert (await request("set_mode", mode="disarmed", code="2468"))["success"]
+            for entity_id in saved["sensors"]:
+                hass.states.async_set(entity_id, "off")
+            await hass.async_block_till_done()
+            await hass.services.async_call(
+                "iqalarm", "arm_profile", {"profile_id": "guests"}, blocking=True
+            )
+            assert entry.runtime_data.engine.profile_id == "guests"
+            await entry.runtime_data.set_mode("disarmed", "2468")
+            await entry.runtime_data.set_mode("armed_night")
+            assert entry.runtime_data.engine.profile_id == "armed_night"
+            await entry.runtime_data.set_mode("disarmed", "2468")
+            assert (await crud("actions", "delete", key="profile_push"))["success"]
+            assert entry.runtime_data.config.profiles["guests"].action_ids == []
+            empty = await request("test_level", level="3", profile_id="guests")
+            assert empty["success"] and empty["result"]["actions"] == []
+            assert (await crud("profiles", "delete", key="guests"))["success"]
+        async with session.ws_connect("http://127.0.0.1:18123/api/websocket") as ws:
+            await ws.receive_json()
+            await ws.send_json({"type": "auth", "access_token": user_token})
+            await ws.receive_json()
+            await ws.send_json(
+                {"id": 1, "type": "iqalarm/arm_profile", "profile_id": "armed_night"}
+            )
+            denied = await ws.receive_json()
+            assert not denied["success"] and denied["error"]["code"] == "unauthorized"
+    await entry.runtime_data.update_config(saved, entry.runtime_data.config.revision)
+    print(
+        "PASS custom profile CRUD, scoped real actions, native HA state, PIN, permissions, deletion and restart identity",
+        flush=True,
+    )
 
 
 async def verify_actions(hass, runtime, calls, capture) -> None:

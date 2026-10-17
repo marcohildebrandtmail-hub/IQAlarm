@@ -45,6 +45,18 @@ Im Nachtprofil wird eine Bewegung **vor** dem Öffnungssignal nicht nachträglic
 
 Eingangsverzögerung gilt ausschließlich für ausdrücklich markierte Öffnungssensoren und beginnt nach deren Bestätigung. Weitere Signale verlängern die laufende Frist nicht. Ausgangsverzögerung unterdrückt Einbruchssignale während des Verlassens; danach werden noch offene Kontakte erneut geprüft. Vor einem Profilwechsel muss entschärft werden.
 
+### Eigene Profile im IQAlarm-Panel
+
+Seit Version 1.1 können unter **Alarmstufen & Regeln → Profil anlegen** eigene Profile erstellt und vorhandene Profile dupliziert werden, etwa „Nacht mit Gästen“ oder „Nur Garage“. Jedes Profil hat einen eindeutigen Namen, eigene Timer und Korrelationsregeln sowie eine Auswahl von Räumen, Sensoren und Aktionen. Im Live-Cockpit erscheinen alle Profile als Schaltflächen; das tatsächlich aktive Profil wird mit seinem Namen und seiner Sensoranzahl angezeigt.
+
+- **Basis und HA-Modus:** Zuhause, Nacht, Abwesend oder Urlaub bestimmen die Grundlogik, etwa die Nacht-Bewegungsfreigabe, und den Zustand von `alarm_control_panel.iqalarm`. Zwei Nachtprofile können unterschiedliche Regeln verwenden und melden beide `armed_night`. `profile_id` und `profile_name` zeigen als Attribute das genaue aktive Profil an.
+- **Standardbedienung:** Die normale HA-Alarmkarte und HomeKit verwenden weiterhin Standardmodi. Ein HA-Befehl für Nacht aktiviert immer das Standardprofil mit der ID `armed_night`. Dieses Profil darf umbenannt und angepasst werden; seine HA-Zuordnung bleibt fest. Zusätzliche Profile werden über das IQAlarm-Panel oder `iqalarm.arm_profile` aktiviert. Die vier Standardprofile sind nicht löschbar.
+- **Auswahl:** „Alle“ schließt auch später hinzugefügte Einträge ein. Bei ausgeschaltetem „Alle“ gelten ausschließlich die ausgewählten Einträge. Raum- und Sensorauswahl werden gemeinsam angewendet. Direkt zugeordnete Vorfeldsensoren müssen vor einem ausgewählten Raum liegen; globales Vorfeld gilt für alle ausgewählten Räume. Explizite Raum-/Sensorauswahl im Zuhause-Profil ersetzt die allgemeinen Zuhause-Freigaben der Räume.
+- **Leere Auswahl:** Eine leere explizite Raum- oder Sensorauswahl überwacht nichts; ein solches Profil lässt sich nicht scharfschalten. Das Entfernen des letzten ausgewählten Sensors erweitert den Schutzbereich niemals automatisch. Eine leere Aktionsauswahl führt keine konfigurierten Aktionen aus. Automatische Vorfeld-Snapshots und Aufzeichnungen richten sich zusätzlich nach den Systemeinstellungen.
+- **Aktionen testen:** Unter Aktionen & Push kann die Aktionsauswahl eines Profils trocken geprüft werden, ohne das Profil zu aktivieren. Die Auswahl gilt für alle Stufen und für Prell-Diagnosen während des scharfen Profils; im unscharfen Zustand gilt die globale Diagnosekonfiguration.
+
+Bestehende Konfigurationen werden ohne Verlust ihrer Regeln übernommen. Aktives Profil, Quarantäne und Auslösekette bleiben bei Neustarts erhalten. Profiländerungen und Profilwechsel erfordern weiterhin den unscharfen Zustand; zum Entschärfen gilt eine eingerichtete PIN.
+
 ## Installation und Einrichtung
 
 Unterstützt: **Home Assistant ab 2025.12.0**, geprüft mit 2025.12.5 und 2026.10.2.
@@ -78,7 +90,7 @@ Dateien liegen außerhalb des öffentlichen `/local`-Bereichs und werden standar
 - Stufe 3: zusätzlich Sirenen, Schalter, Skripte, TTS und kritische Mobile-App-Pushs.
 - Freie Schalter-/Skript-/Sprachaktionen sind unteren Stufen nicht erlaubt, weil damit eine Innensirene indirekt ausgelöst werden könnte.
 - Kritische Pushs/Bilder brauchen einen passenden `notify.mobile_app_*`-Dienst. Generische `notify.*`-Entitäten unterstützen gewöhnliche Textnachrichten über `notify.send_message`.
-- Vorlagen unterstützen `{{room}}`, `{{sensor}}`, `{{level}}`, `{{reason}}`, `{{chain}}` und `{{mode}}`. Andere Jinja-Ausdrücke werden nicht ausgeführt.
+- Vorlagen unterstützen `{{room}}`, `{{sensor}}`, `{{level}}`, `{{reason}}`, `{{chain}}`, `{{mode}}` und den Profilnamen `{{profile}}`. Andere Jinja-Ausdrücke werden nicht ausgeführt.
 - IQAlarm schaltet selbst eingeschaltete Sirenen, Schalter, Skripte und Lichter nach der konfigurierten Dauer oder beim Entschärfen aus. Bereits eingeschaltete Geräte werden nicht zum späteren Abschalten übernommen. Rollos werden geöffnet und bleiben offen.
 - Aktionsfehler erscheinen im Logbuch. Ein fehlerhafter Kameraabruf unterdrückt die Textbenachrichtigung nicht. Langsame Push-/Kameradienste blockieren die Sireneneskalation nicht.
 - Ein Trockenlauf verändert keine Alarmstufe und schaltet keine Geräte. Nur der ausdrücklich aktivierte reale Test führt Aktionen aus.
@@ -98,11 +110,12 @@ Nach einem Neustart wird der gewählte Modus einschließlich Quarantäne und bes
 | Binary-Sensoren je Raum | Raumproblem, Vorfeld aktiv, Verdacht aktiv |
 | Simulationsschalter | Anwesenheitssimulation aktivieren/deaktivieren |
 | `iqalarm.set_mode` | Modus setzen, optional `code` zum Entschärfen |
+| `iqalarm.arm_profile` | Eigenes Profil über `profile_id` scharfschalten |
 | `iqalarm.clear_quarantine` | Einzelnen oder alle Sensoren freigeben |
-| `iqalarm.trigger_test_level` | Stufe `1`, `2`, `3` oder `diagnostic`, `dry_run` standardmäßig `true` |
-| `iqalarm_event` | Strukturierte Ereignisse mit Zeit, Modus, Entscheidung und Auslösekette |
+| `iqalarm.trigger_test_level` | Stufe `1`, `2`, `3` oder `diagnostic`, `dry_run` standardmäßig `true`, optional `profile_id` |
+| `iqalarm_event` | Strukturierte Ereignisse mit Zeit, Modus, Profil, Entscheidung und Auslösekette |
 
-WebSocket-Befehle: `iqalarm/get`, `iqalarm/subscribe`, `iqalarm/catalog`, `iqalarm/config/save`, `iqalarm/crud`, `iqalarm/import_areas`, `iqalarm/set_mode`, `iqalarm/clear_quarantine`, `iqalarm/test_level`. Alle verlangen einen Administrator. CRUD und Konfigurationsänderungen verlangen die aktuelle `revision`.
+WebSocket-Befehle: `iqalarm/get`, `iqalarm/subscribe`, `iqalarm/catalog`, `iqalarm/config/save`, `iqalarm/crud`, `iqalarm/import_areas`, `iqalarm/set_mode`, `iqalarm/arm_profile`, `iqalarm/clear_quarantine`, `iqalarm/test_level`. CRUD unterstützt Räume, Sensoren, Aktionen und Profile. Alle Befehle verlangen einen Administrator. CRUD und Konfigurationsänderungen verlangen die aktuelle `revision`.
 
 ## Entwicklung und Verifikation
 

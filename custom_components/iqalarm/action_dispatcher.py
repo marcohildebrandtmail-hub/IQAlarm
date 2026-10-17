@@ -17,7 +17,7 @@ from .const import Mode
 from .models import Action, EventLog
 
 _LOGGER = logging.getLogger(__name__)
-VARIABLE = re.compile(r"{{\s*(room|sensor|level|reason|chain|mode)\s*}}")
+VARIABLE = re.compile(r"{{\s*(room|sensor|level|reason|chain|mode|profile)\s*}}")
 
 
 class ActionDispatcher:
@@ -63,6 +63,7 @@ class ActionDispatcher:
             "reason": event.reason,
             "chain": chain,
             "mode": event.mode,
+            "profile": event.profile_name,
         }
 
     def render(self, template: str, variables: dict[str, str]) -> str:
@@ -108,8 +109,13 @@ class ActionDispatcher:
         stage = stage or (
             "diagnostic" if event.kind == "quarantined_flapping" else str(event.level)
         )
+        profile = self.runtime.config.profiles.get(event.profile_id)
         actions = [
-            a for a in self.runtime.config.actions.values() if a.enabled and a.level == stage
+            a
+            for a in self.runtime.config.actions.values()
+            if a.enabled
+            and a.level == stage
+            and (profile is None or profile.action_ids is None or a.id in profile.action_ids)
         ]
         plan = [{"id": a.id, "kind": a.kind, "target": a.target, "level": a.level} for a in actions]
         cameras = set()
