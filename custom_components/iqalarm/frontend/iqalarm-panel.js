@@ -1,6 +1,6 @@
-import {DraftJournal} from "./floorplan-drafts.js?v=2.2.7";
-import {buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.2.7";
-/* IQAlarm 2.2.7 · native ES module · no CDN, framework or build required. */
+import {DraftJournal} from "./floorplan-drafts.js?v=2.2.8";
+import {buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.2.8";
+/* IQAlarm 2.2.8 · native ES module · no CDN, framework or build required. */
 const RULES = {perimeter: "Vorfeld-Erkennung", single: "Unbestätigter Einzelsensor", flapping: "Sensor-Prellen", perimeter_contact: "Vorfeld + Öffnung", contact_motion: "Öffnung + Bewegung", multi_contact: "Zwei Öffnungssensoren", multi_motion: "Zwei Bewegungsmelder", immediate: "Freigegebene Einzelauslösung / Gefahr"};
 const PROFILE_ICONS = {"mdi:home-outline":"Zuhause", "mdi:weather-night":"Nacht", "mdi:home-export-outline":"Abwesend", "mdi:palm-tree":"Urlaub", "mdi:account-group-outline":"Besuch", "mdi:garage-variant":"Garage", "mdi:shield-check-outline":"Schutz", "mdi:eye-outline":"Beobachtung", "mdi:dog":"Haustiere", "mdi:briefcase-outline":"Arbeit", "mdi:bed-outline":"Schlafzimmer", "mdi:lock-outline":"Schloss", "mdi:home-floor-0":"Erdgeschoss", "mdi:home-floor-1":"Obergeschoss", "mdi:home-floor-b":"Keller", "mdi:tree-outline":"Garten"};
 const ROLES = {perimeter_camera: "Außenkamera / Person", perimeter_sensor: "Vorfeld-Sensor", entry_contact: "Tür / Fenster", lock_contact: "Schloss / Riegel", vibration_glass: "Glas / Vibration", interior_motion: "Bewegung innen", interior_mmwave: "Präsenz / mmWave", panic: "Panik", smoke: "Rauch / Gefahr"};
@@ -54,7 +54,7 @@ class IQAlarmPanel extends HTMLElement {
       if (e.target.name === "kind") this._actionVisibility(e.target.value);
       if (e.target.id === "plan-select") { this._selectPlan(e.target.value); this._render(); }
       if (e.target.id === "zone-room") this._assignDraftRoom(e.target.value);
-      if (e.target.id === "plan-candidate") this._chooseCandidate(e.target.value);
+      if (e.target.id === "plan-candidate") { if (e.target.value) this._chooseCandidate(e.target.value); else this._deselectZone(); }
       if (e.target.id === "plan-merge" && e.target.value) this._mergeCandidate(e.target.value);
       if (e.target.id === "analysis-gap") this.analysisGap = e.target.value === "auto" ? null : Number(e.target.value);
       if (e.target.id === "plan-upload") this._uploadPlan(e.target.files[0], e.target.dataset.plan);
@@ -303,11 +303,12 @@ class IQAlarmPanel extends HTMLElement {
     const assignedAnywhere = new Set(plans.flatMap(p => Object.keys(p.zones || {})));
     const unmappedRooms = Object.fromEntries(Object.entries(this.data.config.rooms).filter(([id]) => !assignedAnywhere.has(id)));
     const isGraphic = !edit || !!this.graphicPreview;
-    const renderZones = !edit ? buildGraphicZones(plan.zones, unmappedRooms) : (this.graphicPreview && !Object.keys(plan.zones).length ? buildGraphicZones(plan.zones, unmappedRooms) : plan.zones);
+    const renderZones = isGraphic ? buildGraphicZones(plan.zones, unmappedRooms) : plan.zones;
     const {viewBox, scale} = isGraphic ? graphicViewBox(renderZones, width, height) : {viewBox: `0 0 ${width} ${height}`, scale: 1};
     const showSvg = isGraphic ? (Boolean(plan.image || image) || Object.keys(renderZones).length > 0) : Boolean(image);
+    const hasSelection = Boolean(this.points.length || this.selectedCandidate || this.zoneRoom);
     const defs = `<defs><pattern id="iq-grid-minor" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M 24 0 L 0 0 0 24" fill="none" stroke="#38bdf8" stroke-opacity=".07" stroke-width="1" vector-effect="non-scaling-stroke"/></pattern><pattern id="iq-grid-major" width="120" height="120" patternUnits="userSpaceOnUse"><rect width="120" height="120" fill="url(#iq-grid-minor)"/><path d="M 120 0 L 0 0 0 120" fill="none" stroke="#38bdf8" stroke-opacity=".15" stroke-width="1" vector-effect="non-scaling-stroke"/></pattern><linearGradient id="iq-room-fill-ok" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#14b8a6" stop-opacity=".32"/><stop offset="100%" stop-color="#0ea5e9" stop-opacity=".16"/></linearGradient><linearGradient id="iq-room-fill-warn" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#f59e0b" stop-opacity=".38"/><stop offset="100%" stop-color="#ea580c" stop-opacity=".2"/></linearGradient><linearGradient id="iq-room-fill-alert" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#ef4444" stop-opacity=".42"/><stop offset="100%" stop-color="#b91c1c" stop-opacity=".24"/></linearGradient></defs>`;
-    return `<section class="card" style="margin:20px 0"><div class="row between"><div class="row"><h2>${edit ? "Grundriss-Assistent" : "Live-Grundriss"}</h2>${!edit || this.graphicPreview ? `<span class="pill">${icon("vector-polygon")}Raum-Grafik · ${Object.keys(renderZones).length} ${Object.keys(renderZones).length === 1 ? "Raum" : "Räume"}</span>` : ""}</div>${plans.length ? `<label class="field">Etage<select id="plan-select">${options(Object.fromEntries(plans.map(p => [p.id,p.name])),plan.id)}</select></label>` : ""}</div><div class="row" style="margin-top:14px">${rawPlan ? `<button class="${plan.image ? "" : "primary"}" data-command="floorplan-pick" data-config>${icon("upload")}${plan.image ? "Bild ersetzen" : "Grundriss hochladen"}</button><input type="file" id="plan-upload" data-plan="${esc(plan.id)}" accept="image/png,image/jpeg" hidden data-config>` : ""}<button data-command="floorplan-upload" data-config>${rawPlan ? "Weitere Etage hochladen" : "Grundriss hochladen"}</button>${!edit ? '<button class="primary" data-command="floorplan-editor">Räume im Grundriss bearbeiten</button>' : `<button type="button" class="${this.graphicPreview ? "primary" : ""}" data-command="toggle-graphic-preview">${icon(this.graphicPreview ? "image-edit-outline" : "vector-polygon")}${this.graphicPreview ? "Vorlagenbild einblenden" : "Fertige Raum-Grafik ansehen"}</button><button data-command="floorplan-edit" data-id="${esc(plan.id)}" data-config>Umbenennen</button>`}${rawPlan ? `<button type="button" data-command="floorplan-reset" data-id="${esc(plan.id)}" data-config>${icon("refresh")}Von vorne anfangen</button><button type="button" class="danger" data-command="floorplan-delete" data-id="${esc(plan.id)}" data-config>${icon("delete-outline")}Grundriss löschen</button>` : ""}</div>${edit && image ? `<ol class="plan-steps"><li>Bild hochgeladen</li><li>Raumflächen prüfen und zuordnen</li><li>Bereich speichern</li></ol><div class="plan-assistant"><div class="row"><button class="primary" data-command="floorplan-analyze" data-config ${this._analysisBusy ? "disabled" : ""}>${icon("floor-plan")}${this._analysisBusy ? "Flächen werden gesucht …" : "Flächen erkennen"}</button>${candidates.length ? `<button type="button" data-command="candidate-next" data-config>${icon("arrow-right")}Nächste Fläche (${candidates.length} offen)</button>` : ""}<details><summary>Erweiterte Erkennung</summary><label class="field" style="margin-top:12px">Wandlücken schließen<select id="analysis-gap" data-config>${options({auto:"Automatisch",0:"Aus",8:"Kleine Lücken",18:"Mittlere Lücken",28:"Größere Lücken",40:"Große Lücken"},this.analysisGap == null ? "auto" : String(this.analysisGap))}</select><small>Automatisch passt die Bildauswertung an den Grundriss an. Diese Einstellung misst keine Türbreite.</small></label></details></div><p>Dein hochgeladenes Bild dient nur als Zeichenvorlage. Im Live-Status (und über „Fertige Raum-Grafik ansehen“) wird daraus automatisch eine saubere Smart-Home-Raumgrafik ohne das Originalbild erzeugt.</p>${this.planAnalysis ? `<p role="status"><strong>${candidates.length ? `${candidates.length} Flächen vorgeschlagen` : "Keine geschlossenen Raumflächen gefunden"}</strong>${candidates.length ? " · Im Bild anklicken, mit Shift + Klick verbinden oder mit Entf löschen." : " · Türöffnungs-Ausgleich ändern oder Eckpunkte selbst setzen."}</p>` : ""}${candidates.length ? `<div class="row" style="margin-top:14px"><label class="field">Flächenvorschlag<select id="plan-candidate">${options(Object.fromEntries(candidates.map(item => [item.id,`Fläche ${item.id} · ${Math.round(item.area*1000)/10} % des Bildes`])),this.selectedCandidate,"Vorschlag auswählen")}</select></label>${mergeTargets.length ? `<label class="field">Mit Fläche verbinden<select id="plan-merge">${options(Object.fromEntries(mergeTargets.map(item => [item.id,`Fläche ${item.id} hinzufügen`])),"","Fläche zum Verbinden wählen")}</select></label>` : ""}${this.selectedCandidate ? `<button type="button" class="danger" data-command="candidate-delete" data-config>Vorschlag ${esc(this.selectedCandidate)} entfernen</button>` : ""}</div>` : ""}${this._assistantStepHTML(plan,candidates)}</div><div class="row" style="margin-top:14px"><label class="field">Raum / Außenbereich<select id="zone-room" data-config>${this._floorplanRoomsOptions(this.zoneRoom)}</select></label><button data-command="room-new" data-config>${icon("plus")}Raum anlegen</button><button data-command="zone-clear" data-config>Neu zeichnen</button><button data-command="zone-undo" data-config>Letzter Punkt zurück</button><button data-command="draft-undo" data-config ${!this._draftJournal?.history.length ? "disabled" : ""}>Rückgängig</button><button data-command="draft-redo" data-config ${!this._draftJournal?.future.length ? "disabled" : ""}>Wiederholen</button><button class="primary" data-command="zone-save" data-config>Bereich speichern</button><button data-command="zone-delete" data-config>Bereich entfernen</button></div><p id="draft-status" role="status">${this._draftJournal?.dirty ? (this._draftJournal.available ? "Ungespeicherter Entwurf · im Browser gesichert" : "Ungespeicherter Entwurf · Browser-Sicherung nicht verfügbar") : this.zoneRoom && plan.zones[this.zoneRoom] ? "Bereich gespeichert" : "Raumauswahl ordnet die aktuelle Fläche zu und behält alle Eckpunkte."}</p><p>Vorschlag anklicken (Shift + Klick verbindet zwei Vorschläge, Entf entfernt einen Vorschlag) oder Eckpunkte im Bild setzen. Eckpunkte mit Maus oder Finger verschieben; mit Pfeiltasten fein korrigieren, mit Entf löschen. Offene Wohnbereiche können als einzelne Räume markiert werden. Erst „Bereich speichern“ übernimmt die Zuordnung.</p>` : edit ? '<p style="margin-top:14px">Wähle zuerst dein Grundrissbild über den Hochladen-Button aus.</p>' : '<p style="margin-top:14px">Erstellte Räume als interaktive Smart-Home-Grafik (ohne Rohbild). Raum anklicken für Live-Sensoren und Kameras.</p>'}${showSvg ? `<div class="plan-wrap ${isGraphic ? "graphic-mode" : "template-mode"}" style="aspect-ratio:${width}/${height}"><svg id="floorplan" role="img" aria-label="${esc(plan.name)}" data-edit="${edit && !this.graphicPreview}" viewBox="${viewBox}">${defs}${isGraphic ? `<rect x="0" y="0" width="${width}" height="${height}" fill="url(#iq-grid-major)"/>` : `<image href="${esc(image)}" width="${width}" height="${height}"/>`}${this._zoneLinksSVG(plan,renderZones)}${Object.entries(renderZones).map(([room,points]) => this._zoneSVG(plan,room,points,isGraphic,scale)).join("")}${edit && !this.graphicPreview && !this.manualDrawing ? candidates.map(item => `<g data-candidate="${esc(item.id)}" role="button" tabindex="0" aria-label="Fläche ${esc(item.id)} auswählen"><polygon class="plan-proposal ${this.selectedCandidate === item.id ? "chosen" : ""}" points="${(this.selectedCandidate === item.id && this.points.length ? this.points : item.points).map(([x,y]) => `${x*width},${y*height}`).join(" ")}"/><text x="${item.center[0]*width}" y="${item.center[1]*height}" text-anchor="middle" font-size="${Math.max(width,height)*.024}">${esc(item.id)}</text></g>`).join("") : ""}<polygon class="draft" points="${edit && !this.graphicPreview ? this.points.map(([x,y]) => `${x*width},${y*height}`).join(" ") : ""}"/><g class="draft-points">${edit && !this.graphicPreview ? this._draftHandles(plan) : ""}</g></svg></div>` : `<div class="empty" style="margin-top:16px">${plan.image ? "Bild wird geladen …" : "PNG / JPG auswählen · maximal 10 MB"}</div>`}</section>`;
+    return `<section class="card" style="margin:20px 0"><div class="row between"><div class="row"><h2>${edit ? "Grundriss-Assistent" : "Live-Grundriss"}</h2>${!edit || this.graphicPreview ? `<span class="pill">${icon("vector-polygon")}Raum-Grafik · ${Object.keys(renderZones).length} ${Object.keys(renderZones).length === 1 ? "Raum" : "Räume"}</span>` : ""}</div>${plans.length ? `<label class="field">Etage<select id="plan-select">${options(Object.fromEntries(plans.map(p => [p.id,p.name])),plan.id)}</select></label>` : ""}</div><div class="row" style="margin-top:14px">${rawPlan ? `<button class="${plan.image ? "" : "primary"}" data-command="floorplan-pick" data-config>${icon("upload")}${plan.image ? "Bild ersetzen" : "Grundriss hochladen"}</button><input type="file" id="plan-upload" data-plan="${esc(plan.id)}" accept="image/png,image/jpeg" hidden data-config>` : ""}<button data-command="floorplan-upload" data-config>${rawPlan ? "Weitere Etage hochladen" : "Grundriss hochladen"}</button>${!edit ? '<button class="primary" data-command="floorplan-editor">Räume im Grundriss bearbeiten</button>' : `<button type="button" class="${this.graphicPreview ? "primary" : ""}" data-command="toggle-graphic-preview">${icon(this.graphicPreview ? "image-edit-outline" : "vector-polygon")}${this.graphicPreview ? "Vorlagenbild einblenden" : "Fertige Raum-Grafik ansehen"}</button><button data-command="floorplan-edit" data-id="${esc(plan.id)}" data-config>Umbenennen</button>`}${rawPlan ? `<button type="button" data-command="floorplan-reset" data-id="${esc(plan.id)}" data-config>${icon("refresh")}Von vorne anfangen</button><button type="button" class="danger" data-command="floorplan-delete" data-id="${esc(plan.id)}" data-config>${icon("delete-outline")}Grundriss löschen</button>` : ""}</div>${edit && image ? `<ol class="plan-steps"><li>Bild hochgeladen</li><li>Raumflächen prüfen und zuordnen</li><li>Bereich speichern</li></ol><div class="plan-assistant"><div class="row"><button class="primary" data-command="floorplan-analyze" data-config ${this._analysisBusy ? "disabled" : ""}>${icon("floor-plan")}${this._analysisBusy ? "Flächen werden gesucht …" : "Flächen erkennen"}</button>${candidates.length ? `<button type="button" data-command="candidate-next" data-config>${icon("arrow-right")}Nächste Fläche (${candidates.length} offen)</button><button type="button" data-command="candidates-clear" data-config>${icon("eye-off-outline")}Restliche Vorschläge ausblenden</button>` : ""}${hasSelection ? `<button type="button" data-command="zone-deselect" data-config>${icon("close")}Auswahl aufheben</button>` : ""}<details><summary>Erweiterte Erkennung</summary><label class="field" style="margin-top:12px">Wandlücken schließen<select id="analysis-gap" data-config>${options({auto:"Automatisch",0:"Aus",8:"Kleine Lücken",18:"Mittlere Lücken",28:"Größere Lücken",40:"Große Lücken"},this.analysisGap == null ? "auto" : String(this.analysisGap))}</select><small>Automatisch passt die Bildauswertung an den Grundriss an. Diese Einstellung misst keine Türbreite.</small></label></details></div><p>Dein hochgeladenes Bild dient nur als Zeichenvorlage. Im Live-Status (und über „Fertige Raum-Grafik ansehen“) wird daraus automatisch eine saubere Smart-Home-Raumgrafik ohne das Originalbild erzeugt.</p>${this.planAnalysis ? `<p role="status"><strong>${candidates.length ? `${candidates.length} Flächen vorgeschlagen` : "Keine geschlossenen Raumflächen gefunden"}</strong>${candidates.length ? " · Im Bild anklicken, mit Shift + Klick verbinden oder mit Entf löschen." : " · Türöffnungs-Ausgleich ändern oder Eckpunkte selbst setzen."}</p>` : ""}${candidates.length ? `<div class="row" style="margin-top:14px"><label class="field">Flächenvorschlag<select id="plan-candidate">${options(Object.fromEntries(candidates.map(item => [item.id,`Fläche ${item.id} · ${Math.round(item.area*1000)/10} % des Bildes`])),this.selectedCandidate,"Vorschlag auswählen")}</select></label>${mergeTargets.length ? `<label class="field">Mit Fläche verbinden<select id="plan-merge">${options(Object.fromEntries(mergeTargets.map(item => [item.id,`Fläche ${item.id} hinzufügen`])),"","Fläche zum Verbinden wählen")}</select></label>` : ""}${this.selectedCandidate ? `<button type="button" class="danger" data-command="candidate-delete" data-config>Vorschlag ${esc(this.selectedCandidate)} entfernen</button>` : ""}</div>` : ""}${this._assistantStepHTML(plan,candidates)}</div><div class="row" style="margin-top:14px"><label class="field">Raum / Außenbereich<select id="zone-room" data-config>${this._floorplanRoomsOptions(this.zoneRoom)}</select></label><button data-command="room-new" data-config>${icon("plus")}Raum anlegen</button><button data-command="zone-deselect" data-config ${!hasSelection ? "disabled" : ""}>${icon("close")}Auswahl aufheben</button><button data-command="zone-clear" data-config>Neu zeichnen</button><button data-command="zone-undo" data-config>Letzter Punkt zurück</button><button data-command="draft-undo" data-config ${!this._draftJournal?.history.length ? "disabled" : ""}>Rückgängig</button><button data-command="draft-redo" data-config ${!this._draftJournal?.future.length ? "disabled" : ""}>Wiederholen</button><button class="primary" data-command="zone-save" data-config>Bereich speichern</button><button data-command="zone-delete" data-config>Bereich entfernen</button></div><p id="draft-status" role="status">${this._draftJournal?.dirty ? (this._draftJournal.available ? "Ungespeicherter Entwurf · im Browser gesichert" : "Ungespeicherter Entwurf · Browser-Sicherung nicht verfügbar") : this.zoneRoom && plan.zones[this.zoneRoom] ? "Bereich gespeichert" : "Raumauswahl ordnet die aktuelle Fläche zu und behält alle Eckpunkte."}</p><p>Vorschlag anklicken (Shift + Klick verbindet zwei Vorschläge, Entf entfernt einen Vorschlag, Esc hebt die Auswahl auf) oder Eckpunkte im Bild setzen. Eckpunkte mit Maus oder Finger verschieben; mit Pfeiltasten fein korrigieren, mit Entf löschen. Offene Wohnbereiche können als einzelne Räume markiert werden. Erst „Bereich speichern“ übernimmt die Zuordnung.</p>` : edit ? '<p style="margin-top:14px">Wähle zuerst dein Grundrissbild über den Hochladen-Button aus.</p>' : '<p style="margin-top:14px">Erstellte Räume als interaktive Smart-Home-Grafik (ohne Rohbild). Raum anklicken für Live-Sensoren und Kameras.</p>'}${showSvg ? `<div class="plan-wrap ${isGraphic ? "graphic-mode" : "template-mode"}" style="aspect-ratio:${width}/${height}"><svg id="floorplan" role="img" aria-label="${esc(plan.name)}" data-edit="${edit && !this.graphicPreview}" viewBox="${viewBox}">${defs}${isGraphic ? `<rect x="0" y="0" width="${width}" height="${height}" fill="url(#iq-grid-major)"/>` : `<image href="${esc(image)}" width="${width}" height="${height}"/>`}${this._zoneLinksSVG(plan,renderZones)}${Object.entries(renderZones).map(([room,points]) => this._zoneSVG(plan,room,points,isGraphic,scale)).join("")}${edit && !this.graphicPreview && !this.manualDrawing ? candidates.map(item => `<g data-candidate="${esc(item.id)}" role="button" tabindex="0" aria-label="Fläche ${esc(item.id)} auswählen"><polygon class="plan-proposal ${this.selectedCandidate === item.id ? "chosen" : ""}" points="${(this.selectedCandidate === item.id && this.points.length ? this.points : item.points).map(([x,y]) => `${x*width},${y*height}`).join(" ")}"/><text x="${item.center[0]*width}" y="${item.center[1]*height}" text-anchor="middle" font-size="${Math.max(width,height)*.024}">${esc(item.id)}</text></g>`).join("") : ""}<polygon class="draft" points="${edit && !this.graphicPreview ? this.points.map(([x,y]) => `${x*width},${y*height}`).join(" ") : ""}"/><g class="draft-points">${edit && !this.graphicPreview ? this._draftHandles(plan) : ""}</g></svg></div>` : `<div class="empty" style="margin-top:16px">${plan.image ? "Bild wird geladen …" : "PNG / JPG auswählen · maximal 10 MB"}</div>`}</section>`;
   }
   _unassignedRoomChoices(plan) {
     const used = new Set(Object.keys(plan?.zones || {}));
@@ -315,17 +316,21 @@ class IQAlarmPanel extends HTMLElement {
   }
   _assistantStepHTML(plan, candidates) {
     const choices = this._unassignedRoomChoices(plan);
+    if (this.points.length < 3 && (this.manualDrawing || (this.zoneRoom && !plan.zones[this.zoneRoom]))) {
+      const target = this.zoneRoom ? (this.data.config.rooms[this.zoneRoom]?.name || choices.find(c => c.id === this.zoneRoom)?.name || "") : "";
+      return `<div class="assistant-step"><div class="row between"><strong>${icon("vector-polygon")} Zeichenmodus${target ? ` für „${esc(target)}“` : ""}: Klicke die Ecken der Fläche ins Bild (${this.points.length}/3 Punkte)</strong><button type="button" class="small" data-command="zone-deselect" data-config>${icon("close")}Abbrechen / Auswahl aufheben</button></div><p style="margin:6px 0 0">Ab 3 Punkten kannst du ${target ? "mit „Bereich speichern“ übernehmen" : "den Raum zuordnen"}. Bestehende Räume und Vorschläge bleiben unverändert.</p></div>`;
+    }
     if (this.points.length >= 3 && (!this.zoneRoom || !plan.zones[this.zoneRoom] || this._draftJournal?.dirty)) {
       const currentLabel = this.zoneRoom ? (choices.find(c => c.id === this.zoneRoom)?.name || this.data.config.rooms[this.zoneRoom]?.name || this.zoneRoom) : "";
-      return `<div class="assistant-step"><div class="row between"><strong>${icon("cursor-default-click-outline")} ${this.selectedCandidate ? `Fläche ${esc(this.selectedCandidate)} ist ausgewählt` : "Aktuelle Fläche ist markiert"} — Welcher Raum ist das?</strong>${currentLabel ? `<span class="pill">Gewählt: ${esc(currentLabel)}</span>` : `<span class="pill" style="--level-color:var(--iq-amber)">Bitte Raum wählen</span>`}</div><p style="margin:6px 0 10px">Mit 1 Klick dem passenden Raum zuordnen, speichern und direkt zur nächsten Fläche springen:</p><div class="chips">${choices.slice(0,18).map(item => `<button type="button" class="small ${this.zoneRoom === item.id ? "primary" : ""}" data-command="quick-save-zone" data-id="${esc(item.id)}" data-config>${icon("check")}Als „${esc(item.name)}“ speichern</button>`).join("")}<button type="button" class="small primary" data-command="zone-save-new" data-config>${icon("plus")}Neuen Raumnamen eingeben …</button></div></div>`;
+      return `<div class="assistant-step"><div class="row between"><strong>${icon("cursor-default-click-outline")} ${this.selectedCandidate ? `Fläche ${esc(this.selectedCandidate)} ist ausgewählt` : "Aktuelle Fläche ist markiert"} — Welcher Raum ist das?</strong><div class="row">${currentLabel ? `<span class="pill">Gewählt: ${esc(currentLabel)}</span>` : `<span class="pill" style="--level-color:var(--iq-amber)">Bitte Raum wählen</span>`}<button type="button" class="small" data-command="zone-deselect" data-config>${icon("close")}Auswahl aufheben</button>${this.selectedCandidate ? `<button type="button" class="small danger" data-command="candidate-delete" data-config>${icon("delete-outline")}Keine Raumfläche (verwerfen)</button>` : ""}</div></div><p style="margin:6px 0 10px">Mit 1 Klick dem passenden Raum zuordnen und speichern (oder oben auf „Auswahl aufheben“ klicken, um frei z. B. für Terrasse / Garagenhof zu zeichnen):</p><div class="chips">${choices.slice(0,18).map(item => `<button type="button" class="small ${this.zoneRoom === item.id ? "primary" : ""}" data-command="quick-save-zone" data-id="${esc(item.id)}" data-config>${icon("check")}Als „${esc(item.name)}“ speichern</button>`).join("")}<button type="button" class="small primary" data-command="zone-save-new" data-config>${icon("plus")}Neuen Raumnamen eingeben …</button></div></div>`;
     }
     if (this.zoneRoom && plan.zones[this.zoneRoom] && !this._draftJournal?.dirty) {
-      return `<div class="assistant-step saved"><div class="row between"><strong>${icon("check-circle-outline")} Raum „${esc(this.data.config.rooms[this.zoneRoom]?.name || this.zoneRoom)}“ ist im Grundriss gespeichert!</strong><div class="row">${candidates.length ? `<button type="button" class="small primary" data-command="candidate-next" data-config>${icon("arrow-right")}Nächste Fläche zuordnen (${candidates.length} offen)</button>` : ""}<button type="button" class="small" data-command="toggle-graphic-preview">${icon("vector-polygon")}Fertige Raum-Grafik ansehen</button></div></div></div>`;
+      return `<div class="assistant-step saved"><div class="row between"><strong>${icon("check-circle-outline")} Raum „${esc(this.data.config.rooms[this.zoneRoom]?.name || this.zoneRoom)}“ ist ausgewählt (gespeichert)</strong><div class="row"><button type="button" class="small" data-command="zone-deselect" data-config>${icon("close")}Auswahl aufheben</button>${candidates.length ? `<button type="button" class="small primary" data-command="candidate-next" data-config>${icon("arrow-right")}Nächste Fläche (${candidates.length} offen)</button>` : ""}<button type="button" class="small" data-command="toggle-graphic-preview">${icon("vector-polygon")}Fertige Raum-Grafik ansehen</button></div></div></div>`;
     }
     if (candidates.length) {
-      return `<div class="assistant-step"><div class="row between"><strong>${icon("hand-pointing-right")} Schritt-für-Schritt: Wähle die nächste Fläche (${candidates.length} offen)</strong><button type="button" class="small primary" data-command="candidate-next" data-config>${icon("arrow-right")}Nächste Fläche starten (Fläche ${esc(candidates[0].id)})</button></div><div class="chips" style="margin-top:10px">${candidates.map(item => `<button type="button" class="small" data-command="candidate-pick" data-id="${esc(item.id)}" data-config>Fläche ${esc(item.id)} (${Math.round(item.area*1000)/10} %)</button>`).join("")}</div></div>`;
+      return `<div class="assistant-step"><div class="row between"><strong>${icon("hand-pointing-right")} Keine Fläche markiert — Nächste Fläche wählen oder Außenbereich anlegen</strong><div class="row"><button type="button" class="small" data-command="zone-clear" data-config>${icon("vector-polygon")}Frei im Bild zeichnen (z. B. Terrasse / Hof)</button><button type="button" class="small" data-command="room-new" data-config>${icon("plus")}Raum / Außenbereich anlegen</button><button type="button" class="small" data-command="candidates-clear" data-config>${icon("eye-off-outline")}Vorschläge ausblenden</button></div></div><div class="chips" style="margin-top:10px">${candidates.map(item => `<button type="button" class="small" data-command="candidate-pick" data-id="${esc(item.id)}" data-config>Fläche ${esc(item.id)} (${Math.round(item.area*1000)/10} %)</button>`).join("")}</div></div>`;
     }
-    return "";
+    return `<div class="assistant-step"><div class="row between"><strong>${icon("check-circle-outline")} Keine Fläche markiert — Weitere Bereiche (z. B. Terrasse, Garagenhof) hinzufügen</strong><div class="row"><button type="button" class="small primary" data-command="zone-clear" data-config>${icon("vector-polygon")}Frei im Bild zeichnen</button><button type="button" class="small" data-command="room-new" data-config>${icon("plus")}Raum / Außenbereich ohne Zeichnung anlegen</button><button type="button" class="small" data-command="toggle-graphic-preview">${icon("vector-polygon")}Fertige Raum-Grafik ansehen</button></div></div></div>`;
   }
   _draftSnapshot() { return {points:structuredClone(this.points),roomId:this.zoneRoom || null,candidateId:this.selectedCandidate || "",manual:!!this.manualDrawing}; }
   _applyDraft(state) { this.points=structuredClone(state.points); this.zoneRoom=state.roomId; this.selectedCandidate=state.candidateId; this.manualDrawing=state.manual; }
@@ -365,7 +370,17 @@ class IQAlarmPanel extends HTMLElement {
   _assignDraftRoom(id) {
     this._recordDraft(); this.zoneRoom=id || null;
     // Assigning a room never replaces geometry the user has already edited.
-    if (!this.points.length && id) this.points=structuredClone(this.data.config.floorplans[this.plan]?.zones[id] || []);
+    if ((!this.points.length || (!this._draftJournal?.dirty && !this.selectedCandidate)) && id) {
+      this.points=structuredClone(this.data.config.floorplans[this.plan]?.zones[id] || []);
+    } else if (!id && !this._draftJournal?.dirty && !this.selectedCandidate) {
+      this.points=[];
+    }
+    if (id && !this.points.length && !this.data.config.floorplans[this.plan]?.zones[id]) { this.selectedCandidate=""; this.manualDrawing=true; }
+    this._storeDraft(); this._render();
+  }
+  _deselectZone() {
+    this._recordDraft();
+    this.points=[]; this.selectedCandidate=""; this.zoneRoom=null; this.manualDrawing=false;
     this._storeDraft(); this._render();
   }
   async _zoneAssignmentDialog() {
@@ -390,11 +405,9 @@ class IQAlarmPanel extends HTMLElement {
   }
   async _quickSaveZone(roomId) {
     await this._saveDraftZone(roomId);
-    const next = this.planAnalysis?.candidates?.[0];
-    if (next) {
-      this._chooseCandidate(next.id, true);
-      this._toast(`Raum gespeichert · Nächste Fläche ${next.id} ausgewählt`);
-    }
+    this.points=[]; this.zoneRoom=null; this.selectedCandidate=""; this.manualDrawing=false;
+    this._draftJournal?.markSaved(this._draftSnapshot()); this._render();
+    this._toast("Raum gespeichert · Auswahl freigegeben");
   }
   _draftHandles(plan) {
     return this.points.map(([x,y],index) => `<circle data-draft-vertex="${index}" cx="${x*plan.width}" cy="${y*plan.height}" r="${Math.max(plan.width,plan.height)*.007}" role="button" tabindex="0" aria-label="Eckpunkt ${index+1} verschieben"/>`).join("");
@@ -434,6 +447,7 @@ class IQAlarmPanel extends HTMLElement {
   _selectSavedRoomZone(id) {
     const saved = this.data.config.floorplans[this.plan]?.zones[id];
     if (!saved) return;
+    if (this.zoneRoom === id && !this.selectedCandidate && !this._draftJournal?.dirty) { this._deselectZone(); return; }
     this._recordDraft(); this.selectedCandidate=""; this.manualDrawing=false; this.zoneRoom=id;
     this.points=structuredClone(saved); this._storeDraft(); this._render();
   }
@@ -540,7 +554,8 @@ class IQAlarmPanel extends HTMLElement {
       const room=event.target.closest("[data-room]");
       if (room && !this.manualDrawing) {this._selectSavedRoomZone(room.dataset.room); return;}
       if (this.points.length >= 64) { this._toast("Maximal 64 Eckpunkte pro Raum"); return; }
-      this._recordDraft(); this.points.push(this._planPosition(event,svg)); this._refreshDraft();
+      this._recordDraft(); this.points.push(this._planPosition(event,svg));
+      if (this.points.length === 3) { this._storeDraft(); this._render(); } else this._refreshDraft();
     } else { const zone=event.target.closest("[data-room]"); if (zone) this._liveDialog(zone.dataset.room); }
   }
   _refreshDraft(persist = true) {
@@ -583,10 +598,13 @@ class IQAlarmPanel extends HTMLElement {
     else if (["Delete","Backspace"].includes(event.key)) {event.preventDefault(); this._recordDraft(); this.points.splice(index,1); this._refreshDraft();}
   }
   _windowKey(event) {
-    if (event.defaultPrevented || this.tab !== 1 || !this.selectedCandidate || this.data?.status.active || this._requestBusy || this.shadowRoot.getElementById("editor")?.open) return;
-    if (!["Delete","Backspace"].includes(event.key)) return;
+    if (event.defaultPrevented || this.tab !== 1 || this.data?.status.active || this._requestBusy || this.shadowRoot.getElementById("editor")?.open) return;
     const active = this.shadowRoot.activeElement || document.activeElement;
     if (active && (["INPUT","TEXTAREA","SELECT"].includes(active.tagName) || active.hasAttribute?.("data-draft-vertex"))) return;
+    if (event.key === "Escape" && (this.points.length || this.selectedCandidate || this.zoneRoom)) {
+      event.preventDefault(); this._deselectZone(); return;
+    }
+    if (!this.selectedCandidate || !["Delete","Backspace"].includes(event.key)) return;
     event.preventDefault();
     this._deleteCandidate(this.selectedCandidate);
   }
@@ -608,7 +626,8 @@ class IQAlarmPanel extends HTMLElement {
 
   _roomDialog(id) {
     const r = this.data.config.rooms[id] || {name: "", adjacent: [], home_enabled: false};
-    this._dialog(id ? "Raum bearbeiten" : "Raum anlegen", `<div class="form-grid"><label class="field wide">Raumname<input name="name" value="${esc(r.name)}" required maxlength="100" autofocus></label><div class="wide checks"><h3>Direkt angrenzende Räume</h3>${Object.values(this.data.config.rooms).filter(x => x.id !== id).map(x => this._checkbox(`adj_${x.id}`, esc(x.name), r.adjacent.includes(x.id))).join("") || `<p>Noch keine weiteren Räume vorhanden.</p>`}</div></div>`, "room", id);
+    const canAttach = !id && this.tab === 1 && this.points.length >= 3 && !this.zoneRoom;
+    this._dialog(id ? "Raum bearbeiten" : "Raum / Außenbereich anlegen", `<div class="form-grid"><label class="field wide">Raumname<input name="name" value="${esc(r.name)}" required maxlength="100" autofocus placeholder="z. B. Terrasse, Garagenhof"></label>${canAttach ? `<div class="wide">${this._checkbox("attach_zone", `Aktuell markierte Fläche${this.selectedCandidate ? ` (Fläche ${esc(this.selectedCandidate)})` : ""} diesem Raum zuordnen`, false)}<small>Ohne Haken wird nur der Raum angelegt – du zeichnest die Fläche danach frei im Bild.</small></div>` : ""}<div class="wide checks"><h3>Direkt angrenzende Räume</h3>${Object.values(this.data.config.rooms).filter(x => x.id !== id).map(x => this._checkbox(`adj_${x.id}`, esc(x.name), r.adjacent.includes(x.id))).join("") || `<p>Noch keine weiteren Räume vorhanden.</p>`}</div></div>`, "room", id);
   }
 
   _profileDialog(copy = false) {
@@ -671,10 +690,24 @@ class IQAlarmPanel extends HTMLElement {
         else await this._saveDraftZone(this.zoneRoom);
       }
       else if (command === "zone-delete") {
-        if (!this.zoneRoom) throw new Error("Bitte den Raum des gespeicherten Bereichs auswählen");
-        const item=structuredClone(this.data.config.floorplans[this.plan]); delete item.zones[this.zoneRoom];
-        this.data=await this._call("crud",{collection:"floorplans",operation:"save",item,revision:this._viewRevision});
+        if (!this.zoneRoom) {
+          if (this.points.length || this.selectedCandidate) { this._deselectZone(); return; }
+          throw new Error("Bitte den Raum des gespeicherten Bereichs auswählen");
+        }
+        const item=structuredClone(this.data.config.floorplans[this.plan]);
+        if (item.zones[this.zoneRoom]) {
+          delete item.zones[this.zoneRoom];
+          this.data=await this._call("crud",{collection:"floorplans",operation:"save",item,revision:this._viewRevision});
+        }
         this._recordDraft(); this.points=[]; this.selectedCandidate=""; this._storeDraft(); this._draftJournal?.markSaved(this._draftSnapshot()); this._render();
+      }
+      else if (command === "zone-deselect") this._deselectZone();
+      else if (command === "candidates-clear") {
+        this._recordDraft();
+        if (this.planAnalysis) this.planAnalysis.candidates = [];
+        if (this.selectedCandidate) { this.selectedCandidate = ""; this.points = []; }
+        this._storeDraft(); this._render();
+        this._toast("Restliche Flächenvorschläge ausgeblendet");
       }
       else if (command === "candidate-pick") this._chooseCandidate(id, true);
       else if (command === "candidate-next") this._nextCandidate();
@@ -686,7 +719,7 @@ class IQAlarmPanel extends HTMLElement {
       else if (command === "zone-clear") {
         this._recordDraft();
         if (this.zoneRoom && this.data.config.floorplans[this.plan]?.zones[this.zoneRoom]) this.zoneRoom = null;
-        this.points = []; this.selectedCandidate = ""; this.manualDrawing = true; this._storeDraft(); this._render();
+        this.points = []; this.selectedCandidate = ""; this.manualDrawing = true; this.graphicPreview = false; this._storeDraft(); this._render();
       }
       else if (command === "stage-add" || command === "stage-remove") this._changeStageRows(command === "stage-add");
       else if (command === "profile-move") {
@@ -858,21 +891,21 @@ class IQAlarmPanel extends HTMLElement {
           } else if (type === "floorplan") { collection = "floorplans"; item = {...(this.data.config.floorplans[id] || {}), name:get("name")}; if (id) item.id = id; } else throw new Error("Unbekanntes Formular");
           const knownRooms = new Set(Object.keys(this.data.config.rooms));
           this.data = await this._call("crud", {collection, operation: "save", item, revision: this._dialogRevision});
-          if (type === "room" && !id && (this.selectedCandidate || this.points.length)) {
+          if (type === "room" && !id) {
             const newRoomId = Object.keys(this.data.config.rooms).find(key => !knownRooms.has(key));
-            if (newRoomId) {
-              this.zoneRoom = newRoomId;
-              if (this.plan && this.data.config.floorplans[this.plan] && this.points.length >= 3) {
+            if (newRoomId && this.tab === 1) {
+              if (bool("attach_zone") && this.plan && this.data.config.floorplans[this.plan] && this.points.length >= 3) {
                 const planItem = structuredClone(this.data.config.floorplans[this.plan]);
                 planItem.zones[newRoomId] = structuredClone(this.points);
                 const savedCandidate = this.selectedCandidate;
                 this.data = await this._call("crud", {collection: "floorplans", operation: "save", item: planItem, revision: this.data.config.revision});
-                if (savedCandidate && this.planAnalysis?.candidates) {
-                  this.planAnalysis.candidates = this.planAnalysis.candidates.filter(c => c.id !== savedCandidate);
-                  this.selectedCandidate = "";
-                }
-                this._draftJournal?.markSaved(this._draftSnapshot());
+                if (savedCandidate && this.planAnalysis?.candidates) this.planAnalysis.candidates = this.planAnalysis.candidates.filter(c => c.id !== savedCandidate);
+                this.points = []; this.selectedCandidate = ""; this.zoneRoom = null; this.manualDrawing = false;
+              } else {
+                // Clean start: nothing pre-selected, draw the new room's area freely in the image.
+                this.points = []; this.selectedCandidate = ""; this.zoneRoom = newRoomId; this.manualDrawing = true; this.graphicPreview = false;
               }
+              this._draftJournal?.markSaved(this._draftSnapshot());
             }
           }
           if (type === "profile") this.profile = Object.keys(this.data.config.profiles).find(key => this.data.config.profiles[key].name === item.name);
