@@ -47,7 +47,11 @@ class IQAlarmPanel(IQAlarmEntity, AlarmControlPanelEntity):
             "stage_id": engine.stage_id,
             "stage_name": self.runtime.config.stage(engine.stage_id).name,
             "profile_id": engine.evaluation_profile_id,
-            "profile_name": engine.profile.name if engine.profile else None,
+            "profile_name": (
+                engine.config.profiles[engine.evaluation_profile_id].name
+                if engine.evaluation_profile_id in engine.config.profiles
+                else None
+            ),
             "quarantined_flapping": list(engine.quarantine),
             "entry_deadline": engine.pending_until,
             "exit_deadline": engine.arming_until,

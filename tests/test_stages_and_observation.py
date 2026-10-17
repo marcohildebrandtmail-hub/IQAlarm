@@ -140,6 +140,23 @@ def test_no_background_profile_still_exposes_raw_states(engine):
     assert engine.room_status("living", 101)["open"]
 
 
+def test_observe_profile_is_removed_and_live_status_is_not_a_profile(config):
+    assert "observe" not in config.profiles
+    data = config.to_dict()
+    data["profiles"]["observe"] = {
+        "name": "Live-Beobachtung",
+        "reactions_enabled": False,
+        "action_ids": [],
+    }
+    data["settings"]["observation_profile_id"] = "observe"
+    migrated = Configuration.from_dict(data)
+    assert "observe" not in migrated.profiles
+    assert migrated.settings.observation_profile_id == "live"
+    engine = CorrelationEngine(migrated)
+    assert engine.snapshot(100)["profile_name"] is None
+    assert engine.snapshot(100)["profile_id"] is None
+
+
 def test_floorplan_roundtrip_and_normalized_coordinates(config):
     config.floorplans["eg"] = FloorPlan(
         "eg", "Erdgeschoss", zones={"living": [[0, 0], [1, 0], [1, 1], [0, 1]]}

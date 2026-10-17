@@ -292,7 +292,7 @@ class Settings:
     simulation_start: int = 18
     simulation_end: int = 23
     debounce_by_role: dict[str, int] = field(default_factory=dict)
-    observation_profile_id: str | None = "observe"
+    observation_profile_id: str | None = "live"
 
     def __post_init__(self) -> None:
         for key in (
@@ -401,7 +401,7 @@ class FloorPlan:
 
 
 def default_profiles() -> dict[str, Profile]:
-    profiles = {
+    return {
         m.value: Profile(
             name=MODE_NAMES[m],
             motion_mode="after_contact"
@@ -415,8 +415,6 @@ def default_profiles() -> dict[str, Profile]:
         )
         for m in ARMED_MODES
     }
-    profiles["observe"] = Profile(name="Live-Beobachtung", reactions_enabled=False, action_ids=[])
-    return profiles
 
 
 @dataclass
@@ -438,6 +436,17 @@ class Configuration:
 
     def stage_rank(self, stage_id: str) -> int:
         return next(index for index, stage in enumerate(self.stages) if stage.id == stage_id)
+
+    def default_stage_targets(self) -> dict[str, str]:
+        quiet = [stage.id for stage in self.stages if not stage.requires_confirmation]
+        return {
+            rule: (
+                quiet[min(1 if rule == "perimeter" else 2, len(quiet) - 1)]
+                if rule in UNCONFIRMED_RULES
+                else self.stages[-1].id
+            )
+            for rule in RULE_NAMES
+        }
 
     def validate(self) -> None:
         if len(self.rooms) > 250 or len(self.sensors) > 1000 or len(self.actions) > 100:
@@ -462,19 +471,14 @@ class Configuration:
         if baseline.requires_confirmation or baseline.allow_loud or baseline.latch:
             raise ValueError("Stufe 0 ist der lautlose Normalzustand")
         stage_ids = {stage.id for stage in self.stages}
-        quiet = [stage.id for stage in self.stages if not stage.requires_confirmation]
+        defaults = self.default_stage_targets()
         for key, profile in self.profiles.items():
             if not isinstance(key, str) or not ID_RE.fullmatch(key) or key == Mode.DISARMED:
                 raise ValueError("Ungültige Profil-ID")
             profile.name = profile.name.strip() or MODE_NAMES.get(key, "")
             text(profile.name, "Profilname", 100)
-            for rule in RULE_NAMES:
-                profile.stage_targets.setdefault(
-                    rule,
-                    quiet[min(1 if rule == "perimeter" else 2, len(quiet) - 1)]
-                    if rule in UNCONFIRMED_RULES
-                    else self.stages[-1].id,
-                )
+            for rule, target in defaults.items():
+                profile.stage_targets.setdefault(rule, target)
             if set(profile.stage_targets.values()) - stage_ids:
                 raise ValueError("Profil verweist auf eine unbekannte Alarmstufe")
             for rule in UNCONFIRMED_RULES:
@@ -504,7 +508,7 @@ class Configuration:
                     "Akustische/freie Aktionen und kritische Pushs benötigen eine freigegebene bestätigte Stufe (standardmäßig nur in Stufe 3)"
                 )
         observer = self.settings.observation_profile_id
-        if observer is not None and (
+        if observer not in (None, "live") and (
             observer not in self.profiles or self.profiles[observer].reactions_enabled
         ):
             raise ValueError(
@@ -564,6 +568,13 @@ def migrate_configuration(data: dict) -> dict:
     )
     if not isinstance(profiles, dict):
         raise ValueError("Profile müssen ein Objekt sein")
+    if (
+        "observe" in profiles
+        and isinstance(profiles["observe"], dict)
+        and profiles["observe"].get("name") in ("Live-Beobachtung", "Beobachtung")
+        and len(profiles) > 1
+    ):
+        profiles.pop("observe", None)
     for key, profile in profiles.items():
         if not isinstance(profile, dict):
             raise ValueError("Ungültiges Profil")
@@ -592,23 +603,8 @@ def migrate_configuration(data: dict) -> dict:
     settings = result.setdefault("settings", {})
     if not isinstance(settings, dict):
         raise ValueError("Einstellungen müssen ein Objekt sein")
-    if "observation_profile_id" not in settings:
-        observer_id = next(
-            (key for key, value in profiles.items() if value.get("reactions_enabled") is False),
-            None,
-        )
-        if observer_id is None:
-            observer_id = "observe"
-            while observer_id in profiles:
-                observer_id += "_live"
-            existing_names = {p.get("name", "").strip().casefold() for p in profiles.values()}
-            name = "Live-Beobachtung"
-            while name.casefold() in existing_names:
-                name += " (automatisch)"
-            profiles[observer_id] = asdict(
-                Profile(name=name, reactions_enabled=False, action_ids=[])
-            )
-        settings["observation_profile_id"] = observer_id
+    if settings.get("observation_profile_id") == "observe":
+        settings["observation_profile_id"] = "live"
     return result
 
 

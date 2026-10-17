@@ -39,7 +39,11 @@ class IQAlarmSensor(IQAlarmEntity, SensorEntity):
         if self.key == "flapping":
             return len(engine.quarantine)
         if self.key == "profile":
-            return engine.profile.name if engine.profile else "Aus"
+            return (
+                engine.config.profiles[engine.evaluation_profile_id].name
+                if engine.evaluation_profile_id in engine.config.profiles
+                else "Aus"
+            )
         return engine.events[0].kind if engine.events else "none"
 
     @property
@@ -58,5 +62,9 @@ class IQAlarmSensor(IQAlarmEntity, SensorEntity):
             "stage_name": self.runtime.config.stage(engine.stage_id).name,
             "active": engine.reactions_enabled,
             "profile_id": engine.profile_id,
-            "profile_name": engine.profile.name if engine.profile else None,
+            "profile_name": (
+                engine.config.profiles[engine.evaluation_profile_id].name
+                if engine.evaluation_profile_id in engine.config.profiles
+                else None
+            ),
         }

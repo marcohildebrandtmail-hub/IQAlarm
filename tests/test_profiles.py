@@ -150,8 +150,8 @@ def test_version_one_configuration_and_armed_state_migrate_without_losing_rules(
             "action_ids",
         ):
             profile.pop(key, None)
-    old["profiles"].pop("observe")
-    old["settings"].pop("observation_profile_id")
+    old["profiles"].pop("observe", None)
+    old["settings"].pop("observation_profile_id", None)
     old["profiles"]["armed_night"]["correlation_seconds"] = 47
     migrated = Configuration.from_dict(old)
     assert migrated.profiles["armed_night"].name == "Nacht"
@@ -199,6 +199,15 @@ def test_profile_limit_is_enforced(config):
         config.profiles[f"profile_{i}"] = Profile(name=f"Profil {i}", motion_mode="after_contact")
     with pytest.raises(ValueError, match="50 Profile"):
         config.validate()
+
+
+def test_profile_order_is_preserved_across_roundtrip(config):
+    add_profile(config)
+    keys = list(reversed(config.profiles))
+    data = config.to_dict()
+    data["profiles"] = {k: data["profiles"][k] for k in keys}
+    reordered = Configuration.from_dict(data)
+    assert list(reordered.profiles) == keys
 
 
 def test_saved_profile_selections_are_independent_copies(config):

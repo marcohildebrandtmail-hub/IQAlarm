@@ -19,7 +19,7 @@ from .const import (
     Role,
     RunState,
 )
-from .models import Configuration, EventLog, Evidence
+from .models import Configuration, EventLog, Evidence, Profile
 
 
 class CorrelationEngine:
@@ -50,11 +50,23 @@ class CorrelationEngine:
 
     @property
     def profile(self):
-        return self.config.profiles.get(self.evaluation_profile_id)
+        if self.evaluation_profile_id:
+            return self.config.profiles.get(self.evaluation_profile_id)
+        if self.config.settings.observation_profile_id == "live":
+            return Profile(
+                name="Aus",
+                reactions_enabled=False,
+                action_ids=[],
+                stage_targets=self.config.default_stage_targets(),
+            )
+        return None
 
     @property
     def evaluation_profile_id(self):
-        return self.profile_id or self.config.settings.observation_profile_id
+        if self.profile_id:
+            return self.profile_id
+        obs = self.config.settings.observation_profile_id
+        return None if obs in (None, "live") else obs
 
     @property
     def mode(self):
@@ -612,7 +624,11 @@ class CorrelationEngine:
             "confirmed": self.confirmed,
             "evaluation_profile_id": self.evaluation_profile_id,
             "profile_id": self.profile_id,
-            "profile_name": self.profile.name if self.profile else None,
+            "profile_name": (
+                self.config.profiles[self.evaluation_profile_id].name
+                if self.evaluation_profile_id in self.config.profiles
+                else None
+            ),
             "monitored_sensors": [
                 sensor.entity_id
                 for sensor in self.config.sensors.values()

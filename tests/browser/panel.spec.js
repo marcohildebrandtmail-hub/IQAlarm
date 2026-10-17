@@ -9,23 +9,26 @@ test.beforeEach(async ({page}) => {
 test("desktop cockpit and real room/sensor/action/profile CRUD", async ({page}) => {
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
-  await expect(page.getByRole("heading", {name: "Dein Haus im Blick"})).toBeVisible();
+  await expect(page.getByRole("heading", {name: "Dein Haus im Überblick"})).toBeVisible();
+  await expect(page.getByText("Signale verstehen. Ereignisse bestätigen. Gezielt reagieren.")).toHaveCount(0);
+  await expect(page.getByRole("button", {name: "Live-Beobachtung"})).toHaveCount(0);
   await expect(page.getByRole("button", {name: "Nacht", exact: true})).toBeVisible();
-  await page.getByRole("tab", {name: "Räume & Topologie"}).click();
+  await page.getByRole("tab", {name: "Räume & Grundriss"}).click();
   await page.getByRole("button", {name: "Raum anlegen"}).click();
   await page.getByLabel("Raumname", {exact: true}).fill("Browser Büro");
   await page.getByRole("button", {name: "Speichern", exact: true}).click();
   await expect(page.getByRole("heading", {name: "Browser Büro", exact: true})).toBeVisible();
-  await page.getByRole("tab", {name: "Sensoren & Prell-Schutz"}).click();
+  await page.getByRole("tab", {name: "Kameras & Sensoren"}).click();
+  await expect(page.getByRole("heading", {name: /Kameras & Außensensoren/})).toBeVisible();
   await page.getByRole("button", {name: "binary_sensor.window bearbeiten", exact: true}).click();
   await page.getByLabel("Anzeigename", {exact: true}).fill("Browser Fenster");
   await page.getByRole("button", {name: "Speichern", exact: true}).click();
   await expect(page.getByText("Browser Fenster", {exact: true})).toBeVisible();
-  await page.getByRole("tab", {name: "Alarmstufen & Regeln"}).click();
+  await page.getByRole("tab", {name: "Profile & System"}).click();
   await page.getByLabel("Korrelationsfenster (Sekunden)", {exact: true}).fill("58");
   await page.getByRole("button", {name: "Profil speichern"}).click();
   await expect(page.getByLabel("Korrelationsfenster (Sekunden)", {exact: true})).toHaveValue("58");
-  await page.getByRole("tab", {name: "Aktionen & Push"}).click();
+  await page.getByRole("tab", {name: "Level-Konfiguration"}).click();
   await page.getByRole("button", {name: "Aktion hinzufügen"}).click();
   await page.getByLabel(/^Ziel \/ Dienst/).fill("notify.test_phone");
   await page.getByLabel(/^Nachricht/).fill("Browser-Test {{room}} {{sensor}}");
@@ -33,16 +36,17 @@ test("desktop cockpit and real room/sensor/action/profile CRUD", async ({page}) 
   await expect(page.getByText("Browser-Test {{room}} {{sensor}}", {exact: true})).toBeVisible();
   await page.getByRole("button", {name: "Stufe 1 trocken testen", exact: true}).click();
   await expect(page.getByText("Trockenlauf abgeschlossen. Keine Geräte wurden geschaltet.")).toBeVisible();
-  await page.getByRole("tab", {name: "Live-Cockpit"}).click();
+  await page.getByRole("tab", {name: "Live-Status"}).click();
   await page.getByRole("button", {name: "Nacht", exact: true}).click();
-  await expect(page.getByText("Nacht · Alarmreaktionen aktiv", {exact: true})).toBeVisible();
-  await page.getByRole("tab", {name: "Räume & Topologie"}).click();
+  await expect(page.getByRole("heading", {name: "Nacht", exact: true})).toBeVisible();
+  await expect(page.getByText("Alarmreaktionen aktiv", {exact: true})).toBeVisible();
+  await page.getByRole("tab", {name: "Räume & Grundriss"}).click();
   await expect(page.getByRole("button", {name: "Raum anlegen"})).toBeDisabled();
-  await page.getByRole("tab", {name: "Live-Cockpit"}).click();
-  await page.getByRole("button", {name: "Aus · Live", exact: true}).click();
+  await page.getByRole("tab", {name: "Live-Status"}).click();
+  await page.getByRole("button", {name: "Aus", exact: true}).click();
   await page.getByLabel("PIN", {exact: true}).fill("2468");
   await page.getByRole("button", {name: "Speichern", exact: true}).click();
-  await expect(page.getByText("Live-Beobachtung · Beobachtung", {exact: true})).toBeVisible();
+  await expect(page.getByRole("heading", {name: "Anlage aus", exact: true})).toBeVisible();
   expect(errors).toEqual([]);
   fs.mkdirSync("test-results", {recursive: true});
   await page.screenshot({path: "test-results/cockpit-desktop.png", fullPage: true});
@@ -51,23 +55,23 @@ test("desktop cockpit and real room/sensor/action/profile CRUD", async ({page}) 
 test("mobile dark theme, accessible tabs, topology and form validation", async ({page}) => {
   await page.setViewportSize({width: 390, height: 844});
   await page.evaluate(() => document.body.classList.add("dark"));
-  await expect(page.getByRole("heading", {name: "Dein Haus im Blick"})).toBeVisible();
+  await expect(page.getByRole("heading", {name: "Dein Haus im Überblick"})).toBeVisible();
   const overflow = await page.locator("iqalarm-panel").evaluate(el => {
     const shell = el.shadowRoot.querySelector(".shell");
     return shell.scrollWidth > shell.clientWidth;
   });
   expect(overflow).toBe(false);
-  await page.getByRole("tab", {name: "Räume & Topologie"}).click();
+  await page.getByRole("tab", {name: "Räume & Grundriss"}).click();
   await page.getByRole("button", {name: "Raum anlegen"}).click();
   await page.getByRole("button", {name: "Speichern", exact: true}).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByRole("button", {name: "Abbrechen", exact: true}).click();
-  await page.getByRole("tab", {name: "Live-Cockpit"}).click();
+  await page.getByRole("tab", {name: "Live-Status"}).click();
   await page.screenshot({path: "test-results/cockpit-mobile-dark.png", fullPage: true});
 });
 
 test("all tabs render and untrusted labels stay text", async ({page}) => {
-  for (const name of ["Räume & Topologie", "Sensoren & Prell-Schutz", "Alarmstufen & Regeln", "Aktionen & Push", "Live-Cockpit"]) {
+  for (const name of ["Räume & Grundriss", "Kameras & Sensoren", "Level-Konfiguration", "Profile & System", "Live-Status"]) {
     await page.getByRole("tab", {name, exact: true}).click();
     await expect(page.locator("iqalarm-panel").locator("main")).toBeVisible();
   }
@@ -80,22 +84,25 @@ test("all tabs render and untrusted labels stay text", async ({page}) => {
 });
 
 test("lost websocket is visible and configuration becomes read-only", async ({page}) => {
-  await page.getByRole("tab", {name: "Räume & Topologie"}).click();
+  await page.getByRole("tab", {name: "Räume & Grundriss"}).click();
   await expect(page.getByRole("button", {name: "Raum anlegen"})).toBeEnabled();
   await page.evaluate(() => window.iqTest.disconnect());
   await expect(page.getByText("Verbindung unterbrochen", {exact: true})).toBeVisible();
   await expect(page.getByRole("button", {name: "Raum anlegen"})).toBeDisabled();
 });
 
-test("custom profiles can be created, scoped, copied, armed and deleted in the panel", async ({page}) => {
+test("custom profiles can be created, sorted, scoped, copied, armed and deleted in the panel", async ({page}) => {
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
-  await page.getByRole("tab", {name: "Alarmstufen & Regeln"}).click();
+  await page.getByRole("tab", {name: "Profile & System"}).click();
   await page.getByRole("button", {name: "Profil anlegen", exact: true}).click();
   await page.getByRole("dialog").getByLabel("Profilname", {exact: true}).fill("Nacht mit Gästen");
   await page.getByRole("button", {name: "Speichern", exact: true}).click();
   await expect(page.getByRole("heading", {name: "Nacht mit Gästen"})).toBeVisible();
   await expect(page.locator("#rules-form").getByLabel(/^Basis und HA-Modus/)).toHaveCount(0);
+  await page.getByRole("button", {name: "Profil nach links verschieben", exact: true}).click();
+  const reordered = await page.evaluate(() => window.iqTest.request({type: "iqalarm/get"}));
+  expect(Object.values(reordered.config.profiles).at(-2).name).toBe("Nacht mit Gästen");
   await page.getByLabel("Alarmreaktionen und Geräteaktionen erlauben",{exact:true}).check();
   await page.getByLabel("Alle Räume einbeziehen", {exact: true}).uncheck();
   await page.getByLabel("Räume auswählen", {exact: false}).selectOption({label: "Wohnzimmer"});
@@ -108,7 +115,7 @@ test("custom profiles can be created, scoped, copied, armed and deleted in the p
   await page.screenshot({path: "test-results/profiles-desktop.png", fullPage: true});
   await page.reload();
   await expect(page.getByText("Live verbunden · lokal")).toBeVisible();
-  await page.getByRole("tab", {name: "Alarmstufen & Regeln"}).click();
+  await page.getByRole("tab", {name: "Profile & System"}).click();
   await page.getByRole("button", {name: "Nacht mit Gästen", exact: true}).click();
   await expect(page.getByLabel("Korrelationsfenster (Sekunden)", {exact: true})).toHaveValue("39");
   await expect(page.getByLabel("Alle Räume einbeziehen", {exact: true})).not.toBeChecked();
@@ -119,19 +126,19 @@ test("custom profiles can be created, scoped, copied, armed and deleted in the p
   await page.getByRole("button", {name: "Löschen", exact: true}).click();
   await page.getByRole("button", {name: "Speichern", exact: true}).click();
   await expect(page.getByRole("button", {name: "Nacht mit Gästen Kopie", exact: true})).toHaveCount(0);
-  await page.getByRole("tab", {name: "Live-Cockpit"}).click();
+  await page.getByRole("tab", {name: "Live-Status"}).click();
   await page.getByRole("button", {name: "Nacht mit Gästen", exact: true}).click();
-  await expect(page.getByText("Nacht mit Gästen · Alarmreaktionen aktiv", {exact: true})).toBeVisible();
+  await expect(page.getByRole("heading", {name: "Nacht mit Gästen", exact: true})).toBeVisible();
   await expect(page.getByText("1 Sensoren ausgewertet · Home Assistant: An", {exact: true})).toBeVisible();
   await expect(page.getByRole("button", {name: "Nacht", exact: true})).toBeDisabled();
   const state = await page.evaluate(() => window.iqTest.request({type: "iqalarm/get"}));
   expect(state.status.mode).toBe("active");
   expect(state.status.profile_name).toBe("Nacht mit Gästen");
-  await page.getByRole("button", {name: "Aus · Live", exact: true}).click();
+  await page.getByRole("button", {name: "Aus", exact: true}).click();
   await page.getByLabel("PIN", {exact: true}).fill("2468");
   await page.getByRole("button", {name: "Speichern", exact: true}).click();
-  await expect(page.getByText("Live-Beobachtung · Beobachtung", {exact: true})).toBeVisible();
-  await page.getByRole("tab", {name: "Alarmstufen & Regeln"}).click();
+  await expect(page.getByRole("heading", {name: "Anlage aus", exact: true})).toBeVisible();
+  await page.getByRole("tab", {name: "Profile & System"}).click();
   await page.getByRole("button", {name: "Nacht mit Gästen", exact: true}).click();
   await page.getByRole("button", {name: "Löschen", exact: true}).click();
   await page.getByRole("button", {name: "Speichern", exact: true}).click();
@@ -149,7 +156,7 @@ test("custom profile names stay text on mobile and in the rule editor", async ({
   }, name);
   await expect(page.getByRole("button", {name, exact: true})).toBeVisible();
   await page.getByRole("button", {name, exact: true}).click();
-  await expect(page.getByText(`${name} · Alarmreaktionen aktiv`, {exact: true})).toBeVisible();
+  await expect(page.getByRole("heading", {name, exact: true})).toBeVisible();
   const overflow = await page.locator("iqalarm-panel").evaluate(el => {
     const shell = el.shadowRoot.querySelector(".shell");
     return shell.scrollWidth > shell.clientWidth;
@@ -157,7 +164,7 @@ test("custom profile names stay text on mobile and in the rule editor", async ({
   expect(overflow).toBe(false);
   expect(await page.evaluate(() => window.__profileInjected)).toBeUndefined();
   await page.screenshot({path: "test-results/profiles-mobile-dark.png", fullPage: true});
-  await page.getByRole("tab", {name: "Alarmstufen & Regeln"}).click();
+  await page.getByRole("tab", {name: "Profile & System"}).click();
   await page.getByRole("button", {name, exact: true}).click();
   await expect(page.locator('#rules-form input[name="profile_name"]')).toHaveValue(name);
   expect(await page.evaluate(() => window.__profileInjected)).toBeUndefined();
@@ -169,15 +176,18 @@ test("custom profile names stay text on mobile and in the rule editor", async ({
 });
 
 test("custom stage count, labels and rule targets are saved without HA mapping", async ({page}) => {
-  await page.getByRole("tab",{name:"Alarmstufen & Regeln"}).click();
+  await page.getByRole("tab",{name:"Level-Konfiguration"}).click();
   const rows = page.locator("[data-stage-row]");
   const original = await rows.count();
-  await page.getByRole("button",{name:"Stufe hinzufügen",exact:true}).click();
+  await page.locator("#stages-form").getByRole("button",{name:"Stufe hinzufügen",exact:true}).click();
   await expect(rows).toHaveCount(original+1);
   await rows.last().locator('[name="stage_name"]').fill("Alarm nach Maß");
   await rows.last().getByLabel("Bestätigung erforderlich",{exact:true}).check();
   await rows.last().getByLabel("Akustische / freie Aktionen erlauben",{exact:true}).check();
   await page.getByRole("button",{name:"Alarmstufen speichern",exact:true}).click();
+  await page.getByRole("button",{name:new RegExp("Alarm nach Maß$")}).click();
+  await expect(page.getByRole("heading",{name:new RegExp("Alarm nach Maß$")})).toBeVisible();
+  await page.getByRole("tab",{name:"Profile & System"}).click();
   await expect(page.locator('[name="target_contact_motion"] option').filter({hasText:"Alarm nach Maß"})).toHaveCount(1);
   await page.locator('[name="target_contact_motion"]').selectOption({label:`${original} · Alarm nach Maß`});
   await page.getByRole("button",{name:"Profil speichern",exact:true}).click();
@@ -185,9 +195,6 @@ test("custom stage count, labels and rule targets are saved without HA mapping",
   expect(state.config.stages.at(-1).name).toBe("Alarm nach Maß");
   expect(state.config.profiles.armed_night.stage_targets.contact_motion).toBe(state.config.stages.at(-1).id);
   expect(state.config.profiles.armed_night.base_mode).toBeUndefined();
-  await page.getByRole("tab",{name:"Aktionen & Push"}).click();
-  await page.getByRole("button",{name:new RegExp("Alarm nach Maß$")}).click();
-  await expect(page.getByRole("heading",{name:"Alarm nach Maß",exact:true})).toBeVisible();
   // Restore the mapping before removing the added stage.
   await page.evaluate(async () => {
     const data=await window.iqTest.request({type:"iqalarm/get"});
@@ -199,7 +206,7 @@ test("custom stage count, labels and rule targets are saved without HA mapping",
 
 test("floorplan upload, room polygon, live state and keyboard room details", async ({page}) => {
   const errors=[]; page.on("pageerror",error => errors.push(error.message));
-  await page.getByRole("tab",{name:"Räume & Topologie"}).click();
+  await page.getByRole("tab",{name:"Räume & Grundriss"}).click();
   await page.getByRole("button",{name:"Grundriss anlegen",exact:true}).click();
   await page.getByLabel("Etage / Name",{exact:true}).fill("Test-Erdgeschoss");
   await page.getByRole("button",{name:"Speichern",exact:true}).click();
@@ -211,7 +218,7 @@ test("floorplan upload, room polygon, live state and keyboard room details", asy
   for (const [x,y] of [[.1,.1],[.5,.1],[.5,.8],[.1,.8]]) await svg.click({position:{x:x*rect.width,y:y*rect.height}});
   await page.getByRole("button",{name:"Bereich speichern",exact:true}).click();
   await expect(page.locator('#floorplan [data-room="living"]')).toHaveCount(1);
-  await page.getByRole("tab",{name:"Live-Cockpit"}).click();
+  await page.getByRole("tab",{name:"Live-Status"}).click();
   await expect(page.locator('#floorplan [data-room="living"]')).toBeVisible();
   // Real HA state endpoint, through the admin test session.
   await page.locator("iqalarm-panel").evaluate(async el => {
