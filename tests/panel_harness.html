@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>IQAlarm · Integrationstest</title><style>html,body{height:100%;margin:0;font-family:system-ui}body{--primary-color:#087e9b;--primary-background-color:#f3f6fa;--primary-text-color:#182b42;--secondary-text-color:#64758b;--card-background-color:#fff;--divider-color:#dce3ec}.dark{--primary-color:#33c1c4;--primary-background-color:#111b27;--primary-text-color:#e3edf7;--secondary-text-color:#9cadc0;--card-background-color:#1b2939;--divider-color:#344456}</style></head><body><iqalarm-panel></iqalarm-panel><script type="module">
+import "/iqalarm_static/iqalarm-panel.js";
+// This transport talks to the real, disposable Home Assistant test instance.
+const {token} = await (await fetch("/iqalarm-test/session")).json();
+const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/websocket`);
+let sequence = 0;
+const pending = new Map(), subscribers = new Map();
+const ready = new Promise((resolve, reject) => {
+  ws.addEventListener("error", () => reject(new Error("WebSocket connection failed")));
+  ws.addEventListener("message", event => {
+    const msg = JSON.parse(event.data);
+    if (msg.type === "auth_required") ws.send(JSON.stringify({type: "auth", access_token: token}));
+    else if (msg.type === "auth_ok") resolve();
+    else if (msg.type === "auth_invalid") reject(new Error(msg.message));
+    else if (msg.type === "event") subscribers.get(msg.id)?.(msg.event);
+    else if (msg.type === "result") {
+      const request = pending.get(msg.id); pending.delete(msg.id);
+      if (msg.success) request?.resolve(msg.result);
+      else request?.reject(new Error(msg.error.message));
+    }
+  });
+});
+function request(data, subscription) {
+  const id = ++sequence;
+  if (subscription) subscribers.set(id, subscription);
+  const promise = new Promise((resolve, reject) => pending.set(id, {resolve, reject}));
+  ws.send(JSON.stringify({id, ...data}));
+  return {id, promise};
+}
+await ready;
+window.iqTest = {request: async data => request(data).promise};
+const connectionEvents = new EventTarget();
+ws.addEventListener("close", () => connectionEvents.dispatchEvent(new Event("disconnected")));
+window.iqTest.disconnect = () => ws.close();
+document.querySelector("iqalarm-panel").hass = {
+  callWS: async data => request(data).promise,
+  connection: {addEventListener: (...args) => connectionEvents.addEventListener(...args), removeEventListener: (...args) => connectionEvents.removeEventListener(...args), subscribeMessage: async (callback, data) => {
+    const {id, promise} = request(data, callback); await promise;
+    return () => {subscribers.delete(id); request({type: "unsubscribe_events", subscription: id});};
+  }}
+};
+</script></body></html>

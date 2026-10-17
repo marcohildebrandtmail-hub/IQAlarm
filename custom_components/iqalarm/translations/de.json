@@ -1,0 +1,22 @@
+{
+  "title": "IQAlarm",
+  "config": {
+    "step": {
+      "user": {
+        "title": "IQAlarm einrichten",
+        "description": "Nach der Einrichtung konfigurierst du Räume, Sensoren, Profile und Aktionen im IQAlarm-Seitenmenü. Optional kannst du das Entschärfen mit einer 4–12-stelligen PIN schützen.",
+        "data": {"pin": "PIN zum Entschärfen (optional)"}
+      }
+    },
+    "error": {"invalid_pin": "Bitte 4–12 Ziffern eingeben oder das Feld leer lassen."},
+    "abort": {"already_configured": "IQAlarm ist bereits eingerichtet."}
+  },
+  "entity": {
+    "sensor": {
+      "level": {"name": "Alarmstufe"},
+      "flapping": {"name": "Isolierte Sensoren"},
+      "last_event": {"name": "Letztes Ereignis"}
+    },
+    "switch": {"simulation": {"name": "Anwesenheitssimulation"}}
+  }
+}

@@ -1,0 +1,51 @@
+set_mode:
+  name: Modus setzen
+  description: Scharfschalten oder entschärfen. Vor Profilwechseln zuerst entschärfen.
+  fields:
+    mode:
+      name: Modus
+      required: true
+      selector:
+        select:
+          options:
+            - disarmed
+            - armed_home
+            - armed_night
+            - armed_away
+            - armed_vacation
+    code:
+      name: PIN
+      description: Bei eingerichteter PIN zum Entschärfen erforderlich.
+      selector:
+        text:
+          type: password
+clear_quarantine:
+  name: Quarantäne aufheben
+  description: Isolierung für einen oder alle Sensoren aufheben. Neue Signalflanke erforderlich.
+  fields:
+    entity_id:
+      name: Sensor
+      selector:
+        entity:
+          domain:
+            - binary_sensor
+            - lock
+trigger_test_level:
+  name: Alarmstufe testen
+  description: Standardmäßig Trockenlauf ohne Geräteaktionen. dry_run=false führt die konfigurierten Aktionen tatsächlich aus.
+  fields:
+    level:
+      name: Stufe
+      required: true
+      selector:
+        select:
+          options:
+            - "1"
+            - "2"
+            - "3"
+            - diagnostic
+    dry_run:
+      name: Trockenlauf
+      default: true
+      selector:
+        boolean:

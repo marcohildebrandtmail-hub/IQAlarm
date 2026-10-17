@@ -1,0 +1,8 @@
+{
+  "name": "iqalarm-panel-tests",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {"test": "playwright test", "check": "node --check custom_components/iqalarm/frontend/iqalarm-panel.js"},
+  "devDependencies": {"@playwright/test": "1.64.1"}
+}
