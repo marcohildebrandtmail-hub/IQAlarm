@@ -2,7 +2,7 @@
 
 ## Erfolgreich geprüft
 
-- **82 pytest-Tests** für Korrelationslogik, Nachtbetrieb, Konfigurationsgrenzen, Archivierung und Deployment-Rollback.
+- **83 pytest-Tests** für Korrelationslogik, Nachtbetrieb, Konfigurationsgrenzen, Archivierung, Repository-Metadaten und Deployment-Rollback.
 - Alle fünf geforderten Pflichtszenarien: MACO-Prellen, einzelnes Fenster, Fenster + Bewegung nach zwölf Sekunden, nächtlicher Toilettengang und Vorfeld + Fenster nach vierzig Sekunden.
 - Zusätzliche Fälle: unabhängige Signalquellen, unpassende Kamera-Zuordnung, Nachbarräume, ausgeschaltete Regeln, veraltete Ereignisse, Debounce, Ausfälle/Wiederkehr, Scharf-/Eingangs-/Ausgangszeiten, Quarantänefreigabe und Neustart-Wiederherstellung.
 - **96 % Zeilenabdeckung der eigenständigen Korrelations-Engine** durch die pytest-Suite. Diese Zahl beschreibt ausschließlich die Engine; die HA-Anbindung wird zusätzlich durch den realen Core-Prüfer geprüft.
@@ -19,11 +19,11 @@ Die Tests verwenden eigene Sensorzustände und ausführbare Testdienste im wegwe
 
 ## Veröffentlichungsstatus
 
-Der lokale hassfest-Lauf validierte alle Bereiche außer dem noch nicht gebundenen Dokumentationslink. Er beanstandet den aktuellen offiziellen HA-Plattformverweis, weil eine Custom Integration ihre eigene Dokumentation verlinken muss. `scripts/bind_repository.py` ersetzt diesen Link sowie Issue-Tracker und Codeowner nach Angabe der tatsächlichen GitHub-URL. Anschließend werden hassfest und die Repository-Prüfung erneut ausgeführt.
+Das Zielrepository ist [marcohildebrandtmail-hub/IQAlarm](https://github.com/marcohildebrandtmail-hub/IQAlarm). Dokumentation, Issue-Tracker und Codeowner sind gebunden. **Der vollständige lokale hassfest-Lauf besteht mit null ungültigen Integrationen.** Ein zusätzlicher Regressionstest prüft die von hassfest verlangte Reihenfolge der Manifest-Schlüssel beim Binden einer Repository-URL.
 
-Der Remote-HACS-Workflow kann erst am tatsächlichen GitHub-Repository ausgeführt werden. Eine Aufnahme in den öffentlichen Standardkatalog und ein Brand-Eintrag sind nicht vorgenommen worden.
+Die GitHub-Workflows prüfen HACS, hassfest, Python, Browser und beide HA-Versionen. Der aktuelle Remote-Status ist unter [Actions](https://github.com/marcohildebrandtmail-hub/IQAlarm/actions) einsehbar. Eine Aufnahme in den öffentlichen Standardkatalog und ein Brand-Eintrag sind nicht vorgenommen worden.
 
-**GitHub-Push und Installation auf der persönlichen Home-Assistant-Instanz stehen aus**, bis die Ziele einzeln festgelegt sind. Es wurden keine Zugangsdaten im Repository gespeichert.
+**Die Installation auf der persönlichen Home-Assistant-Instanz steht aus**, bis der Zugang einzeln festgelegt ist. Es wurden keine Zugangsdaten im Repository gespeichert.
 
 ## Reproduzieren
 

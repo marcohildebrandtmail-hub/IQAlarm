@@ -1,12 +1,20 @@
 {
   "domain": "iqalarm",
   "name": "IQAlarm",
-  "codeowners": ["@marcohildebrandtmail-hub"],
+  "codeowners": [
+    "@marcohildebrandtmail-hub"
+  ],
   "config_flow": true,
-  "dependencies": ["frontend", "http", "panel_custom", "websocket_api"],
-  "documentation": "https://www.home-assistant.io/integrations/alarm_control_panel/",
+  "dependencies": [
+    "frontend",
+    "http",
+    "panel_custom",
+    "websocket_api"
+  ],
+  "documentation": "https://github.com/marcohildebrandtmail-hub/IQAlarm#readme",
   "integration_type": "service",
   "iot_class": "local_push",
+  "issue_tracker": "https://github.com/marcohildebrandtmail-hub/IQAlarm/issues",
   "requirements": [],
   "version": "1.0.0"
 }

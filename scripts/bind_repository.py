@@ -22,6 +22,10 @@ def bind(repository: str) -> str:
     manifest.update(
         documentation=url + "#readme", issue_tracker=url + "/issues", codeowners=[f"@{owner}"]
     )
+    manifest = {
+        key: manifest[key]
+        for key in ("domain", "name", *sorted(set(manifest) - {"domain", "name"}))
+    }
     path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return url
 

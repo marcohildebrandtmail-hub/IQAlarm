@@ -2,11 +2,13 @@
 
 import ast
 import hashlib
+import json
 import zipfile
 from pathlib import Path
 
 import pytest
 
+from scripts.bind_repository import bind
 from scripts.deploy import inside, install
 from scripts.package_release import package
 
@@ -78,3 +80,20 @@ def test_no_unimplemented_production_functions():
         assert not any(
             isinstance(node, ast.Constant) and node.value is Ellipsis for node in ast.walk(tree)
         ), path
+
+
+def test_binding_repository_keeps_manifest_order(tmp_path, monkeypatch):
+    monkeypatch.setattr("scripts.bind_repository.ROOT", tmp_path)
+    manifest_path = tmp_path / "custom_components" / "iqalarm" / "manifest.json"
+    manifest_path.parent.mkdir(parents=True)
+    manifest_path.write_text(
+        json.dumps({"domain": "iqalarm", "name": "IQAlarm", "version": "1.0.0"})
+    )
+    assert (
+        bind("https://github.com/marcohildebrandtmail-hub/IQAlarm")
+        == "https://github.com/marcohildebrandtmail-hub/IQAlarm"
+    )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert list(manifest)[:2] == ["domain", "name"]
+    assert list(manifest)[2:] == sorted(list(manifest)[2:])
+    assert manifest["issue_tracker"].endswith("/IQAlarm/issues")
