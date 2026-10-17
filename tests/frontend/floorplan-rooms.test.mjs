@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {areaReference, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, randomId, resolveRoom, roomGroups, roomVisualCenter} from "../../custom_components/iqalarm/frontend/floorplan-rooms.js";
+import {alignPlanZones, areaReference, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "../../custom_components/iqalarm/frontend/floorplan-rooms.js";
 import {DraftJournal} from "../../custom_components/iqalarm/frontend/floorplan-drafts.js";
 
 const areas = [{id: "kitchen", name: "Küche"}, {id: "living", name: "Wohnzimmer"}];
@@ -102,3 +102,39 @@ test("a selected HA area and every edited point survive draft restoration and un
   assert.deepEqual(restored.undo(), initial);
   assert.equal(restored.redo().roomId, areaReference("kitchen"));
 });
+
+test("orthogonalizePolygon aligns slightly crooked polygons to exact 90-degree right angles", () => {
+  const crooked = [[0.102, 0.201], [0.501, 0.198], [0.499, 0.803], [0.099, 0.801]];
+  const straightened = orthogonalizePolygon(crooked);
+  assert.equal(straightened.length, 4);
+  for (let i = 0; i < straightened.length; i += 1) {
+    const p1 = straightened[i], p2 = straightened[(i + 1) % straightened.length];
+    const dx = Math.abs(p2[0] - p1[0]), dy = Math.abs(p2[1] - p1[1]);
+    assert.equal(dx === 0 || dy === 0, true, `Edge ${i} must be horizontal or vertical`);
+  }
+  assert.deepEqual(straightened, [
+    [0.1005, 0.1995],
+    [0.5, 0.1995],
+    [0.5, 0.802],
+    [0.1005, 0.802],
+  ]);
+});
+
+test("alignPlanZones straightens all zones and snaps shared adjacent walls seamlessly", () => {
+  const roomA = [[0.101, 0.102], [0.502, 0.099], [0.499, 0.401], [0.099, 0.399]];
+  const roomB = [[0.498, 0.103], [0.899, 0.101], [0.901, 0.402], [0.503, 0.398]];
+  const aligned = alignPlanZones({roomA, roomB});
+
+  assert.equal(aligned.roomA[1][0], aligned.roomB[0][0]);
+  assert.equal(aligned.roomA[2][0], aligned.roomB[3][0]);
+  assert.equal(aligned.roomA[1][0], 0.5005);
+
+  for (const pts of Object.values(aligned)) {
+    for (let i = 0; i < pts.length; i += 1) {
+      const p1 = pts[i], p2 = pts[(i + 1) % pts.length];
+      const dx = Math.abs(p2[0] - p1[0]), dy = Math.abs(p2[1] - p1[1]);
+      assert.equal(dx === 0 || dy === 0, true);
+    }
+  }
+});
+

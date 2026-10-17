@@ -233,3 +233,97 @@ export function graphicViewBox(zones, width, height) {
     scale: Math.max(0.35, Math.min(1, Math.max(x1 - x0, y1 - y0))),
   };
 }
+
+export function orthogonalizePolygon(pts) {
+  if (!Array.isArray(pts) || pts.length < 3) return structuredClone(pts || []);
+  const n = pts.length;
+  const edges = [];
+  for (let i = 0; i < n; i += 1) {
+    const p1 = pts[i];
+    const p2 = pts[(i + 1) % n];
+    const dx = Math.abs(p2[0] - p1[0]);
+    const dy = Math.abs(p2[1] - p1[1]);
+    edges.push(dx >= dy ? "H" : "V");
+  }
+
+  const round4 = v => Math.round(v * 10000) / 10000;
+  const res = [];
+  for (let i = 0; i < n; i += 1) {
+    const prev = (i - 1 + n) % n;
+    const next = (i + 1) % n;
+    const inType = edges[prev];
+    const outType = edges[i];
+    let x, y;
+    if (inType === "H" && outType === "V") {
+      y = (pts[prev][1] + pts[i][1]) / 2;
+      x = (pts[i][0] + pts[next][0]) / 2;
+    } else if (inType === "V" && outType === "H") {
+      x = (pts[prev][0] + pts[i][0]) / 2;
+      y = (pts[i][1] + pts[next][1]) / 2;
+    } else if (inType === "H" && outType === "H") {
+      x = pts[i][0];
+      y = (pts[prev][1] + pts[i][1] + pts[next][1]) / 3;
+    } else {
+      x = (pts[prev][0] + pts[i][0] + pts[next][0]) / 3;
+      y = pts[i][1];
+    }
+    res.push([round4(x), round4(y)]);
+  }
+  return res;
+}
+
+export function alignPlanZones(zones, threshold = 0.0035) {
+  if (!zones || typeof zones !== "object") return {};
+  const orthoZones = {};
+  for (const [id, pts] of Object.entries(zones)) {
+    orthoZones[id] = orthogonalizePolygon(pts);
+  }
+
+  const allX = [];
+  const allY = [];
+  for (const pts of Object.values(orthoZones)) {
+    const n = pts.length;
+    for (let i = 0; i < n; i += 1) {
+      const p1 = pts[i];
+      const p2 = pts[(i + 1) % n];
+      if (Math.abs(p1[1] - p2[1]) < 0.0001) allY.push(p1[1]);
+      if (Math.abs(p1[0] - p2[0]) < 0.0001) allX.push(p1[0]);
+    }
+  }
+
+  const cluster = (vals) => {
+    const sorted = [...vals].sort((a, b) => a - b);
+    const groups = [];
+    for (const v of sorted) {
+      if (!groups.length || v - groups.at(-1).max > threshold) {
+        groups.push({min: v, max: v, sum: v, count: 1});
+      } else {
+        const g = groups.at(-1);
+        g.max = v;
+        g.sum += v;
+        g.count += 1;
+      }
+    }
+    const clusters = groups.map(g => ({
+      min: g.min,
+      max: g.max,
+      avg: Math.round((g.sum / g.count) * 10000) / 10000,
+    }));
+    return (val) => {
+      for (const c of clusters) {
+        if (val >= c.min - 0.00005 && val <= c.max + 0.00005) return c.avg;
+      }
+      return val;
+    };
+  };
+
+  const snapX = cluster(allX);
+  const snapY = cluster(allY);
+
+  const aligned = {};
+  for (const [id, pts] of Object.entries(orthoZones)) {
+    aligned[id] = pts.map(([x, y]) => [snapX(x), snapY(y)]);
+  }
+  return aligned;
+}
+
