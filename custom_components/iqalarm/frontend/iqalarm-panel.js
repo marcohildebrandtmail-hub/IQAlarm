@@ -1,6 +1,6 @@
-import {DraftJournal} from "./floorplan-drafts.js?v=2.2.10";
-import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.2.10";
-/* IQAlarm 2.2.10 · native ES module · no CDN, framework or build required. */
+import {DraftJournal} from "./floorplan-drafts.js?v=2.2.11";
+import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.2.11";
+/* IQAlarm 2.2.11 · native ES module · no CDN, framework or build required. */
 const RULES = {perimeter: "Vorfeld-Erkennung", single: "Unbestätigter Einzelsensor", flapping: "Sensor-Prellen", perimeter_contact: "Vorfeld + Öffnung", contact_motion: "Öffnung + Bewegung", multi_contact: "Zwei Öffnungssensoren", multi_motion: "Zwei Bewegungsmelder", immediate: "Freigegebene Einzelauslösung / Gefahr"};
 const PROFILE_ICONS = {"mdi:home-outline":"Zuhause", "mdi:weather-night":"Nacht", "mdi:home-export-outline":"Abwesend", "mdi:palm-tree":"Urlaub", "mdi:account-group-outline":"Besuch", "mdi:garage-variant":"Garage", "mdi:shield-check-outline":"Schutz", "mdi:eye-outline":"Beobachtung", "mdi:dog":"Haustiere", "mdi:briefcase-outline":"Arbeit", "mdi:bed-outline":"Schlafzimmer", "mdi:lock-outline":"Schloss", "mdi:home-floor-0":"Erdgeschoss", "mdi:home-floor-1":"Obergeschoss", "mdi:home-floor-b":"Keller", "mdi:tree-outline":"Garten"};
 const ROLES = {perimeter_camera: "Außenkamera / Person", perimeter_sensor: "Vorfeld-Sensor", entry_contact: "Tür / Fenster", lock_contact: "Schloss / Riegel", vibration_glass: "Glas / Vibration", interior_motion: "Bewegung innen", interior_mmwave: "Präsenz / mmWave", panic: "Panik", smoke: "Rauch / Gefahr"};
@@ -25,7 +25,7 @@ const CSS = `
 *{box-sizing:border-box}button,input,select,textarea{font:inherit}button{cursor:pointer;overflow-wrap:anywhere;max-width:100%}button:disabled{cursor:not-allowed;opacity:.5}ha-icon{--mdc-icon-size:21px;vertical-align:middle}button ha-icon{pointer-events:none}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--iq-accent);outline-offset:3px}button{border:1px solid var(--iq-border);background:var(--iq-surface);color:inherit;border-radius:10px;padding:10px 15px;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;transition:background .15s}button:hover{background:color-mix(in srgb,var(--iq-accent) 8%,var(--iq-surface))}button.primary{background:var(--iq-accent);color:var(--text-primary-color,#fff);border-color:var(--iq-accent)}button.danger{color:var(--iq-red)}button.small{padding:6px 10px;min-height:36px;font-size:13px}.icon-button{padding:8px;border:0;background:transparent;min-width:40px}.shell{height:100%;overflow:auto}.top{position:sticky;top:0;z-index:3;background:var(--iq-surface);border-bottom:1px solid var(--iq-border)}.brand-row{max-width:1440px;margin:auto;padding:18px 30px 14px;display:flex;align-items:center;gap:13px}.brandmark{width:43px;height:47px;background:linear-gradient(145deg,#13b8b0,#076c93);clip-path:polygon(50% 0,93% 16%,88% 64%,74% 84%,50% 100%,26% 84%,12% 64%,7% 16%);display:grid;place-items:center;color:white;font-size:18px;font-weight:800;letter-spacing:-1px}.brand-title{font-size:23px;font-weight:760;letter-spacing:-.7px}.eyebrow{color:var(--iq-muted);font-size:11px;font-weight:650;letter-spacing:1.4px;text-transform:uppercase}.brand-copy{display:grid;gap:2px}.connection{margin-left:auto;display:flex;align-items:center;gap:8px;color:var(--iq-muted);font-size:12px}.dot{width:8px;height:8px;background:var(--iq-green);border-radius:50%;display:inline-block}.dot.off{background:var(--iq-red)}nav{display:flex;gap:8px;max-width:1440px;margin:auto;padding:0 30px;overflow:auto}nav button{border:none;border-bottom:3px solid transparent;border-radius:0;padding:15px 13px;background:transparent;white-space:nowrap;color:var(--iq-muted);font-weight:600;font-size:13px}nav button.active{color:var(--iq-accent);border-bottom-color:var(--iq-accent)}main{max-width:1440px;padding:30px;margin:auto}.page-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:22px;flex-wrap:wrap}h1{font-size:25px;font-weight:720;letter-spacing:-.7px;margin:0 0 5px}h2{font-size:17px;margin:0 0 10px;letter-spacing:-.2px}h3{font-size:15px;margin:0}p{margin:6px 0 0;line-height:1.6;color:var(--iq-muted);font-size:13px}.muted{color:var(--iq-muted)}.card{background:var(--iq-surface);border:1px solid var(--iq-border);border-radius:16px;padding:23px;min-width:0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:18px}.grid.two{grid-template-columns:1.2fr 1fr}.hero{display:flex;align-items:center;gap:28px;background:linear-gradient(120deg,color-mix(in srgb,var(--iq-accent) 7%,var(--iq-surface)),var(--iq-surface));padding:29px;margin-bottom:18px}.level-ring{width:110px;height:110px;flex-shrink:0;border:7px solid color-mix(in srgb,var(--level-color) 20%,transparent);border-top-color:var(--level-color);border-radius:50%;display:flex;align-items:center;justify-content:center;flex-direction:column;color:var(--level-color)}.level-ring strong{font-size:36px;line-height:1.1}.level-ring span{font-size:10px;font-weight:700;letter-spacing:1px}.hero-copy{min-width:0;overflow-wrap:anywhere}.hero h2{font-size:29px;margin:0 0 4px}.hero .pill{margin-left:auto;align-self:flex-start}.pill{display:inline-flex;align-items:center;gap:6px;border-radius:7px;padding:5px 8px;font-size:11px;font-weight:650;background:color-mix(in srgb,var(--level-color,var(--iq-accent)) 10%,var(--iq-surface));color:var(--level-color,var(--iq-accent));white-space:nowrap}.mode-buttons{display:flex;flex-wrap:wrap;gap:9px;margin-top:20px}.mode-buttons button.active{background:color-mix(in srgb,var(--iq-accent) 12%,var(--iq-surface));border-color:var(--iq-accent);color:var(--iq-accent)}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:18px 0 28px}.metric{display:flex;align-items:center;gap:13px;padding:19px}.metric>ha-icon{--mdc-icon-size:25px;color:var(--iq-accent);padding:12px;width:49px;height:49px;background:color-mix(in srgb,var(--iq-accent) 8%,var(--iq-surface));border-radius:12px}.metric strong{display:block;font-size:23px;line-height:1.1}.metric span{font-size:11px;color:var(--iq-muted)}.section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:26px 0 14px;flex-wrap:wrap}.room-head{display:flex;align-items:center;gap:10px;margin-bottom:16px}.room-head h3{min-width:0;flex:1;overflow-wrap:anywhere}.room-head .pill{margin-left:auto}.sensor-line{display:flex;align-items:center;gap:9px;padding:9px 0;border-top:1px solid var(--iq-border);font-size:12px}.sensor-line .sensor-name{flex:1;overflow-wrap:anywhere}.sensor-line ha-icon{color:var(--iq-muted);--mdc-icon-size:18px}.sensor-state{font-size:11px;color:var(--iq-muted)}.sensor-state.on{color:var(--iq-amber)}.banner{border:1px solid color-mix(in srgb,var(--iq-amber) 40%,var(--iq-border));background:color-mix(in srgb,var(--iq-amber) 7%,var(--iq-surface));padding:18px;border-radius:13px;margin:15px 0;display:flex;gap:13px;align-items:center}.banner ha-icon{color:var(--iq-amber)}.banner>div{flex:1;min-width:0}.banner strong{font-size:13px}.banner p{font-size:12px}.event{display:grid;grid-template-columns:110px 30px minmax(0,1fr);gap:12px;border-top:1px solid var(--iq-border);padding:14px 0;font-size:12px;align-items:start}.event>div{min-width:0;overflow-wrap:anywhere}.event time{color:var(--iq-muted);font-variant-numeric:tabular-nums}.event p{font-size:11px;word-break:break-word}.event-level{display:grid;place-items:center;border-radius:6px;width:25px;height:25px;background:color-mix(in srgb,var(--level-color) 12%,var(--iq-surface));color:var(--level-color);font-weight:700}.empty{padding:34px 20px;text-align:center;border:1px dashed var(--iq-border);border-radius:13px;color:var(--iq-muted)}.empty ha-icon{--mdc-icon-size:30px;margin-bottom:12px}.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.row.between{justify-content:space-between}.row.end{justify-content:flex-end}.spacer{flex:1}.topology{display:flex;align-items:center;justify-content:center;gap:6px;margin:17px 0;font-size:11px;color:var(--iq-muted);background:var(--primary-background-color,#f3f6fa);padding:14px 4px;border-radius:10px}.topology span{text-align:center}.topology strong{display:block;color:var(--primary-text-color);font-size:18px;margin-bottom:4px}.chips{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.chips button.active{background:var(--iq-accent);color:var(--text-primary-color,#fff);border-color:var(--iq-accent)}.table-scroll{overflow:auto}table{width:100%;border-collapse:collapse;font-size:12px}th{text-align:left;color:var(--iq-muted);font-size:10px;text-transform:uppercase;letter-spacing:.7px;white-space:nowrap}td,th{padding:13px 9px;border-bottom:1px solid var(--iq-border)}td code{font-size:10px;color:var(--iq-muted);display:block;margin-top:4px}.search{min-width:220px;width:min(100%,390px)}.catalog{max-height:380px;overflow:auto}.catalog-row{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--iq-border);font-size:12px}.catalog-row code{font-size:10px;display:block;margin-top:4px;color:var(--iq-muted);overflow-wrap:anywhere}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.form-grid .wide{grid-column:1/-1}label.field{display:flex;flex-direction:column;gap:7px;font-size:12px;font-weight:600;min-width:0}label small{color:var(--iq-muted);font-size:11px;font-weight:400;line-height:1.5}input:not([type=checkbox]),select,textarea{border:1px solid var(--iq-border);border-radius:8px;background:var(--iq-surface);color:inherit;padding:11px 12px;min-width:0;width:100%;min-height:41px}select[multiple]{height:115px}textarea{min-height:80px;resize:vertical}input[type=checkbox]{accent-color:var(--iq-accent);width:17px;height:17px;flex-shrink:0}.check{display:flex;align-items:flex-start;gap:9px;font-size:12px;line-height:1.6;cursor:pointer}.checks{display:grid;gap:13px}.help{border-left:3px solid var(--iq-accent);padding:10px 14px;background:color-mix(in srgb,var(--iq-accent) 5%,var(--iq-surface));font-size:12px;line-height:1.6;margin:16px 0;color:var(--iq-muted)}fieldset{border:0;padding:0;margin:0;min-width:0}fieldset:disabled{opacity:.6}.save-row{display:flex;gap:12px;align-items:center;margin-top:23px}.action-card{display:flex;align-items:center;gap:14px;margin:12px 0;padding:18px;border:1px solid var(--iq-border);border-radius:12px}.action-card>ha-icon{color:var(--iq-accent)}.action-card .description{flex:1;min-width:0;overflow-wrap:anywhere}.action-card p{font-size:11px}dialog{background:var(--iq-surface);color:inherit;border:1px solid var(--iq-border);border-radius:17px;padding:0;max-width:min(740px,calc(100vw - 28px));width:740px;max-height:90vh;box-shadow:0 20px 80px #0005}dialog::backdrop{background:#101c3080;backdrop-filter:blur(3px)}.dialog-head{padding:22px 25px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--iq-border);position:sticky;top:0;background:var(--iq-surface);z-index:2}.dialog-body{padding:23px 25px}.dialog-foot{padding:17px 25px;border-top:1px solid var(--iq-border);display:flex;justify-content:flex-end;gap:10px;position:sticky;bottom:0;background:var(--iq-surface)}dialog[open]{display:flex;flex-direction:column}dialog form{overflow:auto}#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:14px 22px;background:var(--primary-text-color,#182b42);color:var(--iq-surface);border-radius:10px;box-shadow:0 4px 24px #0003;z-index:20;max-width:90vw;font-size:13px}#toast.error{background:var(--iq-red);color:white}#toast:empty{display:none}.loading{padding:70px;text-align:center;color:var(--iq-muted)}pre{white-space:pre-wrap;word-break:break-word;font-size:12px;padding:16px;background:var(--primary-background-color);border-radius:10px}.armed-note{margin-bottom:18px}.footer-note{margin-top:30px;color:var(--iq-muted);font-size:11px;text-align:center}[hidden]{display:none!important}.countdown{font-size:13px;font-weight:650;color:var(--iq-amber);margin-top:10px}
 @media(max-width:1000px){.grid.two{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}nav{gap:0;padding:0 12px}nav button{padding:14px 11px}nav button ha-icon{display:none}}
 @media(max-width:600px){main{padding:18px 14px}.brand-row{padding:12px 14px;gap:9px}.brand-title{font-size:21px}.connection span:not(.dot){display:none}.eyebrow{font-size:9px;letter-spacing:1px}.hero{padding:22px 18px;gap:17px;flex-wrap:wrap}.hero-copy{min-width:0;overflow-wrap:anywhere}.hero h2{font-size:23px}.level-ring{width:80px;height:80px;border-width:5px}.level-ring strong{font-size:28px}.hero .pill{display:none}.hero-copy{flex:1;min-width:150px}.mode-buttons{width:100%;gap:7px}.mode-buttons button{flex:1;min-width:90px;padding:9px;font-size:12px}.card{padding:18px}.metrics{gap:10px}.metric{padding:14px 11px;gap:8px}.metric>ha-icon{display:none}.metric strong{font-size:21px}.form-grid{grid-template-columns:1fr}.event{grid-template-columns:76px 24px minmax(0,1fr);gap:8px}.event>div{min-width:0;overflow-wrap:anywhere}.event time{font-size:10px}.banner{flex-wrap:wrap}.banner button{margin-left:33px}.dialog-body{padding:18px}.dialog-head,.dialog-foot{padding:16px 18px}h1{font-size:22px}.page-head>button{width:100%}}
-.level-display{display:flex;flex-direction:column;align-items:center;gap:10px;max-width:170px;text-align:center}.level-caption{font-weight:700;font-size:13px;color:var(--level-color);overflow-wrap:anywhere}.plan-wrap{position:relative;width:100%;background:var(--primary-background-color,#f3f6fa);border-radius:14px;overflow:hidden;margin-top:16px}.plan-wrap.graphic-mode{background:radial-gradient(circle at 50% 30%,#132846 0%,#08111f 100%);border:1px solid #1e3a5f;box-shadow:inset 0 0 42px #0009}.plan-wrap.template-mode{background:#0b1526;border:1px solid #1e3a5f}.plan-wrap.template-mode image{opacity:.38;filter:grayscale(.35) contrast(1.08)}.plan-wrap svg{display:block;width:100%;height:100%}.plan-wrap polygon{cursor:pointer;stroke-width:2}.plan-wrap .draft{pointer-events:none;fill:#2986bb40;stroke:#38bdf8;stroke-dasharray:6 4}.plan-wrap text{pointer-events:none;paint-order:stroke;stroke:var(--iq-surface);stroke-width:3px;stroke-linejoin:round;fill:var(--primary-text-color,#122);font-weight:650}.plan-wrap g[data-room]{cursor:pointer}.plan-wrap g[data-room]:focus-visible{outline:none}.plan-wrap g[data-room]:focus-visible .room-badge{stroke:#38bdf8;stroke-width:2.6}.plan-wrap g[data-room] text{stroke:#07101d;stroke-width:3.5px;fill:#f8fafc;font-weight:720;letter-spacing:.2px}.plan-wrap g[data-room] .room-sub{fill:#cbd5e1;font-weight:600}.plan-wrap .room-badge,.plan-wrap .room-corner,.plan-wrap .room-glow,.plan-wrap .room-inner,.plan-wrap .room-link{pointer-events:none}.stage-row{padding:16px 0;border-bottom:1px solid var(--iq-border)}.stage-row .form-grid{grid-template-columns:80px minmax(0,1fr)}.rule-box{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border:1px solid var(--iq-border);border-radius:10px;background:var(--primary-background-color,#f3f6fa)}
+.level-display{display:flex;flex-direction:column;align-items:center;gap:10px;max-width:170px;text-align:center}.level-caption{font-weight:700;font-size:13px;color:var(--level-color);overflow-wrap:anywhere}.plan-wrap{position:relative;width:100%;background:var(--primary-background-color,#f3f6fa);border-radius:14px;overflow:hidden;margin-top:16px}.plan-wrap.graphic-mode{background:radial-gradient(circle at 50% 30%,#132846 0%,#08111f 100%);border:1px solid #1e3a5f;box-shadow:inset 0 0 42px #0009}.plan-wrap.template-mode{background:#0b1526;border:1px solid #1e3a5f}.plan-wrap.template-mode image{opacity:.38;filter:grayscale(.35) contrast(1.08)}.plan-wrap svg{display:block;width:100%;height:100%}.plan-wrap polygon{cursor:pointer;stroke-width:2}.plan-wrap .draft{pointer-events:none;fill:#2986bb40;stroke:#38bdf8;stroke-dasharray:6 4}.plan-wrap text{pointer-events:none;paint-order:stroke;stroke:var(--iq-surface);stroke-width:3px;stroke-linejoin:round;fill:var(--primary-text-color,#122);font-weight:650}.plan-wrap g[data-room]{cursor:pointer}.plan-wrap g[data-room]:focus-visible{outline:none}.plan-wrap g[data-room]:focus-visible .room-badge{stroke:#38bdf8;stroke-width:2.6}.plan-wrap g[data-room] text{stroke:#07101d;stroke-width:3.5px;fill:#f8fafc;font-weight:720;letter-spacing:.2px}.plan-wrap g[data-room] .room-sub{fill:#cbd5e1;font-weight:600}.plan-wrap .room-corner,.plan-wrap .room-glow,.plan-wrap .room-inner,.plan-wrap .room-link{pointer-events:none}.plan-wrap .room-label-group{cursor:grab;touch-action:none;pointer-events:all;user-select:none}.plan-wrap .room-label-group:hover .room-badge{stroke:#38bdf8;stroke-width:2.4;filter:drop-shadow(0 0 8px #38bdf8aa)}.plan-wrap .room-label-group.dragging{cursor:grabbing;opacity:.88}.plan-wrap .room-label-group:focus-visible{outline:none}.plan-wrap .room-label-group:focus-visible .room-badge{stroke:#38bdf8;stroke-width:2.6}.plan-wrap .room-label-group *{pointer-events:none}.stage-row{padding:16px 0;border-bottom:1px solid var(--iq-border)}.stage-row .form-grid{grid-template-columns:80px minmax(0,1fr)}.rule-box{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border:1px solid var(--iq-border);border-radius:10px;background:var(--primary-background-color,#f3f6fa)}
 .icon-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:7px;margin-top:12px}.icon-options button{font-size:11px;justify-content:flex-start}.icon-options button.active{border-color:var(--iq-accent);background:color-mix(in srgb,var(--iq-accent) 12%,var(--iq-surface))}.plan-steps{display:flex;gap:20px;flex-wrap:wrap;padding:0;margin:20px 0;list-style:none;counter-reset:step}.plan-steps li{font-size:12px;color:var(--iq-muted);display:flex;align-items:center;gap:8px}.plan-steps li::before{counter-increment:step;content:counter(step);border:1px solid var(--iq-accent);border-radius:50%;width:24px;height:24px;display:grid;place-items:center;color:var(--iq-accent);flex-shrink:0}.plan-assistant{padding:16px;border:1px solid var(--iq-border);border-radius:12px;background:var(--primary-background-color,#f3f6fa)}.assistant-step{margin-top:14px;padding:15px 16px;border:2px solid var(--iq-accent);border-radius:12px;background:color-mix(in srgb,var(--iq-accent) 7%,var(--iq-surface))}.assistant-step.saved{border-color:var(--iq-green);background:color-mix(in srgb,var(--iq-green) 8%,var(--iq-surface))}.plan-wrap .plan-proposal{fill:#33a7c028;stroke:#38bdf8;stroke-dasharray:7 5;vector-effect:non-scaling-stroke}.plan-wrap .plan-proposal.chosen{fill:#33a7c055;stroke-width:3}.draft-points circle{fill:var(--iq-surface);stroke:#087e9b;stroke-width:2;cursor:grab;touch-action:none;vector-effect:non-scaling-stroke}.draft-points circle:focus{fill:#50c6d1;outline:none;stroke-width:4}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 `;
@@ -315,8 +315,8 @@ class IQAlarmPanel extends HTMLElement {
     const showSvg = isGraphic ? (Boolean(plan.image || image) || Object.keys(renderZones).length > 0) : Boolean(image);
     const hasSelection = Boolean(this.points.length || this.selectedCandidate || this.zoneRoom);
     const defs = `<defs><pattern id="iq-grid-minor" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M 24 0 L 0 0 0 24" fill="none" stroke="#38bdf8" stroke-opacity=".07" stroke-width="1" vector-effect="non-scaling-stroke"/></pattern><pattern id="iq-grid-major" width="120" height="120" patternUnits="userSpaceOnUse"><rect width="120" height="120" fill="url(#iq-grid-minor)"/><path d="M 120 0 L 0 0 0 120" fill="none" stroke="#38bdf8" stroke-opacity=".15" stroke-width="1" vector-effect="non-scaling-stroke"/></pattern><linearGradient id="iq-room-fill-ok" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#14b8a6" stop-opacity=".32"/><stop offset="100%" stop-color="#0ea5e9" stop-opacity=".16"/></linearGradient><linearGradient id="iq-room-fill-warn" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#f59e0b" stop-opacity=".38"/><stop offset="100%" stop-color="#ea580c" stop-opacity=".2"/></linearGradient><linearGradient id="iq-room-fill-alert" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#ef4444" stop-opacity=".42"/><stop offset="100%" stop-color="#b91c1c" stop-opacity=".24"/></linearGradient></defs>`;
-    const editToolbar = edit ? `<div class="row" style="margin-top:14px">${rawPlan ? `<button class="${plan.image ? "" : "primary"}" data-command="floorplan-pick" data-config>${icon("upload")}${plan.image ? "Bild ersetzen" : "Grundriss hochladen"}</button><input type="file" id="plan-upload" data-plan="${esc(plan.id)}" accept="image/png,image/jpeg" hidden data-config>` : ""}<button data-command="floorplan-upload" data-config>${rawPlan ? "Weitere Etage hochladen" : "Grundriss hochladen"}</button><button type="button" class="${this.graphicPreview ? "primary" : ""}" data-command="toggle-graphic-preview">${icon(this.graphicPreview ? "image-edit-outline" : "vector-polygon")}${this.graphicPreview ? "Vorlagenbild einblenden" : "Fertige Raum-Grafik ansehen"}</button><button type="button" data-command="floorplan-orthogonalize" data-config title="Richtet alle Linien im 90°-Winkel aus und schließt Wandkanten sauber an">${icon("ruler-square")}90° Begradigen</button><button data-command="floorplan-edit" data-id="${esc(plan.id)}" data-config>Umbenennen</button>${rawPlan ? `<button type="button" data-command="floorplan-reset" data-id="${esc(plan.id)}" data-config>${icon("refresh")}Von vorne anfangen</button><button type="button" class="danger" data-command="floorplan-delete" data-id="${esc(plan.id)}" data-config>${icon("delete-outline")}Grundriss löschen</button>` : ""}</div>` : "";
-    const assistantBody = edit && image ? `<ol class="plan-steps"><li>Bild hochgeladen</li><li>Raumflächen prüfen und zuordnen</li><li>Bereich speichern</li></ol><div class="plan-assistant"><div class="row"><button class="primary" data-command="floorplan-analyze" data-config ${this._analysisBusy ? "disabled" : ""}>${icon("floor-plan")}${this._analysisBusy ? "Flächen werden gesucht …" : "Flächen erkennen"}</button>${candidates.length ? `<button type="button" data-command="candidate-next" data-config>${icon("arrow-right")}Nächste Fläche (${candidates.length} offen)</button><button type="button" data-command="candidates-clear" data-config>${icon("eye-off-outline")}Restliche Vorschläge ausblenden</button>` : ""}${hasSelection ? `<button type="button" data-command="zone-deselect" data-config>${icon("close")}Auswahl aufheben</button>` : ""}<details><summary>Erweiterte Erkennung</summary><label class="field" style="margin-top:12px">Wandlücken schließen<select id="analysis-gap" data-config>${options({auto:"Automatisch",0:"Aus",8:"Kleine Lücken",18:"Mittlere Lücken",28:"Größere Lücken",40:"Große Lücken"},this.analysisGap == null ? "auto" : String(this.analysisGap))}</select><small>Automatisch passt die Bildauswertung an den Grundriss an. Diese Einstellung misst keine Türbreite.</small></label></details></div><p>Dein hochgeladenes Bild dient nur als Zeichenvorlage. Im Live-Status (und über „Fertige Raum-Grafik ansehen“) wird daraus automatisch eine saubere Smart-Home-Raumgrafik ohne das Originalbild erzeugt.</p>${this.planAnalysis ? `<p role="status"><strong>${candidates.length ? `${candidates.length} Flächen vorgeschlagen` : "Keine geschlossenen Raumflächen gefunden"}</strong>${candidates.length ? " · Im Bild anklicken, mit Shift + Klick verbinden oder mit Entf löschen." : " · Türöffnungs-Ausgleich ändern oder Eckpunkte selbst setzen."}</p>` : ""}${candidates.length ? `<div class="row" style="margin-top:14px"><label class="field">Flächenvorschlag<select id="plan-candidate">${options(Object.fromEntries(candidates.map(item => [item.id,`Fläche ${item.id} · ${Math.round(item.area*1000)/10} % des Bildes`])),this.selectedCandidate,"Vorschlag auswählen")}</select></label>${mergeTargets.length ? `<label class="field">Mit Fläche verbinden<select id="plan-merge">${options(Object.fromEntries(mergeTargets.map(item => [item.id,`Fläche ${item.id} hinzufügen`])),"","Fläche zum Verbinden wählen")}</select></label>` : ""}${this.selectedCandidate ? `<button type="button" class="danger" data-command="candidate-delete" data-config>Vorschlag ${esc(this.selectedCandidate)} entfernen</button>` : ""}</div>` : ""}${this._assistantStepHTML(plan,candidates)}</div><div class="row" style="margin-top:14px"><label class="field">Raum / Außenbereich<select id="zone-room" data-config>${this._floorplanRoomsOptions(this.zoneRoom)}</select></label><button data-command="room-new" data-config>${icon("plus")}Raum anlegen</button><button data-command="zone-deselect" data-config ${!hasSelection ? "disabled" : ""}>${icon("close")}Auswahl aufheben</button><button type="button" data-command="floorplan-orthogonalize" data-config title="Richtet alle Linien im 90°-Winkel aus und schließt Wandkanten sauber an">${icon("ruler-square")}90° Begradigen</button><button data-command="zone-clear" data-config>Neu zeichnen</button><button data-command="zone-undo" data-config>Letzter Punkt zurück</button><button data-command="draft-undo" data-config ${!this._draftJournal?.history.length ? "disabled" : ""}>Rückgängig</button><button data-command="draft-redo" data-config ${!this._draftJournal?.future.length ? "disabled" : ""}>Wiederholen</button><button class="primary" data-command="zone-save" data-config>Bereich speichern</button><button data-command="zone-delete" data-config>Bereich entfernen</button></div><p id="draft-status" role="status">${this._draftJournal?.dirty ? (this._draftJournal.available ? "Ungespeicherter Entwurf · im Browser gesichert" : "Ungespeicherter Entwurf · Browser-Sicherung nicht verfügbar") : this.zoneRoom && plan.zones[this.zoneRoom] ? "Bereich gespeichert" : "Raumauswahl ordnet die aktuelle Fläche zu und behält alle Eckpunkte."}</p><p>Vorschlag anklicken (Shift + Klick verbindet zwei Vorschläge, Entf entfernt einen Vorschlag, Esc hebt die Auswahl auf) oder Eckpunkte im Bild setzen. Eckpunkte mit Maus oder Finger verschieben; mit Pfeiltasten fein korrigieren, mit Entf löschen. Offene Wohnbereiche können als einzelne Räume markiert werden. Erst „Bereich speichern“ übernimmt die Zuordnung.</p>` : edit ? '<p style="margin-top:14px">Wähle zuerst dein Grundrissbild über den Hochladen-Button aus.</p>' : "";
+    const editToolbar = edit ? `<div class="row" style="margin-top:14px">${rawPlan ? `<button class="${plan.image ? "" : "primary"}" data-command="floorplan-pick" data-config>${icon("upload")}${plan.image ? "Bild ersetzen" : "Grundriss hochladen"}</button><input type="file" id="plan-upload" data-plan="${esc(plan.id)}" accept="image/png,image/jpeg" hidden data-config>` : ""}<button data-command="floorplan-upload" data-config>${rawPlan ? "Weitere Etage hochladen" : "Grundriss hochladen"}</button><button type="button" class="${this.graphicPreview ? "primary" : ""}" data-command="toggle-graphic-preview">${icon(this.graphicPreview ? "image-edit-outline" : "vector-polygon")}${this.graphicPreview ? "Vorlagenbild einblenden" : "Fertige Raum-Grafik ansehen"}</button><button type="button" data-command="floorplan-orthogonalize" data-config title="Richtet alle Linien im 90°-Winkel aus und schließt Wandkanten sauber an">${icon("ruler-square")}90° Begradigen</button><button type="button" data-command="labels-reset" data-config title="Setzt alle manuell verschobenen Beschriftungen wieder auf die automatische Raummitte zurück">${icon("format-title")}Beschriftungen zentrieren</button><button data-command="floorplan-edit" data-id="${esc(plan.id)}" data-config>Umbenennen</button>${rawPlan ? `<button type="button" data-command="floorplan-reset" data-id="${esc(plan.id)}" data-config>${icon("refresh")}Von vorne anfangen</button><button type="button" class="danger" data-command="floorplan-delete" data-id="${esc(plan.id)}" data-config>${icon("delete-outline")}Grundriss löschen</button>` : ""}</div>` : "";
+    const assistantBody = edit && image ? `<ol class="plan-steps"><li>Bild hochgeladen</li><li>Raumflächen prüfen und zuordnen</li><li>Bereich speichern</li></ol><div class="plan-assistant"><div class="row"><button class="primary" data-command="floorplan-analyze" data-config ${this._analysisBusy ? "disabled" : ""}>${icon("floor-plan")}${this._analysisBusy ? "Flächen werden gesucht …" : "Flächen erkennen"}</button>${candidates.length ? `<button type="button" data-command="candidate-next" data-config>${icon("arrow-right")}Nächste Fläche (${candidates.length} offen)</button><button type="button" data-command="candidates-clear" data-config>${icon("eye-off-outline")}Restliche Vorschläge ausblenden</button>` : ""}${hasSelection ? `<button type="button" data-command="zone-deselect" data-config>${icon("close")}Auswahl aufheben</button>` : ""}<details><summary>Erweiterte Erkennung</summary><label class="field" style="margin-top:12px">Wandlücken schließen<select id="analysis-gap" data-config>${options({auto:"Automatisch",0:"Aus",8:"Kleine Lücken",18:"Mittlere Lücken",28:"Größere Lücken",40:"Große Lücken"},this.analysisGap == null ? "auto" : String(this.analysisGap))}</select><small>Automatisch passt die Bildauswertung an den Grundriss an. Diese Einstellung misst keine Türbreite.</small></label></details></div><p>Dein hochgeladenes Bild dient nur als Zeichenvorlage. Im Live-Status (und über „Fertige Raum-Grafik ansehen“) wird daraus automatisch eine saubere Smart-Home-Raumgrafik ohne das Originalbild erzeugt.</p>${this.planAnalysis ? `<p role="status"><strong>${candidates.length ? `${candidates.length} Flächen vorgeschlagen` : "Keine geschlossenen Raumflächen gefunden"}</strong>${candidates.length ? " · Im Bild anklicken, mit Shift + Klick verbinden oder mit Entf löschen." : " · Türöffnungs-Ausgleich ändern oder Eckpunkte selbst setzen."}</p>` : ""}${candidates.length ? `<div class="row" style="margin-top:14px"><label class="field">Flächenvorschlag<select id="plan-candidate">${options(Object.fromEntries(candidates.map(item => [item.id,`Fläche ${item.id} · ${Math.round(item.area*1000)/10} % des Bildes`])),this.selectedCandidate,"Vorschlag auswählen")}</select></label>${mergeTargets.length ? `<label class="field">Mit Fläche verbinden<select id="plan-merge">${options(Object.fromEntries(mergeTargets.map(item => [item.id,`Fläche ${item.id} hinzufügen`])),"","Fläche zum Verbinden wählen")}</select></label>` : ""}${this.selectedCandidate ? `<button type="button" class="danger" data-command="candidate-delete" data-config>Vorschlag ${esc(this.selectedCandidate)} entfernen</button>` : ""}</div>` : ""}${this._assistantStepHTML(plan,candidates)}</div><div class="row" style="margin-top:14px"><label class="field">Raum / Außenbereich<select id="zone-room" data-config>${this._floorplanRoomsOptions(this.zoneRoom)}</select></label><button data-command="room-new" data-config>${icon("plus")}Raum anlegen</button><button data-command="zone-deselect" data-config ${!hasSelection ? "disabled" : ""}>${icon("close")}Auswahl aufheben</button><button type="button" data-command="floorplan-orthogonalize" data-config title="Richtet alle Linien im 90°-Winkel aus und schließt Wandkanten sauber an">${icon("ruler-square")}90° Begradigen</button><button data-command="zone-clear" data-config>Neu zeichnen</button><button data-command="zone-undo" data-config>Letzter Punkt zurück</button><button data-command="draft-undo" data-config ${!this._draftJournal?.history.length ? "disabled" : ""}>Rückgängig</button><button data-command="draft-redo" data-config ${!this._draftJournal?.future.length ? "disabled" : ""}>Wiederholen</button><button class="primary" data-command="zone-save" data-config>Bereich speichern</button><button data-command="zone-delete" data-config>Bereich entfernen</button></div><p id="draft-status" role="status">${this._draftJournal?.dirty ? (this._draftJournal.available ? "Ungespeicherter Entwurf · im Browser gesichert" : "Ungespeicherter Entwurf · Browser-Sicherung nicht verfügbar") : this.zoneRoom && plan.zones[this.zoneRoom] ? "Bereich gespeichert" : "Raumauswahl ordnet die aktuelle Fläche zu und behält alle Eckpunkte."}</p><p>Vorschlag anklicken (Shift + Klick verbindet zwei Vorschläge, Entf entfernt einen Vorschlag, Esc hebt die Auswahl auf) oder Eckpunkte im Bild setzen. Eckpunkte mit Maus oder Finger verschieben; mit Pfeiltasten fein korrigieren, mit Entf löschen. <strong>Tipp:</strong> Alle Raum-Beschriftungen können direkt mit der Maus oder dem Finger an jede beliebige Position verschoben werden. Erst „Bereich speichern“ übernimmt die Zuordnung.</p>` : edit ? '<p style="margin-top:14px">Wähle zuerst dein Grundrissbild über den Hochladen-Button aus.</p>' : "";
     const svgBody = showSvg ? `<div class="plan-wrap ${isGraphic ? "graphic-mode" : "template-mode"}" style="aspect-ratio:${width}/${height}"><svg id="floorplan" role="img" aria-label="${esc(plan.name)}" data-edit="${edit && !this.graphicPreview}" viewBox="${viewBox}">${defs}${isGraphic ? `<rect x="0" y="0" width="${width}" height="${height}" fill="url(#iq-grid-major)"/>` : `<image href="${esc(image)}" width="${width}" height="${height}"/>`}${this._zoneLinksSVG(plan,renderZones)}${Object.entries(renderZones).map(([room,points]) => this._zoneSVG(plan,room,points,isGraphic,scale)).join("")}${edit && !this.graphicPreview && !this.manualDrawing ? candidates.map(item => `<g data-candidate="${esc(item.id)}" role="button" tabindex="0" aria-label="Fläche ${esc(item.id)} auswählen"><polygon class="plan-proposal ${this.selectedCandidate === item.id ? "chosen" : ""}" points="${(this.selectedCandidate === item.id && this.points.length ? this.points : item.points).map(([x,y]) => `${x*width},${y*height}`).join(" ")}"/><text x="${item.center[0]*width}" y="${item.center[1]*height}" text-anchor="middle" font-size="${Math.max(width,height)*.024}">${esc(item.id)}</text></g>`).join("") : ""}<polygon class="draft" points="${edit && !this.graphicPreview ? this.points.map(([x,y]) => `${x*width},${y*height}`).join(" ") : ""}"/><g class="draft-points">${edit && !this.graphicPreview ? this._draftHandles(plan) : ""}</g></svg></div>` : (edit ? `<div class="empty" style="margin-top:16px">${plan.image ? "Bild wird geladen …" : "PNG / JPG auswählen · maximal 10 MB"}</div>` : "");
     return `<section class="card" style="margin:20px 0"><div class="row between"><div class="row"><h2>${edit ? "Grundriss-Assistent" : "Live-Grundriss"}</h2>${!edit || this.graphicPreview ? `<span class="pill">${icon("vector-polygon")}Raum-Grafik · ${Object.keys(renderZones).length} ${Object.keys(renderZones).length === 1 ? "Raum" : "Räume"}</span>` : ""}</div>${plans.length ? `<label class="field">Etage<select id="plan-select">${options(Object.fromEntries(plans.map(p => [p.id,p.name])),plan.id)}</select></label>` : ""}</div>${editToolbar}${assistantBody}${svgBody}</section>`;
   }
@@ -488,12 +488,12 @@ class IQAlarmPanel extends HTMLElement {
     const seen = new Set(), lines = [];
     for (const [roomId, points] of Object.entries(zones)) {
       const room = this.data.config.rooms[roomId]; if (!room?.adjacent?.length) continue;
-      const c1 = roomVisualCenter(points);
+      const c1 = plan.labels?.[roomId] || roomVisualCenter(points);
       for (const adjId of room.adjacent) {
         const key = [roomId, adjId].sort().join(":");
         if (!zones[adjId] || seen.has(key)) continue;
         seen.add(key);
-        const c2 = roomVisualCenter(zones[adjId]);
+        const c2 = plan.labels?.[adjId] || roomVisualCenter(zones[adjId]);
         lines.push(`<line class="room-link" x1="${Math.round(c1[0]*plan.width)}" y1="${Math.round(c1[1]*plan.height)}" x2="${Math.round(c2[0]*plan.width)}" y2="${Math.round(c2[1]*plan.height)}" stroke="#38bdf8" stroke-opacity=".45" stroke-width="2" stroke-dasharray="6 5" vector-effect="non-scaling-stroke"/>`);
       }
     }
@@ -502,7 +502,7 @@ class IQAlarmPanel extends HTMLElement {
   _zoneSVG(plan,room,points,graphic = false,scale = 1) {
     const status = this.data.status.rooms[room] || {}, roomName = this.data.config.rooms[room]?.name || room;
     const tags = [status.open?.length ? "Fenster / Tür offen" : "",status.motion?.length ? "Bewegung" : "",status.persons?.length ? "Person draußen" : "",status.quarantined?.length ? "Sensor isoliert" : ""].filter(Boolean);
-    const center = roomVisualCenter(points);
+    const center = plan.labels?.[room] || roomVisualCenter(points);
     const cx = Math.round(center[0]*plan.width*10)/10, cy = Math.round(center[1]*plan.height*10)/10;
     const activeAlert = tags.length > 0 || (status.level || 0) > 0;
     const color = tags.length ? (status.confirmed ? "#ef4444" : "#f59e0b") : (status.level ? this._color(status.level) : "#14b8a6");
@@ -516,7 +516,7 @@ class IQAlarmPanel extends HTMLElement {
     const badgeH = fontSize*2.55;
     const ptsAttr = points.map(([x,y]) => `${Math.round(x*plan.width*10)/10},${Math.round(y*plan.height*10)/10}`).join(" ");
     const corners = graphic ? points.map(([x,y]) => `<circle class="room-corner" cx="${Math.round(x*plan.width*10)/10}" cy="${Math.round(y*plan.height*10)/10}" r="${Math.max(2.2,base*.0035)}" fill="${color}" fill-opacity=".85"/>`).join("") : "";
-    return `<g data-room="${esc(room)}" role="button" tabindex="0" aria-label="${esc(roomName+': '+(tags.join(', ') || 'Ruhig'))}"><polygon class="room-glow" points="${ptsAttr}" fill="${color}" fill-opacity="${activeAlert ? ".26" : ".14"}" stroke="${color}" stroke-width="${activeAlert ? 8 : 5}" stroke-opacity=".28" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><polygon points="${ptsAttr}" fill="url(#iq-room-fill-${fillId})" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><polygon class="room-inner" points="${ptsAttr}" fill="none" stroke="#e2f1ff" stroke-opacity=".32" stroke-width="1" stroke-dasharray="5 4" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>${corners}<rect class="room-badge" x="${Math.round((cx-badgeW/2)*10)/10}" y="${Math.round((cy-badgeH/2)*10)/10}" width="${Math.round(badgeW)}" height="${Math.round(badgeH)}" rx="${Math.round(badgeH*.32)}" fill="#091322e0" stroke="${color}" stroke-width="1.5" vector-effect="non-scaling-stroke"/><text x="${cx}" y="${Math.round((cy-badgeH*.1)*10)/10}" text-anchor="middle" font-size="${Math.round(fontSize*10)/10}">${esc(roomName)}<tspan x="${cx}" dy="1.35em" font-size="${Math.round(subSize*10)/10}" class="room-sub">${esc(subText)}</tspan></text></g>`;
+    return `<g data-room="${esc(room)}" role="button" tabindex="0" aria-label="${esc(roomName+': '+(tags.join(', ') || 'Ruhig'))}"><polygon class="room-glow" points="${ptsAttr}" fill="${color}" fill-opacity="${activeAlert ? ".26" : ".14"}" stroke="${color}" stroke-width="${activeAlert ? 8 : 5}" stroke-opacity=".28" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><polygon points="${ptsAttr}" fill="url(#iq-room-fill-${fillId})" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><polygon class="room-inner" points="${ptsAttr}" fill="none" stroke="#e2f1ff" stroke-opacity=".32" stroke-width="1" stroke-dasharray="5 4" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>${corners}<g class="room-label-group" data-label-room="${esc(room)}" data-cx="${cx}" data-cy="${cy}" tabindex="0" role="button" aria-label="Beschriftung ${esc(roomName)} verschieben"><rect class="room-badge" x="${Math.round((cx-badgeW/2)*10)/10}" y="${Math.round((cy-badgeH/2)*10)/10}" width="${Math.round(badgeW)}" height="${Math.round(badgeH)}" rx="${Math.round(badgeH*.32)}" fill="#091322e0" stroke="${color}" stroke-width="1.5" vector-effect="non-scaling-stroke"/><text x="${cx}" y="${Math.round((cy-badgeH*.1)*10)/10}" text-anchor="middle" font-size="${Math.round(fontSize*10)/10}">${esc(roomName)}<tspan x="${cx}" dy="1.35em" font-size="${Math.round(subSize*10)/10}" class="room-sub">${esc(subText)}</tspan></text></g></g>`;
   }
   async _loadPlan(plan) {
     const key = `${plan.id}/${plan.image}`; if (this.imageLoading.has(key)) return;
@@ -548,8 +548,16 @@ class IQAlarmPanel extends HTMLElement {
     finally { this._requestBusy=false; this._updateLock(); const input=this.shadowRoot.getElementById("plan-upload"); if (input) input.value=""; }
   }
   _planPosition(event, svg) {
-    const rect=svg.getBoundingClientRect();
-    return [Math.max(0,Math.min(1,(event.clientX-rect.left)/rect.width)),Math.max(0,Math.min(1,(event.clientY-rect.top)/rect.height))];
+    const plan = this.data?.config.floorplans[this.plan];
+    const ctm = svg.getScreenCTM?.();
+    if (ctm && plan?.width && plan?.height) {
+      const pt = svg.createSVGPoint();
+      pt.x = event.clientX; pt.y = event.clientY;
+      const loc = pt.matrixTransform(ctm.inverse());
+      return [Math.max(0, Math.min(1, loc.x / plan.width)), Math.max(0, Math.min(1, loc.y / plan.height))];
+    }
+    const rect = svg.getBoundingClientRect();
+    return [Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)), Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height))];
   }
   _planClick(event) {
     const svg=event.target.closest("#floorplan"); if (!svg) return;
@@ -580,6 +588,31 @@ class IQAlarmPanel extends HTMLElement {
     else [...handles.children].forEach((circle,index) => {circle.setAttribute("cx",this.points[index][0]*plan.width); circle.setAttribute("cy",this.points[index][1]*plan.height);});
   }
   _vertexDown(event) {
+    const labelGroup = event.target.closest("[data-label-room]");
+    if (labelGroup && !this.data.status.active && !this._requestBusy) {
+      const svg = labelGroup.closest("svg");
+      const room = labelGroup.dataset.labelRoom;
+      const plan = this.data.config.floorplans[this.plan];
+      if (svg && plan) {
+        event.preventDefault();
+        labelGroup.classList.add("dragging");
+        this._dragLabel = {
+          room,
+          labelGroup,
+          svg,
+          plan,
+          pointer: event.pointerId,
+          startX: event.clientX,
+          startY: event.clientY,
+          origCx: Number(labelGroup.dataset.cx),
+          origCy: Number(labelGroup.dataset.cy),
+          moved: false,
+        };
+        svg.setPointerCapture(event.pointerId);
+        labelGroup.focus();
+        return;
+      }
+    }
     const handle=event.target.closest("[data-draft-vertex]"); if (!handle || this.data.status.active || this._requestBusy) return;
     event.preventDefault(); this._recordDraft();
     const svg=handle.closest("svg");
@@ -587,17 +620,90 @@ class IQAlarmPanel extends HTMLElement {
     svg.setPointerCapture(event.pointerId); handle.focus();
   }
   _vertexMove(event) {
+    const dragL = this._dragLabel;
+    if (dragL && dragL.pointer === event.pointerId) {
+      event.preventDefault();
+      const dx = event.clientX - dragL.startX;
+      const dy = event.clientY - dragL.startY;
+      if (!dragL.moved && Math.hypot(dx, dy) > 3) {
+        dragL.moved = true;
+      }
+      if (dragL.moved) {
+        const pos = this._planPosition(event, dragL.svg);
+        const targetX = pos[0] * dragL.plan.width;
+        const targetY = pos[1] * dragL.plan.height;
+        const shiftX = Math.round((targetX - dragL.origCx) * 10) / 10;
+        const shiftY = Math.round((targetY - dragL.origCy) * 10) / 10;
+        dragL.labelGroup.setAttribute("transform", `translate(${shiftX},${shiftY})`);
+      }
+      return;
+    }
     const drag=this._dragVertex; if (!drag || drag.pointer !== event.pointerId) return;
     event.preventDefault(); this.points[drag.index]=this._planPosition(event,drag.svg); this._refreshDraft(false);
   }
-  _vertexEnd(event) {
+  async _vertexEnd(event) {
+    const dragL = this._dragLabel;
+    if (dragL && dragL.pointer === event.pointerId) {
+      if (dragL.svg.hasPointerCapture(event.pointerId)) dragL.svg.releasePointerCapture(event.pointerId);
+      dragL.labelGroup.classList.remove("dragging");
+      this._dragLabel = null;
+      if (dragL.moved) {
+        this._ignorePlanClick = true;
+        const pos = this._planPosition(event, dragL.svg);
+        const finalPos = [Math.max(0.01, Math.min(0.99, Math.round(pos[0] * 10000) / 10000)), Math.max(0.01, Math.min(0.99, Math.round(pos[1] * 10000) / 10000))];
+        await this._saveLabelPosition(dragL.plan.id, dragL.room, finalPos);
+      }
+      return;
+    }
     const drag=this._dragVertex; if (!drag || drag.pointer !== event.pointerId) return;
     if (drag.svg.hasPointerCapture(event.pointerId)) drag.svg.releasePointerCapture(event.pointerId);
     this._dragVertex=null; this._ignorePlanClick=true; this._storeDraft();
   }
-  _vertexKey(event) {
+  async _saveLabelPosition(planId, roomId, pos) {
+    const plan = this.data.config.floorplans[planId];
+    if (!plan) return;
+    const item = structuredClone(plan);
+    if (!item.labels) item.labels = {};
+    item.labels[roomId] = pos;
+    try {
+      this.data = await this._call("crud", {collection: "floorplans", operation: "save", item, revision: this._viewRevision});
+      const roomName = this.data.config.rooms[roomId]?.name || roomId;
+      this._toast(`Beschriftung für „${roomName}“ platziert`);
+      this._render();
+    } catch (err) {
+      this._toast(`Konnte Beschriftung nicht speichern: ${err.message || err}`, true);
+      this._render();
+    }
+  }
+  async _vertexKey(event) {
     if ((event.ctrlKey || event.metaKey) && ["z","y"].includes(event.key.toLowerCase()) && event.target.closest("#floorplan")) {
       event.preventDefault(); this._undoDraft(event.key.toLowerCase() === "y" || event.shiftKey); return;
+    }
+    const labelGroup = event.target.closest("[data-label-room]");
+    if (labelGroup && !this.data.status.active && !this._requestBusy) {
+      const roomId = labelGroup.dataset.labelRoom;
+      const plan = this.data.config.floorplans[this.plan];
+      if (plan && ["Delete", "Backspace"].includes(event.key)) {
+        event.preventDefault();
+        if (plan.labels?.[roomId]) {
+          const item = structuredClone(plan);
+          delete item.labels[roomId];
+          this.data = await this._call("crud", {collection: "floorplans", operation: "save", item, revision: this._viewRevision});
+          const roomName = this.data.config.rooms[roomId]?.name || roomId;
+          this._toast(`Beschriftung für „${roomName}“ auf Raummitte zurückgesetzt`);
+          this._render();
+        }
+        return;
+      }
+      if (plan && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+        event.preventDefault();
+        const cur = plan.labels?.[roomId] || roomVisualCenter(plan.zones[roomId] || []);
+        const delta = event.shiftKey ? 0.002 : 0.01;
+        const change = {ArrowLeft: [-delta, 0], ArrowRight: [delta, 0], ArrowUp: [0, -delta], ArrowDown: [0, delta]}[event.key];
+        const finalPos = [Math.max(0.01, Math.min(0.99, Math.round((cur[0] + change[0]) * 10000) / 10000)), Math.max(0.01, Math.min(0.99, Math.round((cur[1] + change[1]) * 10000) / 10000))];
+        await this._saveLabelPosition(plan.id, roomId, finalPos);
+        return;
+      }
     }
     const candidate=event.target.closest("[data-candidate]");
     if (candidate && ["Enter"," "].includes(event.key)) {event.preventDefault(); this._chooseCandidate(candidate.dataset.candidate, true); return;}
@@ -611,7 +717,7 @@ class IQAlarmPanel extends HTMLElement {
   _windowKey(event) {
     if (event.defaultPrevented || this.tab !== 1 || this.data?.status.active || this._requestBusy || this.shadowRoot.getElementById("editor")?.open) return;
     const active = this.shadowRoot.activeElement || document.activeElement;
-    if (active && (["INPUT","TEXTAREA","SELECT"].includes(active.tagName) || active.hasAttribute?.("data-draft-vertex"))) return;
+    if (active && (["INPUT","TEXTAREA","SELECT"].includes(active.tagName) || active.hasAttribute?.("data-draft-vertex") || active.hasAttribute?.("data-label-room"))) return;
     if (event.key === "Escape" && (this.points.length || this.selectedCandidate || this.zoneRoom)) {
       event.preventDefault(); this._deselectZone(); return;
     }
@@ -708,11 +814,21 @@ class IQAlarmPanel extends HTMLElement {
         const item=structuredClone(this.data.config.floorplans[this.plan]);
         if (item.zones[this.zoneRoom]) {
           delete item.zones[this.zoneRoom];
+          if (item.labels) delete item.labels[this.zoneRoom];
           this.data=await this._call("crud",{collection:"floorplans",operation:"save",item,revision:this._viewRevision});
         }
         this._recordDraft(); this.points=[]; this.selectedCandidate=""; this._storeDraft(); this._draftJournal?.markSaved(this._draftSnapshot()); this._render();
       }
       else if (command === "zone-deselect") this._deselectZone();
+      else if (command === "labels-reset") {
+        const plan = this.data.config.floorplans[this.plan];
+        if (!plan) return;
+        const item = structuredClone(plan);
+        item.labels = {};
+        this.data = await this._call("crud", {collection: "floorplans", operation: "save", item, revision: this._viewRevision});
+        this._toast("Alle Beschriftungen auf Raummitte zentriert");
+        this._render();
+      }
       else if (command === "floorplan-orthogonalize") {
         const plan = this.data.config.floorplans[this.plan];
         if (!plan) return;
@@ -816,6 +932,7 @@ class IQAlarmPanel extends HTMLElement {
     }
     for (const fp of Object.values(config.floorplans)) {
       for (const rid of Object.keys(fp.zones || {})) if (!config.rooms[rid]) delete fp.zones[rid];
+      for (const rid of Object.keys(fp.labels || {})) if (!config.rooms[rid]) delete fp.labels[rid];
     }
   }
 
@@ -880,6 +997,7 @@ class IQAlarmPanel extends HTMLElement {
           if (plan) {
             const roomIds = Object.keys(config.floorplans).length <= 1 ? Object.keys(config.rooms) : Object.keys(plan.zones || {});
             plan.zones = {};
+            plan.labels = {};
             if (bool("also_delete_rooms") && roomIds.length) this._pruneRooms(config, roomIds);
             this.data = await this._call("config/save", {config, revision: this._dialogRevision});
           }

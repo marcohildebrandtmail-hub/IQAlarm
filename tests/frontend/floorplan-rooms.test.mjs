@@ -138,3 +138,21 @@ test("alignPlanZones straightens all zones and snaps shared adjacent walls seaml
   }
 });
 
+test("room labels use custom coordinates when configured and fallback to roomVisualCenter", () => {
+  const roomPoints = [[0.1, 0.1], [0.5, 0.1], [0.5, 0.5], [0.1, 0.5]];
+  const autoCenter = roomVisualCenter(roomPoints);
+  const plan = {
+    zones: {living: roomPoints, hallway: roomPoints},
+    labels: {living: [0.25, 0.2]},
+  };
+
+  const getLabelPos = (roomId) => plan.labels?.[roomId] || roomVisualCenter(plan.zones[roomId]);
+  assert.deepEqual(getLabelPos("living"), [0.25, 0.2]);
+  assert.deepEqual(getLabelPos("hallway"), autoCenter);
+
+  // Resetting living room label restores auto center
+  delete plan.labels.living;
+  assert.deepEqual(getLabelPos("living"), autoCenter);
+});
+
+

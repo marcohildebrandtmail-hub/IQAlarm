@@ -159,11 +159,15 @@ def test_observe_profile_is_removed_and_live_status_is_not_a_profile(config):
 
 def test_floorplan_roundtrip_and_normalized_coordinates(config):
     config.floorplans["eg"] = FloorPlan(
-        "eg", "Erdgeschoss", zones={"living": [[0, 0], [1, 0], [1, 1], [0, 1]]}
+        "eg",
+        "Erdgeschoss",
+        zones={"living": [[0, 0], [1, 0], [1, 1], [0, 1]]},
+        labels={"living": [0.35, 0.42]},
     )
     config.validate()
     clone = Configuration.from_dict(deepcopy(config.to_dict()))
     assert clone.floorplans["eg"].zones == config.floorplans["eg"].zones
+    assert clone.floorplans["eg"].labels == config.floorplans["eg"].labels
     clone.floorplans["eg"].zones["living"][0][0] = 0.2
     assert config.floorplans["eg"].zones["living"][0][0] == 0
 

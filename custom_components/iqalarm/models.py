@@ -396,6 +396,7 @@ class FloorPlan:
     width: int = 0
     height: int = 0
     zones: dict[str, list[list[float]]] = field(default_factory=dict)
+    labels: dict[str, list[float]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not isinstance(self.id, str) or not ID_RE.fullmatch(self.id):
@@ -425,6 +426,14 @@ class FloorPlan:
             )
             if abs(area) < 0.00001:
                 raise ValueError("Bereich muss eine Fläche einschließen")
+        if not isinstance(self.labels, dict) or len(self.labels) > 250:
+            raise ValueError("Ungültige Beschriftungspositionen")
+        for room_id, point in self.labels.items():
+            text(room_id, "Raum-ID", 100)
+            if not isinstance(point, list) or len(point) != 2:
+                raise ValueError("Ungültige Beschriftungskoordinate")
+            for coordinate in point:
+                number(coordinate, 0, 1, "Beschriftungskoordinate")
 
 
 def default_profiles() -> dict[str, Profile]:
