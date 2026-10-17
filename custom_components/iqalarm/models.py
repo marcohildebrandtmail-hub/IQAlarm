@@ -320,6 +320,8 @@ class Settings:
     simulation_end: int = 23
     debounce_by_role: dict[str, int] = field(default_factory=dict)
     observation_profile_id: str | None = "live"
+    quiet_disarmed_floorplan: bool = True
+    quiet_disarmed_locks: bool = True
 
     def __post_init__(self) -> None:
         for key in (
@@ -329,6 +331,8 @@ class Settings:
             "auto_camera_snapshot",
             "auto_camera_record",
             "simulation_enabled",
+            "quiet_disarmed_floorplan",
+            "quiet_disarmed_locks",
         ):
             if type(getattr(self, key)) is not bool:
                 raise ValueError(f"{key} muss boolesch sein")
@@ -643,6 +647,8 @@ def migrate_configuration(data: dict) -> dict:
         raise ValueError("Einstellungen müssen ein Objekt sein")
     if settings.get("observation_profile_id") == "observe":
         settings["observation_profile_id"] = "live"
+    settings.setdefault("quiet_disarmed_floorplan", True)
+    settings.setdefault("quiet_disarmed_locks", True)
     return result
 
 

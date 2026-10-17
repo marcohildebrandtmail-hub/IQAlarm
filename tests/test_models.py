@@ -103,3 +103,14 @@ def test_settings_reject_invalid_simulation():
 def test_numeric_sensor_settings_require_integer():
     with pytest.raises(ValueError):
         SensorConfig("binary_sensor.window", "entry_contact", "living", flap_threshold=3.5)
+
+
+def test_settings_quiet_disarmed_defaults_and_validation():
+    s = Settings()
+    assert s.quiet_disarmed_floorplan is True
+    assert s.quiet_disarmed_locks is True
+    with pytest.raises(ValueError):
+        Settings(quiet_disarmed_floorplan="yes")  # type: ignore[arg-type]
+    with pytest.raises(ValueError):
+        Settings(quiet_disarmed_locks="no")  # type: ignore[arg-type]
+
