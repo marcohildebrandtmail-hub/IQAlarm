@@ -34,7 +34,7 @@ class IQAlarmPanel extends HTMLElement {
     this.shadowRoot.addEventListener("input", e => { if (e.target.id === "sensor-search") this._renderCatalog(e.target.value); });
     this.shadowRoot.addEventListener("change", e => {
       if (e.target.name === "kind") this._actionVisibility(e.target.value);
-      if (e.target.dataset.scope) this._scopeVisibility(e.target.form);
+      if (e.target.hasAttribute("data-scope")) this._scopeVisibility(e.target.form);
     });
     this.shadowRoot.querySelector("nav").addEventListener("keydown", e => {
       if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
