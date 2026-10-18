@@ -47,7 +47,8 @@ test("free level conditions select entities, source count, timing and profiles, 
   await expect(page.getByLabel("Regelname",{exact:true})).toHaveValue("Zwei Außenquellen");
   await expect(page.getByLabel("Sensoren für Bedingung 1",{exact:true})).toHaveValues([ids.person,ids.person2,ids.outside]);
   await page.locator('[data-rule-condition="1"]').getByRole("button",{name:"Entfernen",exact:true}).click();
-  await page.getByLabel("In diesen Alarmmodi verwenden",{exact:true}).selectOption("qa_night");
+  await page.getByRole("listbox",{name:"In diesen Alarmmodi verwenden",exact:true}).selectOption("qa_night");
+  await page.screenshot({path:"test-results/free-level-rule-editor.png",fullPage:true});
   await page.getByRole("dialog").getByRole("button",{name:"Speichern",exact:true}).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
   const saved=await ws(page,"get"),rule=Object.values(saved.config.rules).find(r=>r.name==="Zwei Außenquellen");
@@ -88,7 +89,7 @@ test("profile level actions and dry runs are isolated, persist and duplicate ind
   await card.locator(".action-card").filter({hasText:"Nur abwesend"}).getByRole("button",{name:"Aktion bearbeiten",exact:true}).click();
   await page.getByLabel(/^Nachricht/).fill("Nur Kopie");await page.getByRole("dialog").getByRole("button",{name:"Speichern",exact:true}).click();
   await page.getByRole("button",{name:"Regeln Abwesend",exact:true}).click();await expect(card.getByText("Nur abwesend",{exact:true})).toBeVisible();await expect(card.getByText("Nur Kopie",{exact:true})).toHaveCount(0);
-  await page.setViewportSize({width:390,height:844});await page.screenshot({path:"test-results/profile-level-actions-mobile.png",fullPage:true});
+  await page.setViewportSize({width:390,height:844});await card.scrollIntoViewIfNeeded();await page.screenshot({path:"test-results/profile-level-actions-mobile.png",fullPage:true});
   await page.reload();await page.getByRole("tab",{name:"Profile & System"}).click();await page.getByRole("button",{name:"Regeln Nacht",exact:true}).click();await expect(card.getByText("Nur nachts",{exact:true})).toBeVisible();
 });
 
