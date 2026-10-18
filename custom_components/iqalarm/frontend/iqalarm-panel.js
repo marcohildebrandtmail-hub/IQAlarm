@@ -59,7 +59,11 @@ dialog.wide{width:min(980px,calc(100vw - 28px));max-width:min(980px,calc(100vw -
 .room-pick-btn:hover{background:color-mix(in srgb,var(--iq-accent) 10%,var(--iq-surface));border-color:var(--iq-accent)}
 .room-pick-btn.current{border-color:var(--iq-accent);background:color-mix(in srgb,var(--iq-accent) 14%,var(--iq-surface));color:var(--iq-accent);cursor:default}
 .room-pick-btn small{font-size:11px;font-weight:400;color:var(--iq-muted);margin-left:auto}
-.room-head-actions{display:flex;align-items:center;gap:4px;margin-left:auto}
+.room-head-title{display:flex;align-items:center;gap:7px;min-width:0;flex:1}
+.room-head-title h3{margin:0;font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.room-head-title ha-icon{flex-shrink:0;--mdc-icon-size:20px;color:var(--iq-accent)}
+.room-head-title .pill{font-size:11px;padding:2px 7px;flex-shrink:0}
+.room-head-actions{display:flex;align-items:center;gap:4px;margin-left:auto;flex-shrink:0}
 .room-nav-btn{padding:2px;min-width:26px;min-height:26px;border-radius:6px;border:1px solid var(--iq-border);background:var(--iq-surface);color:var(--primary-text-color);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;flex-shrink:0}
 .room-nav-btn:hover:not([disabled]){background:color-mix(in srgb,var(--iq-accent) 14%,var(--iq-surface));border-color:var(--iq-accent);color:var(--iq-accent);transform:scale(1.08)}
 .room-nav-btn[disabled]{opacity:.25;cursor:not-allowed}
@@ -476,7 +480,7 @@ class IQAlarmPanel extends HTMLElement {
         <button type="button" class="icon-button room-nav-btn" aria-label="${esc(title)} nach rechts verschieben" title="Raum nach rechts verschieben" data-command="room-move-right" data-room-id="${esc(roomId || "")}" ${isLast ? "disabled" : ""} data-config>${icon("arrow-right")}</button>
       ` : "";
 
-      return `<article class="card room-drop-target ${isUnassigned ? "unassigned-card" : ""}" data-drop-room-id="${esc(roomId || "")}"><div class="room-head">${icon(isUnassigned ? "help-circle-outline" : "floor-plan")}<h3>${esc(title)}</h3><span class="pill">${roomSensors.length} ${roomSensors.length === 1 ? "Sensor" : "Sensoren"}</span><div class="room-head-actions">${navButtons}<button type="button" class="icon-button room-add-btn" aria-label="Sensor zu ${esc(title)} hinzufügen" title="Sensor gezielt zu ${esc(title)} hinzufügen" data-command="room-add-sensor" data-room-id="${esc(roomId || "")}" data-config>${icon("plus")}</button></div></div><div class="sensor-drop-list">${roomSensors.length ? roomSensors.map(s => {
+      return `<article class="card room-drop-target ${isUnassigned ? "unassigned-card" : ""}" data-drop-room-id="${esc(roomId || "")}"><div class="room-head"><div class="room-head-title">${icon(isUnassigned ? "help-circle-outline" : "floor-plan")}<h3>${esc(title)}</h3><span class="pill" title="${roomSensors.length} ${roomSensors.length === 1 ? "Sensor" : "Sensoren"}">${roomSensors.length}</span></div><div class="room-head-actions">${navButtons}<button type="button" class="icon-button room-add-btn" aria-label="Sensor zu ${esc(title)} hinzufügen" title="Sensor gezielt zu ${esc(title)} hinzufügen" data-command="room-add-sensor" data-room-id="${esc(roomId || "")}" data-config>${icon("plus")}</button></div></div><div class="sensor-drop-list">${roomSensors.length ? roomSensors.map(s => {
         const raw = this.data.status.raw[s.entity_id];
         const isHandle = s.sensor_kind === "window_handle";
         const isLock = s.sensor_kind === "door_lock" || s.role === "lock_contact";
