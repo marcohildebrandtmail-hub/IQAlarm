@@ -607,6 +607,7 @@ class IQAlarmPanel extends HTMLElement {
       return;
     }
     const config = structuredClone(this.data.config);
+    const alreadyAssigned = this._orderedSensors(targetRoomId).some(s => s.entity_id === sensorId);
     if (name !== null) this._setDisplayName(config, sensorId, name);
     let movedName = sensorId;
     let found = false;
@@ -624,9 +625,9 @@ class IQAlarmPanel extends HTMLElement {
       }
     } else if (config.sensors?.[sensorId]) {
       const s = config.sensors[sensorId];
-      s.room_id = targetRoomId || null;
-      if (s.role.startsWith("perimeter")) {
-        s.front_of = targetRoomId ? [targetRoomId] : [];
+      if (!alreadyAssigned) {
+        s.room_id = targetRoomId || null;
+        if (s.role.startsWith("perimeter")) s.front_of = targetRoomId ? [targetRoomId] : [];
       }
       movedName = s.name || sensorId;
       found = true;
@@ -638,7 +639,7 @@ class IQAlarmPanel extends HTMLElement {
     }
 
     try {
-      this._placeSensor(config, sensorId, targetRoomId, beforeId, after);
+      if (!alreadyAssigned || beforeId) this._placeSensor(config, sensorId, targetRoomId, beforeId, after);
       this.data = await this._call("config/save", {config, revision});
       this.shadowRoot.getElementById("editor")?.close();
       const targetName = targetRoomId ? (this.data.config.rooms[targetRoomId]?.name || targetRoomId) : "Ohne Raum";

@@ -31,3 +31,14 @@ test("placing a sensor before or after another preserves every other group",()=>
   panel._placeSensor(config,"binary_sensor.a","k","binary_sensor.b",true);
   assert.deepEqual(config.settings.sensor_order.k,["binary_sensor.iqalarm_window_w","binary_sensor.b","binary_sensor.a","binary_sensor.shared"]);
 });
+test("choosing the current room retains order and every perimeter association",async()=>{
+  const panel=setup();
+  panel.data.status={active:false};
+  panel.data.config.sensors["binary_sensor.shared"].role="perimeter_camera";
+  const before=structuredClone(panel.data.config);
+  panel.shadowRoot={getElementById(){return {close(){}};}};
+  panel._toast=()=>{};panel._render=()=>{};
+  panel._call=async(type,{config})=>({config,status:{active:false}});
+  await panel._moveSensor("binary_sensor.shared","k");
+  assert.deepEqual(panel.data.config,before);
+});
