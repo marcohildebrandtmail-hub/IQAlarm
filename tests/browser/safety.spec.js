@@ -117,3 +117,32 @@ test("window wizard supports explicit enum contact values",async({page})=>{
   const saved=await ws(page,"get"),window=Object.values(saved.config.windows).find(w=>w.name==="QA Textfenster");
   expect(saved.status.raw[`binary_sensor.iqalarm_window_${window.id}`]).toBe(true);
 });
+
+test("motion label and red room expire together after fifteen seconds without another event",async({page})=>{
+  await page.clock.install();
+  await state(page,"binary_sensor.qa_floorplan_motion","off");
+  const data=await ws(page,"get");
+  data.config.rooms.qa_motion={id:"qa_motion",name:"QA Bewegung",adjacent:[]};
+  data.config.sensors["binary_sensor.qa_floorplan_motion"]={entity_id:"binary_sensor.qa_floorplan_motion",role:"interior_motion",room_id:"qa_motion"};
+  data.config.floorplans.qa_motion={id:"qa_motion",name:"QA Timer",width:100,height:100,zones:{qa_motion:[[.1,.1],[.9,.1],[.9,.9],[.1,.9]]}};
+  data.config.settings.observation_profile_id="live";
+  data.config.settings.floorplan_disarmed_motion=true;
+  await save(page,data.config);
+  const shape=page.locator('#floorplan-qa_motion g[data-room="qa_motion"]:not([data-label-room]) .room-glow');
+  const label=page.locator('#floorplan-qa_motion [data-label-room="qa_motion"] .room-sub');
+  await state(page,"binary_sensor.qa_floorplan_motion","on");
+  await expect(label).toContainText("Bewegung");
+  await expect(shape).toHaveAttribute("fill","#ef4444");
+  await state(page,"binary_sensor.qa_floorplan_motion","off");
+  await expect.poll(()=>page.locator("iqalarm-panel").evaluate(el=>el.data.status.raw["binary_sensor.qa_floorplan_motion"])).toBe(false);
+  await page.clock.fastForward(14000);
+  await expect(label).toContainText("Bewegung");
+  await expect(shape).toHaveAttribute("fill","#ef4444");
+  await page.clock.fastForward(2000);
+  await expect(label).toContainText("Ruhig");
+  await expect(label).not.toContainText("Bewegung",{ignoreCase:false});
+  await expect(shape).toHaveAttribute("fill","#14b8a6");
+  const current=await ws(page,"get");
+  expect(current.status.rooms.qa_motion.level).toBe(2);
+  expect(current.status.rooms.qa_motion.confirmed).toBe(false);
+});

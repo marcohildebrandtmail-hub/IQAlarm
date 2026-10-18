@@ -65,6 +65,8 @@ Der Assistent schlägt anschließend lokal Raumflächen vor. Es werden keine Bil
 
 Grundrissbilder werden als bereinigte PNG-Dateien privat unter `.iqalarm_floorplans` gespeichert. Abrufe und Uploads benötigen einen HA-Administrator. Bilder und Markierungen bleiben bei Neustarts und HACS-Updates erhalten.
 
+Die Bewegungsanzeige im Live-Grundriss verwendet einen gemeinsamen 15-Sekunden-Nachlauf für Text und rote Raumfarbe. Solange ein Melder aktiv ist, bleiben beide sichtbar. Nach seiner Ruhemeldung enden sie gemeinsam nach 15 Sekunden; eine erneute Bewegung startet den Nachlauf neu. Das längere Korrelationsfenster beeinflusst diese Anzeige nicht. Bestätigte Alarme behalten ihre eigene rote Darstellung samt ausdrücklicher Beschriftung.
+
 ### Profilsymbole
 
 Unter **Profile & System** hat jedes Profil ein eigenes, frei wählbares Symbol. Die Vorgaben sind Haus (Zuhause), Mond (Nacht), Haus mit Ausgang (Abwesend), Palme (Urlaub) und Personengruppe (Besuch). Der Aus-Schalter verwendet das Power-Symbol. Die Auswahl enthält eine grafische Vorschau und erlaubt zusätzliche MDI-Kennungen wie `mdi:dog`. Eigene Symbole und die Profilreihenfolge bleiben beim Bearbeiten, Duplizieren und nach Neustarts erhalten. Symbole ändern keine Alarmregeln.

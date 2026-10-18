@@ -1,8 +1,9 @@
-import {DraftJournal} from "./floorplan-drafts.js?v=2.4.6";
-import "./window-assistant.js?v=2.4.6";
-import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.4.6";
-/* IQAlarm 2.4.6 · native ES module · no CDN, framework or build required. */
+import {DraftJournal} from "./floorplan-drafts.js?v=2.4.7";
+import "./window-assistant.js?v=2.4.7";
+import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.4.7";
+/* IQAlarm 2.4.7 · native ES module · no CDN, framework or build required. */
 const WINDOW_CSS = `.window-group{padding:18px 0;border-bottom:1px solid var(--divider-color,#dce3ec)}.window-inputs{margin:14px 0 0 24px;padding-left:18px;border-left:2px solid var(--divider-color,#dce3ec)}.window-inputs code{display:block;font-size:10px;overflow-wrap:anywhere;color:var(--secondary-text-color,#64758b)}.information{border-color:color-mix(in srgb,var(--primary-color,#2986bb) 25%,transparent)}.information summary,details.banner summary{cursor:pointer;font-size:13px}.information ha-icon{color:var(--primary-color,#2986bb)}`;
+const FLOORPLAN_MOTION_HOLD_SECONDS = 15;
 const CATEGORIES={information:"Information",warning:"Warnung",alarm:"Alarm",fault:"Störung",isolated:"Isoliert"};
 const RULES = {perimeter: "Vorfeld-Erkennung", single: "Unbestätigter Einzelsensor", flapping: "Sensor-Prellen", perimeter_contact: "Vorfeld + Öffnung", contact_motion: "Öffnung + Bewegung", multi_contact: "Zwei Öffnungen im selben Raum / freigegebenen Weg", multi_motion: "Zwei unabhängige Bewegungsmelder im selben Raum / freigegebenen Weg", immediate: "Freigegebene Einzelauslösung / Gefahr"};
 const PROFILE_ICONS = {"mdi:home-outline":"Zuhause", "mdi:weather-night":"Nacht", "mdi:home-export-outline":"Abwesend", "mdi:palm-tree":"Urlaub", "mdi:account-group-outline":"Besuch", "mdi:garage-variant":"Garage", "mdi:shield-check-outline":"Schutz", "mdi:eye-outline":"Beobachtung", "mdi:dog":"Haustiere", "mdi:briefcase-outline":"Arbeit", "mdi:bed-outline":"Schlafzimmer", "mdi:lock-outline":"Schloss", "mdi:home-floor-0":"Erdgeschoss", "mdi:home-floor-1":"Obergeschoss", "mdi:home-floor-b":"Keller", "mdi:tree-outline":"Garten"};
@@ -230,6 +231,7 @@ class IQAlarmPanel extends HTMLElement {
     this._statusTimer = setInterval(() => {
       if (this.isConnected && this.data && (this.tab === 0 || this.tab === 2 || this.shadowRoot?.getElementById("live-room-status"))) {
         this._updateSensorStatuses();
+        if (this.tab === 0) this._refreshFloorplanStatuses();
       }
     }, 1000);
   }
@@ -377,6 +379,7 @@ class IQAlarmPanel extends HTMLElement {
   _render() {
     this.shadowRoot.querySelector("nav").innerHTML = TABS.map(([symbol, title], i) => `<button role="tab" id="tab-${i}" aria-selected="${i === this.tab}" aria-controls="main" tabindex="${i === this.tab ? 0 : -1}" data-tab="${i}" class="${i === this.tab ? "active" : ""}">${icon(symbol)}${title}</button>`).join("");
     if (!this.data) return;
+    this._floorplanViews = new Map();
     if (!Object.hasOwn(this.data.config.profiles, this.profile)) this.profile = Object.keys(this.data.config.profiles)[0];
     if (this.stage !== "diagnostic" && !this.data.config.stages.some(s => s.id === this.stage)) this.stage = this.data.config.stages[1]?.id || this.data.config.stages[0].id;
     this._viewRevision = this.data.config.revision;
@@ -667,6 +670,10 @@ class IQAlarmPanel extends HTMLElement {
     const renderZones = isGraphic ? buildGraphicZones(plan.zones, unmappedRooms) : plan.zones;
     const {viewBox, scale} = isGraphic ? graphicViewBox(renderZones, width, height) : {viewBox: `0 0 ${width} ${height}`, scale: 1};
     const showSvg = isGraphic ? (Boolean(plan.image || image) || Object.keys(renderZones).length > 0) : Boolean(image);
+    this._floorplanViews ||= new Map();
+    this._floorplanViews.set(plan.id, {plan, renderZones, isGraphic, scale});
+    const visualNow = Date.now() / 1000;
+    const presentations = Object.fromEntries(Object.keys(renderZones).map(room => [room, this._roomPresentation(room, visualNow)]));
     const candidates = edit ? (this.planAnalysis?.candidates || []) : [];
     const defs = `<defs><pattern id="iq-grid-minor" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M 24 0 L 0 0 0 24" fill="none" stroke="#38bdf8" stroke-opacity=".07" stroke-width="1" vector-effect="non-scaling-stroke"/></pattern><pattern id="iq-grid-major" width="120" height="120" patternUnits="userSpaceOnUse"><rect width="120" height="120" fill="url(#iq-grid-minor)"/><path d="M 120 0 L 0 0 0 120" fill="none" stroke="#38bdf8" stroke-opacity=".15" stroke-width="1" vector-effect="non-scaling-stroke"/></pattern><linearGradient id="iq-room-fill-ok" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#14b8a6" stop-opacity=".32"/><stop offset="100%" stop-color="#0ea5e9" stop-opacity=".16"/></linearGradient><linearGradient id="iq-room-fill-warn" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#f59e0b" stop-opacity=".38"/><stop offset="100%" stop-color="#ea580c" stop-opacity=".2"/></linearGradient><linearGradient id="iq-room-fill-alert" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#ef4444" stop-opacity=".42"/><stop offset="100%" stop-color="#b91c1c" stop-opacity=".24"/></linearGradient></defs>`;
     if (!showSvg) {
@@ -677,7 +684,7 @@ class IQAlarmPanel extends HTMLElement {
       };
     }
     const svgId = edit ? 'id="floorplan"' : `id="floorplan-${esc(plan.id)}"`;
-    const svgHtml = `<div class="plan-wrap ${isGraphic ? "graphic-mode" : "template-mode"}" style="aspect-ratio:${width}/${height}"><svg ${svgId} class="floorplan-svg" role="img" aria-label="${esc(plan.name)}" data-plan-id="${esc(plan.id)}" data-edit="${edit && !this.graphicPreview}" viewBox="${viewBox}">${defs}${isGraphic ? `<rect x="0" y="0" width="${width}" height="${height}" fill="url(#iq-grid-major)"/>` : `<image href="${esc(image)}" width="${width}" height="${height}"/>`}${this._zoneLinksSVG(plan,renderZones)}${Object.entries(renderZones).map(([room,points]) => this._zoneSVG(plan,room,points,isGraphic,scale)).join("")}${edit && !this.graphicPreview && !this.manualDrawing ? candidates.map(item => `<g data-candidate="${esc(item.id)}" role="button" tabindex="0" aria-label="Fläche ${esc(item.id)} auswählen"><polygon class="plan-proposal ${this.selectedCandidate === item.id ? "chosen" : ""}" points="${(this.selectedCandidate === item.id && this.points.length ? this.points : item.points).map(([x,y]) => `${x*width},${y*height}`).join(" ")}"/><text x="${item.center[0]*width}" y="${item.center[1]*height}" text-anchor="middle" font-size="${Math.max(width,height)*.024}">${esc(item.id)}</text></g>`).join("") : ""}<polygon class="draft" points="${edit && !this.graphicPreview ? this.points.map(([x,y]) => `${x*width},${y*height}`).join(" ") : ""}"/><g class="draft-points">${edit && !this.graphicPreview ? this._draftHandles(plan) : ""}</g><g class="room-labels-layer">${Object.entries(renderZones).map(([room,points]) => this._zoneLabelSVG(plan,room,points,isGraphic,scale)).join("")}</g></svg></div>`;
+    const svgHtml = `<div class="plan-wrap ${isGraphic ? "graphic-mode" : "template-mode"}" style="aspect-ratio:${width}/${height}"><svg ${svgId} class="floorplan-svg" role="img" aria-label="${esc(plan.name)}" data-plan-id="${esc(plan.id)}" data-edit="${edit && !this.graphicPreview}" viewBox="${viewBox}">${defs}${isGraphic ? `<rect x="0" y="0" width="${width}" height="${height}" fill="url(#iq-grid-major)"/>` : `<image href="${esc(image)}" width="${width}" height="${height}"/>`}${this._zoneLinksSVG(plan,renderZones)}${Object.entries(renderZones).map(([room,points]) => this._zoneSVG(plan,room,points,isGraphic,scale,presentations[room])).join("")}${edit && !this.graphicPreview && !this.manualDrawing ? candidates.map(item => `<g data-candidate="${esc(item.id)}" role="button" tabindex="0" aria-label="Fläche ${esc(item.id)} auswählen"><polygon class="plan-proposal ${this.selectedCandidate === item.id ? "chosen" : ""}" points="${(this.selectedCandidate === item.id && this.points.length ? this.points : item.points).map(([x,y]) => `${x*width},${y*height}`).join(" ")}"/><text x="${item.center[0]*width}" y="${item.center[1]*height}" text-anchor="middle" font-size="${Math.max(width,height)*.024}">${esc(item.id)}</text></g>`).join("") : ""}<polygon class="draft" points="${edit && !this.graphicPreview ? this.points.map(([x,y]) => `${x*width},${y*height}`).join(" ") : ""}"/><g class="draft-points">${edit && !this.graphicPreview ? this._draftHandles(plan) : ""}</g><g class="room-labels-layer">${Object.entries(renderZones).map(([room,points]) => this._zoneLabelSVG(plan,room,points,isGraphic,scale,presentations[room])).join("")}</g></svg></div>`;
     return {
       svg: svgHtml,
       roomCount: Object.keys(renderZones).length,
@@ -913,7 +920,7 @@ class IQAlarmPanel extends HTMLElement {
     }
     return lines.join("");
   }
-  _getRoomStatusLines(room) {
+  _getRoomStatusLines(room, now = Date.now() / 1000) {
     const status = this.data.status?.rooms?.[room] || {};
     const sensors = this._displaySensors();
     const roomSensors = sensors.filter(s => s.room_id === room);
@@ -1000,7 +1007,14 @@ class IQAlarmPanel extends HTMLElement {
 
     // 4. Bewegung
     let motionText = "";
-    if (status.motion?.length > 0) {
+    const lastActive = this.data.status?.last_active || {};
+    const recentMotion = roomSensors.some(sensor =>
+      ["interior_motion", "interior_mmwave"].includes(sensor.role) &&
+      raw[sensor.entity_id] === false &&
+      Number.isFinite(lastActive[sensor.entity_id]) &&
+      now >= lastActive[sensor.entity_id] && now - lastActive[sensor.entity_id] < FLOORPLAN_MOTION_HOLD_SECONDS
+    );
+    if (status.motion?.length > 0 || recentMotion) {
       motionText = "Bewegung";
     }
 
@@ -1023,9 +1037,9 @@ class IQAlarmPanel extends HTMLElement {
     };
   }
 
-  _zoneSVG(plan,room,points,graphic = false,scale = 1) {
-    const info = this._getRoomStatusLines(room);
-    const status = this.data.status?.rooms?.[room] || {}, roomName = this.data.config.rooms[room]?.name || room;
+  _roomPresentation(room, now = Date.now() / 1000) {
+    const info = this._getRoomStatusLines(room, now);
+    const status = this.data.status?.rooms?.[room] || {};
     const isArmed = Boolean(this.data.status?.active);
     const settings = this.data.config?.settings || {};
     const showMotion = isArmed || (settings.floorplan_disarmed_motion ?? true);
@@ -1033,59 +1047,67 @@ class IQAlarmPanel extends HTMLElement {
     const showLock = isArmed || (settings.floorplan_disarmed_locks ?? false);
     const showCamera = isArmed || (settings.floorplan_disarmed_cameras ?? true);
 
-    const hasBreach = Boolean(status.confirmed || (status.level || 0) > 0);
-    let hasWarning = false;
-    if (isArmed) {
-      hasWarning = info.hasActive;
-    } else if (!hasBreach) {
-      hasWarning = Boolean((showCamera && info.cameraText) || (showContact && info.contactText) || (showLock && info.lockText) || (showMotion && info.motionText) || info.quarantineText);
-    }
-
+    const hasBreach = Boolean(status.confirmed || (showMotion && info.motionText));
+    const hasWarning = Boolean((showCamera && info.cameraText) || (showContact && info.contactText) || (showLock && info.lockText) || info.quarantineText);
     const activeAlert = hasBreach || hasWarning;
     const shouldAnimate = activeAlert && (isArmed ? (settings.floorplan_armed_animation ?? true) : (settings.floorplan_disarmed_animation ?? false));
     const animClass = shouldAnimate ? " anim-pulse" : "";
     const color = hasBreach ? "#ef4444" : (hasWarning ? "#f59e0b" : "#14b8a6");
     const fillId = hasBreach ? "alert" : (hasWarning ? "warn" : "ok");
-    const base = Math.max(plan.width,plan.height)*scale;
-    const ptsAttr = points.map(([x,y]) => `${Math.round(x*plan.width*10)/10},${Math.round(y*plan.height*10)/10}`).join(" ");
-    const corners = graphic ? points.map(([x,y]) => `<circle class="room-corner" cx="${Math.round(x*plan.width*10)/10}" cy="${Math.round(y*plan.height*10)/10}" r="${Math.max(2.2,base*.0035)}" fill="${color}" fill-opacity=".85"/>`).join("") : "";
-    return `<g data-room="${esc(room)}" role="button" tabindex="0" aria-label="${esc([roomName,info.contactText,info.lockText,info.informationText,info.motionText,info.quarantineText].filter(Boolean).join(": "))}"><polygon class="room-glow${animClass}" points="${ptsAttr}" fill="${color}" fill-opacity="${activeAlert ? ".26" : ".14"}" stroke="${color}" stroke-width="${activeAlert ? 8 : 5}" stroke-opacity=".28" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><polygon points="${ptsAttr}" fill="url(#iq-room-fill-${fillId})" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><polygon class="room-inner" points="${ptsAttr}" fill="none" stroke="#e2f1ff" stroke-opacity=".32" stroke-width="1" stroke-dasharray="5 4" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>${corners}</g>`;
-  }
-
-  _zoneLabelSVG(plan,room,points,graphic = false,scale = 1) {
-    const info = this._getRoomStatusLines(room);
-    const roomName = this.data.config.rooms[room]?.name || room;
-    const center = plan.labels?.[room] || roomVisualCenter(points);
-    const cx = Math.round(center[0]*plan.width*10)/10, cy = Math.round(center[1]*plan.height*10)/10;
-    const status = this.data.status?.rooms?.[room] || {};
-    const isPositioning = this.positioningRoom === room;
-    const isArmed = Boolean(this.data.status?.active);
-    const settings = this.data.config?.settings || {};
-    const showMotion = isArmed || (settings.floorplan_disarmed_motion ?? true);
-    const showContact = isArmed || (settings.floorplan_disarmed_contacts ?? true);
-    const showLock = isArmed || (settings.floorplan_disarmed_locks ?? false);
-    const showCamera = isArmed || (settings.floorplan_disarmed_cameras ?? true);
-
-    const hasBreach = Boolean(status.confirmed || (status.level || 0) > 0);
-    let hasWarning = false;
-    if (isArmed) {
-      hasWarning = info.hasActive;
-    } else if (!hasBreach) {
-      hasWarning = Boolean((showCamera && info.cameraText) || (showContact && info.contactText) || (showLock && info.lockText) || (showMotion && info.motionText) || info.quarantineText);
-    }
-
-    const activeAlert = hasBreach || hasWarning;
-    const shouldAnimate = activeAlert && (isArmed ? (settings.floorplan_armed_animation ?? true) : (settings.floorplan_disarmed_animation ?? false));
-    const animClass = shouldAnimate ? " anim-pulse" : "";
-    const color = isPositioning ? "#38bdf8" : (hasBreach ? "#ef4444" : (hasWarning ? "#f59e0b" : "#14b8a6"));
-
     const subLines = [];
+    if (status.confirmed) subLines.push({text:isArmed ? "Bestätigter Alarm" : "Bestätigte Korrelation",kind:"confirmed"});
     if (info.cameraText && showCamera) subLines.push({text: info.cameraText, kind: "camera"});
     if (info.contactText && showContact) subLines.push({text: info.contactText, kind: "contact"});
     if (info.lockText && showLock) subLines.push({text: info.lockText, kind: "lock"});
     if (info.informationText) subLines.push({text:info.informationText,kind:"information"});
     if (info.motionText && showMotion) subLines.push({text: info.motionText, kind: "motion"});
     if (info.quarantineText) subLines.push({text: info.quarantineText, kind: "quarantine"});
+    return {info, isArmed, hasBreach, activeAlert, animClass, color, fillId, subLines};
+  }
+
+  _refreshFloorplanStatuses() {
+    if (this.tab !== 0 || !this._floorplanViews) return;
+    const now = Date.now() / 1000;
+    for (const svg of this.shadowRoot.querySelectorAll(".floorplan-svg")) {
+      if (svg.dataset.edit === "true" || svg.querySelector(".dragging")) continue;
+      const view = this._floorplanViews.get(svg.dataset.planId);
+      if (!view) continue;
+      for (const [room, points] of Object.entries(view.renderZones)) {
+        const presentation = this._roomPresentation(room, now);
+        for (const group of svg.querySelectorAll("g[data-room]")) {
+          if (group.dataset.room !== room) continue;
+          const markup = group.hasAttribute("data-label-room")
+            ? this._zoneLabelSVG(view.plan, room, points, view.isGraphic, view.scale, presentation)
+            : this._zoneSVG(view.plan, room, points, view.isGraphic, view.scale, presentation);
+          const buffer = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+          buffer.innerHTML = markup;
+          const replacement = buffer.firstElementChild;
+          for (const attribute of replacement.attributes) {
+            if (group.getAttribute(attribute.name) !== attribute.value) group.setAttribute(attribute.name, attribute.value);
+          }
+          if (group.innerHTML !== replacement.innerHTML) group.innerHTML = replacement.innerHTML;
+        }
+      }
+    }
+  }
+
+  _zoneSVG(plan,room,points,graphic = false,scale = 1,presentation = this._roomPresentation(room)) {
+    const {activeAlert, animClass, color, fillId} = presentation;
+    const roomName = this.data.config.rooms[room]?.name || room;
+    const base = Math.max(plan.width,plan.height)*scale;
+    const ptsAttr = points.map(([x,y]) => `${Math.round(x*plan.width*10)/10},${Math.round(y*plan.height*10)/10}`).join(" ");
+    const corners = graphic ? points.map(([x,y]) => `<circle class="room-corner" cx="${Math.round(x*plan.width*10)/10}" cy="${Math.round(y*plan.height*10)/10}" r="${Math.max(2.2,base*.0035)}" fill="${color}" fill-opacity=".85"/>`).join("") : "";
+    return `<g data-room="${esc(room)}" role="button" tabindex="0" aria-label="${esc([roomName,...presentation.subLines.map(line => line.text)].join(": "))}"><polygon class="room-glow${animClass}" points="${ptsAttr}" fill="${color}" fill-opacity="${activeAlert ? ".26" : ".14"}" stroke="${color}" stroke-width="${activeAlert ? 8 : 5}" stroke-opacity=".28" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><polygon points="${ptsAttr}" fill="url(#iq-room-fill-${fillId})" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><polygon class="room-inner" points="${ptsAttr}" fill="none" stroke="#e2f1ff" stroke-opacity=".32" stroke-width="1" stroke-dasharray="5 4" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>${corners}</g>`;
+  }
+
+  _zoneLabelSVG(plan,room,points,graphic = false,scale = 1,presentation = this._roomPresentation(room)) {
+    const roomName = this.data.config.rooms[room]?.name || room;
+    const center = plan.labels?.[room] || roomVisualCenter(points);
+    const cx = Math.round(center[0]*plan.width*10)/10, cy = Math.round(center[1]*plan.height*10)/10;
+    const isPositioning = this.positioningRoom === room;
+    const {info, isArmed, hasBreach, animClass} = presentation;
+    const color = isPositioning ? "#38bdf8" : presentation.color;
+    const subLines = [...presentation.subLines];
 
     if (!subLines.length) {
       const quietText = (graphic && info.sensorCount) ? `Ruhig · ${info.sensorCount} ${info.sensorCount === 1 ? "Sensor" : "Sensoren"}` : "Ruhig";

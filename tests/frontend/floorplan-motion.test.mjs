@@ -1,0 +1,68 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+
+let Panel;
+globalThis.HTMLElement = class {};
+globalThis.customElements = {
+  get() { return undefined; },
+  define(name, value) { if (name === "iqalarm-panel") Panel = value; },
+};
+await import("../../custom_components/iqalarm/frontend/iqalarm-panel.js");
+
+function setup({raw = false, last = 100, confirmed = false, visible = true, active = false} = {}) {
+  const panel = Object.create(Panel.prototype);
+  panel.data = {
+    config: {
+      rooms: {tv: {id: "tv", name: "Wohnzimmer TV"}}, windows: {},
+      sensors: {"binary_sensor.motion": {entity_id: "binary_sensor.motion", role: "interior_motion", room_id: "tv"}},
+      settings: {floorplan_disarmed_motion: visible},
+    },
+    information: [],
+    status: {active, raw: {"binary_sensor.motion": raw}, last_active: {"binary_sensor.motion": last},
+      rooms: {tv: {level: 2, confirmed, motion: raw === true ? ["binary_sensor.motion"] : [], open: [], persons: [], quarantined: []}}},
+  };
+  return panel;
+}
+const plan = {width: 100, height: 100, zones: {tv: [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9]]}};
+
+function display(panel, now) {
+  const shared = panel._roomPresentation("tv", now);
+  return {
+    color: shared.color,
+    shape: panel._zoneSVG(plan, "tv", plan.zones.tv, true, 1, shared),
+    label: panel._zoneLabelSVG(plan, "tv", plan.zones.tv, true, 1, shared),
+  };
+}
+
+for (const [now, motion] of [[100, true], [114.999, true], [115, false], [160, false]]) {
+  test(`motion text and red room agree at ${now - 100} seconds despite level 2`, () => {
+    const result = display(setup(), now);
+    assert.equal(result.color, motion ? "#ef4444" : "#14b8a6");
+    assert.equal(result.label.includes("Bewegung"), motion);
+    assert.equal(result.label.includes("Ruhig"), !motion);
+    assert.equal(result.shape.includes('fill="#ef4444"'), motion);
+  });
+}
+test("still active motion remains visible after 15 seconds", () => {
+  assert.equal(display(setup({raw: true}), 200).color, "#ef4444");
+});
+test("a new motion restarts the shared interval", () => {
+  const panel = setup();
+  assert.equal(display(panel, 115).color, "#14b8a6");
+  panel.data.status.last_active["binary_sensor.motion"] = 116;
+  assert.equal(display(panel, 130).color, "#ef4444");
+  assert.equal(display(panel, 131).color, "#14b8a6");
+});
+test("unavailable or hidden motion does not retain a red room", () => {
+  for (const panel of [setup({raw: null}), setup({visible: false})]) {
+    const result = display(panel, 105);
+    assert.equal(result.color, "#14b8a6");
+    assert.equal(result.label.includes("Bewegung"), false);
+  }
+});
+test("a confirmed alarm stays red with an explicit label after motion expires", () => {
+  const result = display(setup({confirmed: true, active: true}), 200);
+  assert.equal(result.color, "#ef4444");
+  assert.match(result.label, /Bestätigter Alarm/);
+  assert.equal(result.label.includes("Ruhig"), false);
+});
