@@ -84,7 +84,17 @@ class IQAlarmRuntime:
     def _update_windows(self, now: float, *, seed: bool = False) -> bool:
         changed = False
         for tracker in self.windows.values():
+            previous = tracker.reading
             changed = tracker.update(self._window_states(tracker.window), now, seed=seed) or changed
+            if not seed and previous and previous.get("available") != tracker.reading["available"]:
+                self.engine._log(
+                    now,
+                    "sensor_available" if tracker.reading["available"] else "sensor_unavailable",
+                    f"{tracker.window.name}: Verbindung wiederhergestellt"
+                    if tracker.reading["available"]
+                    else f"{tracker.window.name}: Keine Verbindung ({', '.join(tracker.reading['faults'])})",
+                    entity_id=tracker.window.sensor_id,
+                )
             if seed:
                 self.engine.seed(tracker.window.sensor_id, tracker.reading["opening"])
             elif tracker.reading["opening_stable"]:

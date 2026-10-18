@@ -125,6 +125,12 @@ async def verify_windows(hass, entry, admin_token, user_token, calls):
             hass.states.async_set(window["lock_entity_id"], "unavailable")
             await hass.async_block_till_done()
             assert hass.states.get(position).state == "unavailable"
+            assert any(
+                event.kind == "sensor_unavailable"
+                and event.entity_id == runtime.config.windows[window["id"]].sensor_id
+                and event.category == "fault"
+                for event in runtime.engine.events
+            )
             assert runtime.windows[window["id"]].reading["opening"] is False
             hass.states.async_set(window["contact_entity_id"], "on")
             await asyncio.sleep(0.4)
