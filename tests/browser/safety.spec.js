@@ -182,6 +182,7 @@ test("move dialog renames sensors and windows without changing their entity IDs"
   const entity="binary_sensor.qa_display_name",contact="binary_sensor.qa_display_frame";
   await state(page,entity,"off",{friendly_name:"HA Originalname"});await state(page,contact,"off");
   const data=await ws(page,"get");
+  data.config.rooms.qa_display_target={id:"qa_display_target",name:"QA Zielraum",adjacent:[]};
   data.config.sensors[entity]={entity_id:entity,name:"Langer Sensorname",role:"interior_motion",room_id:"living"};
   data.config.windows.qa_display={id:"qa_display",name:"Langer Fenstername",room_id:"living",contact_entity_id:contact,mappings:[{state:"closed",values:{[contact]:"off"}},{state:"open",values:{[contact]:"on"}}]};
   await save(page,data.config);
@@ -205,9 +206,9 @@ test("move dialog renames sensors and windows without changing their entity IDs"
   expect(window.config.windows.qa_display).toEqual({...renamed.config.windows.qa_display,name:"Fenster links"});
   await page.locator(`.sensor-moveable[data-sensor-id="${entity}"]`).click();
   await dialog.getByLabel("Anzeigename",{exact:true}).fill("Bewegung Flur");
-  await dialog.locator('[data-command="move-sensor-target"][data-target-room="hall"]').click();
+  await dialog.locator('[data-command="move-sensor-target"][data-target-room="qa_display_target"]').click();
   await expect(dialog).not.toBeVisible();
   const moved=await ws(page,"get");
   expect(moved.config.sensors[entity].name).toBe("Bewegung Flur");
-  expect(moved.config.sensors[entity].room_id).toBe("hall");
+  expect(moved.config.sensors[entity].room_id).toBe("qa_display_target");
 });
