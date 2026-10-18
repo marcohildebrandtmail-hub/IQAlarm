@@ -385,6 +385,7 @@ test("room reassignment, another floor, analysis and reload retain unsaved edits
   expect(await page.locator("iqalarm-panel").evaluate(el=>el.points)).toEqual(edited);
   await expect(page.locator("#draft-status")).toContainText("im Browser gesichert");
   await page.getByRole("button",{name:"Bereich speichern",exact:true}).click();
+  await expect(page.locator("#draft-status")).toContainText("Bereich gespeichert");
   const saved=await page.evaluate(()=>window.iqTest.request({type:"iqalarm/get"}));
   expect(saved.config.floorplans.draft_reload.zones.living).toEqual(edited);
   await page.screenshot({path:"test-results/floorplan-restored-draft.png",fullPage:true});
