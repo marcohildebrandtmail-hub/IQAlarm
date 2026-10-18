@@ -367,6 +367,15 @@ def ws_catalog(hass, connection, msg) -> None:
                 dev = dev_reg.async_get(entry.device_id)
                 if dev:
                     area_id = dev.area_id
+        options = s.attributes.get("options")
+        if isinstance(options, list):
+            options = [str(x) for x in options if isinstance(x, (str, int, float, bool))]
+        elif s.domain == "cover":
+            options = ["open", "opening", "closing", "closed"]
+        elif s.domain == "lock":
+            options = ["unlocked", "open", "locked"]
+        else:
+            options = None
         entities.append(
             {
                 "entity_id": s.entity_id,
@@ -374,6 +383,7 @@ def ws_catalog(hass, connection, msg) -> None:
                 "state": s.state,
                 "platform": entry.platform if entry else None,
                 **sensor_setup(s, entry.device_id if entry else None),
+                "options": options,
                 "area_id": area_id,
                 "attributes": {
                     k: v

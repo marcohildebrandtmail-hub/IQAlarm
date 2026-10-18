@@ -358,10 +358,26 @@ def classify_entity(entity_id: str, name: str, device_class: str | None) -> str 
 def sensor_setup(state, device_id: str | None = None) -> dict:
     """Propose real raw formats; a camera requires a verified detection attribute."""
     domain = state.entity_id.split(".", 1)[0]
+    options = state.attributes.get("options")
+    active_states = (
+        ["unlocked", "open"]
+        if domain == "lock"
+        else ["open", "opening"]
+        if domain == "cover"
+        else ["on"]
+    )
+    if isinstance(options, list) and options:
+        active_opts = [
+            str(opt)
+            for opt in options
+            if re.search(r"öff|offen|open|auf|lüft|beweg|opening|active", str(opt), re.I)
+        ]
+        if active_opts:
+            active_states = active_opts
     result = {
         "source_id": f"device:{device_id}" if device_id else state.entity_id,
         "attribute": None,
-        "active_states": ["unlocked", "open"] if domain == "lock" else ["on"],
+        "active_states": active_states,
         "active_above": None,
         "setup_required": False,
         "setup_reason": "",

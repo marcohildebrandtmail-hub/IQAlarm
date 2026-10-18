@@ -4,7 +4,7 @@ from enum import IntEnum, StrEnum
 
 DOMAIN = "iqalarm"
 NAME = "IQAlarm"
-VERSION = "2.4.4"
+VERSION = "2.4.5"
 STORAGE_VERSION = 1
 EVENT_TYPE = "iqalarm_event"
 SIGNAL_UPDATE = "iqalarm_update"
@@ -72,5 +72,15 @@ MODE_NAMES = {
     Mode.VACATION: "Urlaub",
 }
 ALLOWED_SENSOR_DOMAINS = frozenset(
-    ("binary_sensor", "lock", "camera", "image_processing", "sensor", "input_boolean")
+    (
+        "binary_sensor",
+        "lock",
+        "camera",
+        "image_processing",
+        "sensor",
+        "input_boolean",
+        "input_select",
+        "select",
+        "cover",
+    )
 )

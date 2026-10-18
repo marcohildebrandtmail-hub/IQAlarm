@@ -85,6 +85,26 @@ def test_unavailable_can_never_be_active(state):
         SensorConfig("binary_sensor.front", "perimeter_sensor", active_states=[state])
 
 
+def test_multistate_entities_allowed_and_validated():
+    sensor = SensorConfig(
+        "input_select.garagentor_zustand",
+        "entry_contact",
+        room_id="garage",
+        active_states=["wird Geöffnet", "Geöffnet", "Lüften", "in Bewegung"],
+    )
+    assert sensor.entity_id == "input_select.garagentor_zustand"
+    assert sensor.role == "entry_contact"
+    assert "Geöffnet" in sensor.active_states
+
+    cover_sensor = SensorConfig(
+        "cover.garagentor",
+        "entry_contact",
+        room_id="garage",
+        active_states=["open", "opening"],
+    )
+    assert cover_sensor.entity_id == "cover.garagentor"
+
+
 def test_action_domain_not_arbitrary_service():
     with pytest.raises(ValueError):
         Action("a", "3", "script", "homeassistant.restart")

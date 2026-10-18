@@ -117,6 +117,56 @@ def test_real_setup_formats_and_physical_source_identity(tmp_path):
     assert a["source_id"] == b["source_id"]
 
 
+def test_multistate_input_select_active_evaluation(tmp_path):
+    from iqalarm_core.sensor_discovery import sensor_setup
+
+    runtime = local_runtime(tmp_path)
+    state = NS(
+        entity_id="input_select.garagentor_zustand",
+        state="Geschlossen",
+        attributes={
+            "options": [
+                "wird Geöffnet",
+                "wird Geschlossen",
+                "Geschlossen",
+                "Geöffnet",
+                "Lüften",
+                "in Bewegung",
+            ]
+        },
+    )
+    proposed = sensor_setup(state, "garage-door")
+    assert "Geöffnet" in proposed["active_states"]
+    assert "Geschlossen" not in proposed["active_states"]
+
+    sensor = models.SensorConfig(
+        state.entity_id,
+        "entry_contact",
+        "garage",
+        active_states=["wird Geöffnet", "Geöffnet", "Lüften", "in Bewegung"],
+    )
+
+    # 1. Closed -> Inactive (False)
+    state.state = "Geschlossen"
+    assert runtime.active_state(sensor, state) is False
+
+    # 2. Open -> Active (True)
+    state.state = "Geöffnet"
+    assert runtime.active_state(sensor, state) is True
+
+    # 3. Ventilating -> Active (True)
+    state.state = "Lüften"
+    assert runtime.active_state(sensor, state) is True
+
+    # 4. Moving -> Active (True)
+    state.state = "in Bewegung"
+    assert runtime.active_state(sensor, state) is True
+
+    # 5. Case-insensitive tolerance -> True
+    state.state = "geöffnet"
+    assert runtime.active_state(sensor, state) is True
+
+
 def test_alarm_timer_advances_while_maintenance_device_hangs(tmp_path, monkeypatch):
     async def scenario():
         runtime = local_runtime(tmp_path)

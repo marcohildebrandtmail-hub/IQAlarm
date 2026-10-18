@@ -80,7 +80,10 @@ class IQAlarmRuntime:
                 return None
             return value > sensor.active_above
         normalized = str(value).lower() if isinstance(value, bool) else str(value)
-        return normalized in sensor.active_states
+        if normalized in sensor.active_states:
+            return True
+        val_lower = normalized.lower()
+        return any(val_lower == str(s).lower() for s in sensor.active_states)
 
     def seed(self) -> None:
         for sensor in self.config.sensors.values():
