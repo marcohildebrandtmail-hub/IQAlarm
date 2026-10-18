@@ -14,8 +14,13 @@ def inspect_window(window: WindowConfig, states: dict[str, str]) -> dict:
     values = {source: normalize(states.get(source)) for source in window.members}
     faults = []
     for source, value in values.items():
-        if value == "unavailable" or (
-            value == "unknown" and source not in window.allow_unknown_inputs
+        if value == "unavailable":
+            faults.append(source)
+        elif (
+            value == "unknown"
+            and source not in window.handle_entity_ids
+            and source not in window.allow_unknown_inputs
+            and (source != window.lock_entity_id or source == window.availability_entity_id)
         ):
             faults.append(source)
     guard = window.availability_entity_id

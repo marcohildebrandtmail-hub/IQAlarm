@@ -117,10 +117,10 @@ def test_unlearned_combination_has_explicit_status(window):
     assert reading["available"] and reading["state"] == "unknown_position"
 
 
-def test_unknown_grip_code_requires_explicit_opt_in_and_live_guard(window):
+def test_unknown_grip_code_allowed_for_handles_and_guarded(window):
     values = states_for(window, "tilted") | {"binary_sensor.grip_b": "unknown"}
-    assert inspect_window(window, values)["state"] == "no_connection"
-    window.allow_unknown_inputs = ["binary_sensor.grip_b"]
+    # Handle inputs accept unknown as a valid signal code without failing connection
+    assert inspect_window(window, values)["available"] is True
     rule = capture_position(window, values, "tilted")
     window.mappings = [rule]
     assert inspect_window(window, values)["state"] == "tilted"
@@ -262,3 +262,65 @@ def test_faults_cannot_be_calibrated_as_normal_positions(window, bad):
     data["windows"]["living"]["mappings"][0]["values"]["binary_sensor.contact"] = bad
     with pytest.raises(ValueError, match="Keine Verbindung"):
         Configuration.from_dict(data)
+
+
+def test_smart_handle_with_unknown_tilt_code_and_independent_lock():
+    """Verify smart handle where tilt reports unknown on tur_kipp, without requiring separate guard or lock."""
+    window = WindowConfig(
+        id="buro_links",
+        name="Fenster Büro Links",
+        room_id="living",
+        contact_entity_id="binary_sensor.fensterkontakt_arbeitszimmer_tur",
+        handle_entity_ids=[
+            "binary_sensor.fenstergriff_buro_links_tur_kipp",
+            "binary_sensor.fenstergriff_buro_links_tur_offen",
+        ],
+        lock_entity_id="lock.fenstergriff_buro_links",
+    )
+    # 1. Closed
+    closed_states = {
+        "binary_sensor.fensterkontakt_arbeitszimmer_tur": "off",
+        "binary_sensor.fenstergriff_buro_links_tur_kipp": "off",
+        "binary_sensor.fenstergriff_buro_links_tur_offen": "off",
+        "lock.fenstergriff_buro_links": "locked",
+    }
+    closed_rule = capture_position(window, closed_states, "closed")
+
+    # 2. Open
+    open_states = {
+        "binary_sensor.fensterkontakt_arbeitszimmer_tur": "on",
+        "binary_sensor.fenstergriff_buro_links_tur_kipp": "off",
+        "binary_sensor.fenstergriff_buro_links_tur_offen": "on",
+        "lock.fenstergriff_buro_links": "unlocked",
+    }
+    open_rule = capture_position(window, open_states, "open")
+
+    # 3. Tilted (tur_kipp is physically unknown)
+    tilted_states = {
+        "binary_sensor.fensterkontakt_arbeitszimmer_tur": "on",
+        "binary_sensor.fenstergriff_buro_links_tur_kipp": "unknown",
+        "binary_sensor.fenstergriff_buro_links_tur_offen": "off",
+        "lock.fenstergriff_buro_links": "unlocked",
+    }
+    tilted_rule = capture_position(window, tilted_states, "tilted")
+
+    window.mappings = [closed_rule, open_rule, tilted_rule]
+
+    # Inspection in tilted state with lock engaged ("Lüften ohne Gefahr")
+    reading_tilt_locked = inspect_window(
+        window, tilted_states | {"lock.fenstergriff_buro_links": "locked"}
+    )
+    assert reading_tilt_locked["available"] is True
+    assert reading_tilt_locked["state"] == "tilted"
+    assert reading_tilt_locked["position"] == "tilted"
+    assert reading_tilt_locked["locked"] is True
+    assert reading_tilt_locked["opening"] is True
+
+    # If handle disconnects (unavailable), it is flagged as no_connection
+    offline_reading = inspect_window(
+        window,
+        tilted_states | {"binary_sensor.fenstergriff_buro_links_tur_kipp": "unavailable"},
+    )
+    assert offline_reading["available"] is False
+    assert offline_reading["state"] == "no_connection"
+    assert "binary_sensor.fenstergriff_buro_links_tur_kipp" in offline_reading["faults"]

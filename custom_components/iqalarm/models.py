@@ -273,11 +273,10 @@ class WindowConfig:
         if set(self.contact_open_states) & set(self.contact_closed_states):
             raise ValueError("Offen- und Geschlossenwerte müssen verschieden sein")
         if self.allow_unknown_inputs and (
-            not self.availability_entity_id
-            or set(self.allow_unknown_inputs) - set(self.handle_entity_ids)
-            or self.availability_entity_id in self.position_inputs
+            set(self.allow_unknown_inputs) - set(self.handle_entity_ids)
+            or (self.availability_entity_id and self.availability_entity_id in self.position_inputs)
         ):
-            raise ValueError("unknown als Griffcode benötigt eine getrennte Verbindungsüberwachung")
+            raise ValueError("unknown als Griffcode ist nur für Griffsensoren zulässig")
         if set(self.availability_states) & {"unknown", "unavailable"}:
             raise ValueError("Fehlzustände dürfen keine Verbindung bestätigen")
         if not isinstance(self.mappings, list) or len(self.mappings) > len(WINDOW_STATES):
@@ -295,7 +294,9 @@ class WindowConfig:
             for source, value in values.items():
                 text(value, "Signalzustand", 100)
                 if value == "unavailable" or (
-                    value == "unknown" and source not in self.allow_unknown_inputs
+                    value == "unknown"
+                    and source not in self.handle_entity_ids
+                    and source not in self.allow_unknown_inputs
                 ):
                     raise ValueError(
                         "Keine Verbindung darf nicht als Fensterstellung eingelernt werden"

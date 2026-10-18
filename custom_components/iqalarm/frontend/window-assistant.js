@@ -1,4 +1,4 @@
-import {randomId} from "./floorplan-rooms.js?v=2.4.8";
+import {randomId} from "./floorplan-rooms.js?v=2.4.9";
 /* Directly executable window setup wizard. All recognition is verified by HA. */
 const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
@@ -11,48 +11,48 @@ const labels = {
 };
 
 const instructions = {
-  closed: "Fenster vollständig schließen und verriegeln.",
-  unlatched: "Jetzt entriegeln, das Fenster aber geschlossen lassen.",
-  open: "Jetzt das Fenster öffnen.",
-  tilt_ready: "Fenster wieder geschlossen halten und den Griff in Kippstellung bringen.",
+  closed: "Fenster vollständig schließen.",
+  unlatched: "Griff in Drehstellung bringen, das Fenster aber geschlossen lassen.",
+  open: "Jetzt das Fenster ganz öffnen.",
+  tilt_ready: "Fenster wieder an den Rahmen anlehnen und den Griff nach oben auf Kipp drehen.",
   tilted: "Jetzt das Fenster gekippt öffnen.",
 };
 
 const STEPS_INFO = {
   closed: {
-    title: "1. FENSTER SCHLIESSEN & VERRIEGELN",
-    action: "Fensterflügel komplett schließen und Griff ganz nach unten verriegeln",
-    detail: "Bringe das Fenster in den gesicherten Grundzustand. Der Kontakt muss geschlossen und das Schloss verriegelt melden.",
-    icon: "🔒",
-    badge: "Grundzustand",
-  },
-  unlatched: {
-    title: "2. GRIFF ENTRIEGELN (FLÜGEL GESCHLOSSEN)",
-    action: "Griff in Normalstellung drehen, Flügel geschlossen angelehnt lassen",
-    detail: "Drehe den Fenstergriff waagerecht (entriegelt), drücke den Fensterflügel aber noch nicht auf.",
-    icon: "🔓",
-    badge: "Entriegelt",
+    title: "1. FENSTER VOLLSTÄNDIG SCHLIESSEN",
+    action: "Fensterflügel komplett schließen und Griff ganz nach unten drehen",
+    detail: "Bringe das Fenster in die geschlossene Grundstellung (Griff senkrecht nach unten). Der Fensterkontakt muss geschlossen melden.",
+    icon: "🪟",
+    badge: "Geschlossen",
   },
   open: {
-    title: "3. FENSTER GANZ ÖFFNEN",
-    action: "Fensterflügel jetzt ganz aufschwenken",
-    detail: "Öffne das Fenster vollständig. Der Kontakt meldet offen, der Griff bleibt in Öffnungsstellung.",
+    title: "2. FENSTER GANZ ÖFFNEN",
+    action: "Griff waagerecht drehen und Fensterflügel ganz öffnen",
+    detail: "Öffne das Fenster vollständig. Der Kontakt meldet offen, der Griffsensor steht auf Drehöffnung.",
     icon: "🪟",
     badge: "Geöffnet",
   },
   tilt_ready: {
-    title: "4. GRIFF AUF KIPP DREHEN (FLÜGEL ANGELEHNT)",
+    title: "3. GRIFF AUF KIPP DREHEN (FLÜGEL ANGELEHNT)",
     action: "Flügel an den Rahmen anlegen & Griff senkrecht nach oben auf Kipp drehen",
-    detail: "Fensterflügel wieder an den Rahmen anlehnen (nicht verriegeln) und den Griff senkrecht nach oben drehen.",
+    detail: "Lehne den Fensterflügel an den Rahmen an und drehe den Griff senkrecht nach oben auf Kipp. (Diesen Schritt überspringen, wenn dein Griff die angelehnte Kippbereitschaft nicht separat erfassen muss).",
     icon: "📐",
     badge: "Kippstellung Griff",
   },
   tilted: {
-    title: "5. MACHE JETZT AUF KIPP!",
+    title: "4. MACHE JETZT AUF KIPP!",
     action: "Fensterflügel jetzt oben in Kippstellung kippen",
     detail: "Kippe den Flügel oben an. Alle Sensoren melden jetzt die stabile Kippstellung.",
     icon: "💨",
     badge: "Gekippt geöffnet",
+  },
+  unlatched: {
+    title: "GRIFF IN DREHSTELLUNG (ANGELEHNT)",
+    action: "Griff in Normalstellung drehen, Flügel geschlossen angelehnt lassen",
+    detail: "Drehe den Fenstergriff waagerecht, drücke den Fensterflügel aber noch nicht auf.",
+    icon: "🔓",
+    badge: "Angelehnt",
   },
 };
 
@@ -61,7 +61,7 @@ const SIMPLE_STEPS_INFO = {
     title: "1. FENSTER VOLLSTÄNDIG SCHLIESSEN",
     action: "Fensterflügel komplett anlegen und schließen",
     detail: "Bringe das Fenster in den geschlossenen Grundzustand.",
-    icon: "🔒",
+    icon: "🪟",
     badge: "Geschlossen",
   },
   open: {
@@ -192,10 +192,6 @@ class WindowAssistant extends HTMLElement {
         const source = this.catalog.entities.find(e => e.entity_id === event.target.value);
         const field = this.shadowRoot.querySelector('[name="availability_states"]');
         if (field && !field.value && source?.attributes?.device_class === "connectivity") field.value = "on";
-      }
-      if (event.target.name === "lock_entity_id") {
-        const guard = this.shadowRoot.querySelector('[name="availability_entity_id"]');
-        if (guard && !guard.value) guard.value = event.target.value;
       }
     });
   }
@@ -375,19 +371,10 @@ class WindowAssistant extends HTMLElement {
     const isContactRight = contact && (/rechts/i.test(contact.name) || /rechts/i.test(contact.entity_id));
     const isContactLeft = contact && (/links/i.test(contact.name) || /links/i.test(contact.entity_id));
 
-    // Match lock (prefer side match if contact has left/right)
-    const lock = roomSensors.find(s => {
-      if (!s.entity_id.startsWith("lock.") && !/schloss|lock/i.test(s.entity_id) && !/schloss|lock/i.test(s.name || "")) return false;
-      if (isContactRight) return /rechts/i.test(s.entity_id) || /rechts/i.test(s.name || "");
-      if (isContactLeft) return /links/i.test(s.entity_id) || /links/i.test(s.name || "");
-      return true;
-    }) || roomSensors.find(s => s.entity_id.startsWith("lock.") || /schloss|lock/i.test(s.entity_id) || /schloss|lock/i.test(s.name || ""))
-       || this.catalog.entities.find(e => e.entity_id.startsWith("lock.") && (e.entity_id.includes(roomId) || /griff|schloss/i.test(e.name || "")));
-
-    // Match handles (exclude chosen contact and lock, prefer side match)
+    // Match handles (exclude chosen contact, prefer side match)
     const handles = roomSensors.filter(s => {
       if (contact && s.entity_id === contact.entity_id) return false;
-      if (lock && s.entity_id === lock.entity_id) return false;
+      if (s.entity_id.startsWith("lock.")) return false;
       return /griff|handle|kipp|tilt|tur|door|aktor/i.test(s.entity_id) || /griff|handle|kipp|tilt|tur|door|aktor/i.test(s.name || "");
     });
 
@@ -397,15 +384,16 @@ class WindowAssistant extends HTMLElement {
       handles.sort((a, b) => (/links/i.test(b.name || b.entity_id) ? 1 : 0) - (/links/i.test(a.name || a.entity_id) ? 1 : 0));
     }
 
+    // Sort handles: prefer kipp for handle 1 and offen for handle 2
+    handles.sort((a, b) => {
+      const aKipp = /kipp|tilt/i.test(a.entity_id || a.name) ? 1 : 0;
+      const bKipp = /kipp|tilt/i.test(b.entity_id || b.name) ? 1 : 0;
+      return bKipp - aKipp;
+    });
+
     if (contact) {
       const field = form.querySelector('[name="contact_entity_id"]');
       if (field) field.value = contact.entity_id;
-    }
-    if (lock) {
-      const field = form.querySelector('[name="lock_entity_id"]');
-      if (field) field.value = lock.entity_id;
-      const guard = form.querySelector('[name="availability_entity_id"]');
-      if (guard && !guard.value) guard.value = lock.entity_id;
     }
     if (handles[0]) {
       const field = form.querySelector('[name="handle_1"]');
@@ -459,10 +447,10 @@ class WindowAssistant extends HTMLElement {
               </select>
             </label>
             ${this.field("contact_entity_id", "Fensterkontakt", w.contact_entity_id, ["binary_sensor", "sensor"], false)}
-            ${this.field("lock_entity_id", "Fenstergriff – Schloss", w.lock_entity_id, ["lock"], true)}
-            ${this.field("handle_1", "Griffsignal 1", w.handle_entity_ids[0], ["binary_sensor", "sensor"], false)}
-            ${this.field("handle_2", "Griffsignal 2", w.handle_entity_ids[1], ["binary_sensor", "sensor"], false)}
-            ${this.field("availability_entity_id", "Verbindungsüberwachung", w.availability_entity_id, ["lock", "binary_sensor", "sensor"], false)}
+            ${this.field("handle_1", "Griffsignal 1 (z. B. Kipp)", w.handle_entity_ids[0], ["binary_sensor", "sensor"], false)}
+            ${this.field("handle_2", "Griffsignal 2 (z. B. Offen)", w.handle_entity_ids[1], ["binary_sensor", "sensor"], false)}
+            ${this.field("lock_entity_id", "Optional: Schloss / Riegel", w.lock_entity_id, ["lock"], true)}
+            ${this.field("availability_entity_id", "Optional: Verbindungsüberwachung", w.availability_entity_id, ["lock", "binary_sensor", "sensor"], false)}
           </div>
           <details>
             <summary>Weitere Einstellungen</summary>
@@ -492,9 +480,9 @@ class WindowAssistant extends HTMLElement {
               </label>
               ${[0, 1].map(index => `
                 <label class="check wide">
-                  <input type="checkbox" name="allow_unknown_${index}"${w.handle_entity_ids[index] && w.allow_unknown_inputs.includes(w.handle_entity_ids[index]) ? " checked" : ""}>
-                  Griffsignal ${index + 1}: unknown ausdrücklich als Stellungscode zulassen
-                  <small>Nur für Geräte, die diesen Code tatsächlich für eine Stellung verwenden. Eine separate, gültige Verbindungsüberwachung ist erforderlich. unavailable ist immer ein Fehler.</small>
+                  <input type="checkbox" name="allow_unknown_${index}" checked>
+                  Griffsignal ${index + 1}: unknown als regulären Zustand zulassen
+                  <small>Smart-Home-Fenstergriffe senden in Kippstellung häufig den Code unknown. Ist automatisch als gültiges Signal aktiv.</small>
                 </label>
               `).join("")}
               <label>Entprellzeit (Millisekunden)
@@ -586,13 +574,12 @@ class WindowAssistant extends HTMLElement {
     const handles = [get("handle_1"), get("handle_2")].filter(Boolean);
     const contact = get("contact_entity_id") || null;
     const lock = get("lock_entity_id") || null;
-    const guard = get("availability_entity_id") || lock;
+    const guard = get("availability_entity_id") || null;
     if (!contact && !handles.length) throw new Error("Bitte mindestens einen Fensterkontakt oder ein Griffsignal auswählen.");
     if (new Set([contact, ...handles].filter(Boolean)).size !== [contact, ...handles].filter(Boolean).length) {
       throw new Error("Jedes Stellungssignal darf nur einmal zugeordnet werden.");
     }
-    const allowed = [get("handle_1"), get("handle_2")].filter((id, index) => id && data.has(`allow_unknown_${index}`));
-    if (allowed.length && !guard) throw new Error("unknown als Stellungscode benötigt eine separate Verbindungsüberwachung.");
+    const allowed = handles;
     const before = JSON.stringify([this.window.contact_entity_id, this.window.handle_entity_ids, this.window.allow_unknown_inputs, this.window.contact_open_states, this.window.contact_closed_states]);
     Object.assign(this.window, {
       name: get("name").trim(),
@@ -616,7 +603,7 @@ class WindowAssistant extends HTMLElement {
     });
     const after = JSON.stringify([contact, handles, this.window.allow_unknown_inputs, this.window.contact_open_states, this.window.contact_closed_states]);
     if (before !== after) this.window.mappings = [];
-    this.steps = handles.length ? Object.keys(labels) : ["closed", "open"];
+    this.steps = handles.length ? ["closed", "open", "tilt_ready", "tilted"] : ["closed", "open"];
     return true;
   }
 
@@ -658,10 +645,10 @@ class WindowAssistant extends HTMLElement {
 
         const getRole = id => {
           if (id === this.window.contact_entity_id) return "Fensterkontakt";
-          if (id === this.window.lock_entity_id) return "Schloss / Verriegelung";
+          if (id === this.window.lock_entity_id) return "Schloss / Riegel (Optional)";
           if (id === this.window.handle_entity_ids[0]) return "Griffsignal 1";
           if (id === this.window.handle_entity_ids[1]) return "Griffsignal 2";
-          if (id === this.window.availability_entity_id) return "Verbindung";
+          if (id === this.window.availability_entity_id) return "Verbindung (Optional)";
           return "Sensor";
         };
 
