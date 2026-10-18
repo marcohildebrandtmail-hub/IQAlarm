@@ -24,6 +24,14 @@ ENTITY_RE = re.compile(r"^[a-z_][a-z0-9_]*\.[a-z0-9_]+$")
 ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,100}$")
 
 
+def display_icon(value: str | None) -> None:
+    """Validate an optional presentation override, independently of alarm roles."""
+    if value is not None and (
+        not isinstance(value, str) or not re.fullmatch(r"mdi:[a-z0-9][a-z0-9-]{0,79}", value)
+    ):
+        raise ValueError("Symbol muss eine gültige MDI-Kennung sein, z. B. mdi:fridge-outline")
+
+
 def number(value: Any, minimum: float, maximum: float, name: str) -> float:
     """Reject non-finite, boolean, out-of-range and non-numeric input."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -66,8 +74,10 @@ class Room:
     area_id: str | None = None
     adjacent: list[str] = field(default_factory=list)
     home_enabled: bool = False
+    icon: str | None = None
 
     def __post_init__(self) -> None:
+        display_icon(self.icon)
         if not isinstance(self.id, str) or not ID_RE.fullmatch(self.id):
             raise ValueError("Ungültige Raum-ID")
         text(self.name, "Raumname", 100)
@@ -103,8 +113,10 @@ class SensorConfig:
     camera_entity_id: str | None = None
     sensor_kind: str | None = None
     active_above: float | None = None
+    icon: str | None = None
 
     def __post_init__(self) -> None:
+        display_icon(self.icon)
         entity(self.entity_id, ALLOWED_SENSOR_DOMAINS)
         self.role = Role(self.role).value
         if self.sensor_kind is None:
@@ -208,6 +220,7 @@ class WindowConfig:
     flap_enabled: bool = True
     flap_window: float = 15
     flap_threshold: int = 3
+    icon: str | None = None
 
     @property
     def sensor_id(self) -> str:
@@ -227,6 +240,7 @@ class WindowConfig:
         )
 
     def __post_init__(self) -> None:
+        display_icon(self.icon)
         if not isinstance(self.id, str) or not ID_RE.fullmatch(self.id):
             raise ValueError("Ungültige Fenster-ID")
         text(self.name, "Fenstername", 100)
@@ -720,6 +734,7 @@ class Configuration:
                 Role.ENTRY,
                 window.room_id,
                 name=window.name,
+                icon=window.icon,
                 source_id=self.sensors[window.contact_entity_id].source_id or f"window:{window.id}"
                 if window.contact_entity_id in self.sensors
                 else f"window:{window.id}",

@@ -2,6 +2,10 @@
 
 **Erst verstehen, dann auslösen.** IQAlarm ist eine lokale Home-Assistant-Integration mit räumlicher Sensor-Korrelation, Prell-Schutz und eigenem deutschen Seitenpanel. Das Panel wird direkt als ES-Modul ausgeliefert. Auf dem Home-Assistant-System sind weder Node.js noch ein Frontend-Build nötig.
 
+## Eigene Symbole
+
+Unter **Kameras & Sensoren** einen Eintrag anklicken und **Symbol anpassen** öffnen. Gängige Symbole (Fenster, Tür, Schublade, Kühlschrank, Bewegung und weitere) sind direkt auswählbar. Eine eigene `mdi:…`-Kennung zeigt sofort eine Vorschau. **Automatisch** stellt das bisherige Symbol wieder her. Speichern, Raumwechsel und Sortieren übernehmen die Auswahl. Zusammengeführte Fenster haben ein eigenes Symbol; ihre Eingangssensoren bleiben erhalten. Das Raumsymbol lässt sich über das Symbol im Gruppenkopf oder unter **Räume & Grundriss → Raum bearbeiten** ändern. Die Auswahl gilt auch im Live-Status und ändert keine Alarmrollen oder Regeln.
+
 ## Frei konfigurierbare Alarmstufen
 
 Die folgenden sechs Stufen sind die Startvorgaben ab 2.5.0. Unter **Level-Konfiguration** lassen sich weiterhin 1–32 Stufen mit eigenen Namen und Farben festlegen. Die Reihenfolge bestimmt die Zahl im Kreis; die Bezeichnung steht darüber. Jede Stufe enthält ihre frei konfigurierbaren Sensorregeln. Profile wählen die verwendeten Regeln und haben eigene Aktionen je Level. Aktionen verweisen auf feste Stufenkennungen. Bestehende eigene Stufen und Zuordnungen bleiben bei einem Update erhalten.

@@ -190,7 +190,7 @@ test("move dialog renames sensors and windows without changing their entity IDs"
   await page.locator(`.sensor-moveable[data-sensor-id="${entity}"]`).click();
   const dialog=page.getByRole("dialog");
   await dialog.getByLabel("Anzeigename",{exact:true}).fill("Bewegung TV");
-  await dialog.getByRole("button",{name:"Namen speichern",exact:true}).click();
+  await dialog.getByRole("button",{name:"Speichern",exact:true}).click();
   await expect(dialog).not.toBeVisible();
   const renamed=await ws(page,"get");
   expect(renamed.config.sensors[entity].name).toBe("Bewegung TV");
@@ -200,7 +200,7 @@ test("move dialog renames sensors and windows without changing their entity IDs"
   expect(states.find(s=>s.entity_id===entity).attributes.friendly_name).toBe("HA Originalname");
   await page.locator('.sensor-moveable[data-sensor-id="binary_sensor.iqalarm_window_qa_display"]').click();
   await dialog.getByLabel("Anzeigename",{exact:true}).fill("Fenster links");
-  await dialog.getByRole("button",{name:"Namen speichern",exact:true}).click();
+  await dialog.getByRole("button",{name:"Speichern",exact:true}).click();
   await expect(dialog).not.toBeVisible();
   const window=await ws(page,"get");
   expect(window.config.windows.qa_display).toEqual({...renamed.config.windows.qa_display,name:"Fenster links"});
