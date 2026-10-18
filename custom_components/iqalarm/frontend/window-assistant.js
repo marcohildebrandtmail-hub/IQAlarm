@@ -11,10 +11,10 @@ const labels = {
 };
 
 const instructions = {
-  closed: "Fenster vollständig schließen.",
-  unlatched: "Griff in Drehstellung bringen, das Fenster aber geschlossen lassen.",
-  open: "Jetzt das Fenster ganz öffnen.",
-  tilt_ready: "Fenster wieder an den Rahmen anlehnen und den Griff nach oben auf Kipp drehen.",
+  closed: "Fenster vollständig schließen und verriegeln.",
+  unlatched: "Jetzt entriegeln, das Fenster aber geschlossen lassen.",
+  open: "Jetzt das Fenster öffnen.",
+  tilt_ready: "Fenster wieder geschlossen halten und den Griff in Kippstellung bringen.",
   tilted: "Jetzt das Fenster gekippt öffnen.",
 };
 
@@ -22,37 +22,37 @@ const STEPS_INFO = {
   closed: {
     title: "1. FENSTER VOLLSTÄNDIG SCHLIESSEN",
     action: "Fensterflügel komplett schließen und Griff ganz nach unten drehen",
-    detail: "Bringe das Fenster in die geschlossene Grundstellung (Griff senkrecht nach unten). Der Fensterkontakt muss geschlossen melden.",
+    detail: "Bringe das Fenster in die Schließstellung (Griff senkrecht nach unten). Der Fensterkontakt muss geschlossen melden.",
     icon: "🪟",
     badge: "Geschlossen",
   },
+  unlatched: {
+    title: "2. GRIFF IN DREHSTELLUNG (FLÜGEL ANGELEHNT)",
+    action: "Griff in Normalstellung drehen, Flügel geschlossen angelehnt lassen",
+    detail: "Drehe den Fenstergriff waagerecht, drücke den Fensterflügel aber noch nicht auf. (Kann übersprungen werden).",
+    icon: "🔓",
+    badge: "Drehstellung",
+  },
   open: {
-    title: "2. FENSTER GANZ ÖFFNEN",
-    action: "Griff waagerecht drehen und Fensterflügel ganz öffnen",
+    title: "3. FENSTER GANZ ÖFFNEN",
+    action: "Fensterflügel jetzt ganz aufschwenken",
     detail: "Öffne das Fenster vollständig. Der Kontakt meldet offen, der Griffsensor steht auf Drehöffnung.",
     icon: "🪟",
     badge: "Geöffnet",
   },
   tilt_ready: {
-    title: "3. GRIFF AUF KIPP DREHEN (FLÜGEL ANGELEHNT)",
+    title: "4. GRIFF AUF KIPP DREHEN (FLÜGEL ANGELEHNT)",
     action: "Flügel an den Rahmen anlegen & Griff senkrecht nach oben auf Kipp drehen",
-    detail: "Lehne den Fensterflügel an den Rahmen an und drehe den Griff senkrecht nach oben auf Kipp. (Diesen Schritt überspringen, wenn dein Griff die angelehnte Kippbereitschaft nicht separat erfassen muss).",
+    detail: "Fensterflügel wieder an den Rahmen anlehnen und den Griff senkrecht nach oben auf Kipp drehen. (Kann übersprungen werden).",
     icon: "📐",
     badge: "Kippstellung Griff",
   },
   tilted: {
-    title: "4. MACHE JETZT AUF KIPP!",
+    title: "5. MACHE JETZT AUF KIPP!",
     action: "Fensterflügel jetzt oben in Kippstellung kippen",
-    detail: "Kippe den Flügel oben an. Alle Sensoren melden jetzt die stabile Kippstellung.",
+    detail: "Kippe den Flügel oben an. Alle Sensoren erfassen jetzt die stabile Kippstellung.",
     icon: "💨",
     badge: "Gekippt geöffnet",
-  },
-  unlatched: {
-    title: "GRIFF IN DREHSTELLUNG (ANGELEHNT)",
-    action: "Griff in Normalstellung drehen, Flügel geschlossen angelehnt lassen",
-    detail: "Drehe den Fenstergriff waagerecht, drücke den Fensterflügel aber noch nicht auf.",
-    icon: "🔓",
-    badge: "Angelehnt",
   },
 };
 
@@ -447,10 +447,10 @@ class WindowAssistant extends HTMLElement {
               </select>
             </label>
             ${this.field("contact_entity_id", "Fensterkontakt", w.contact_entity_id, ["binary_sensor", "sensor"], false)}
-            ${this.field("handle_1", "Griffsignal 1 (z. B. Kipp)", w.handle_entity_ids[0], ["binary_sensor", "sensor"], false)}
-            ${this.field("handle_2", "Griffsignal 2 (z. B. Offen)", w.handle_entity_ids[1], ["binary_sensor", "sensor"], false)}
-            ${this.field("lock_entity_id", "Optional: Schloss / Riegel", w.lock_entity_id, ["lock"], true)}
-            ${this.field("availability_entity_id", "Optional: Verbindungsüberwachung", w.availability_entity_id, ["lock", "binary_sensor", "sensor"], false)}
+            ${this.field("lock_entity_id", "Fenstergriff – Schloss", w.lock_entity_id, ["lock"], true)}
+            ${this.field("handle_1", "Griffsignal 1", w.handle_entity_ids[0], ["binary_sensor", "sensor"], false)}
+            ${this.field("handle_2", "Griffsignal 2", w.handle_entity_ids[1], ["binary_sensor", "sensor"], false)}
+            ${this.field("availability_entity_id", "Verbindungsüberwachung", w.availability_entity_id, ["lock", "binary_sensor", "sensor"], false)}
           </div>
           <details>
             <summary>Weitere Einstellungen</summary>
@@ -603,7 +603,7 @@ class WindowAssistant extends HTMLElement {
     });
     const after = JSON.stringify([contact, handles, this.window.allow_unknown_inputs, this.window.contact_open_states, this.window.contact_closed_states]);
     if (before !== after) this.window.mappings = [];
-    this.steps = handles.length ? ["closed", "open", "tilt_ready", "tilted"] : ["closed", "open"];
+    this.steps = handles.length ? Object.keys(labels) : ["closed", "open"];
     return true;
   }
 
