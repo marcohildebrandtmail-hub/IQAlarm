@@ -2,7 +2,7 @@
 
 ## Prüfumfang (Version 2.8.0)
 
-- **333 pytest-Tests** für Korrelationslogik, Nachtbetrieb, eigene Profile, Konfigurationsgrenzen, Archivierung, Repository-Metadaten und Deployment-Rollback.
+- **334 pytest-Tests** für Korrelationslogik, Nachtbetrieb, eigene Profile, Konfigurationsgrenzen, Archivierung, Repository-Metadaten und Deployment-Rollback.
 - Alle fünf geforderten Pflichtszenarien: MACO-Prellen, einzelnes Fenster, Fenster + Bewegung nach zwölf Sekunden, nächtlicher Toilettengang und Vorfeld + Fenster nach vierzig Sekunden.
 - Neue Sicherheitsregressionen: gerichtete Bestätigungswege, unzugeordnete Kameras, reine Außenbewegung, Schlossentriegelung ohne Öffnung, höherer Alarm trotz gehaltener Stufe und abgelehnte unabhängige Räume. Mehrfachkontakt-/Bewegungsregeln verlangen ausdrückliche Freigabe und räumliche Beziehung.
 - Echter Core: langsamer Lichtdienst blockiert keine andere Sirene; langsames Abschalten blockiert keinen Eingangstimer; eigene Alarm-Ausgänge werden nach Reload bis zum ursprünglichen Ablauf wieder aufgenommen.
@@ -14,7 +14,7 @@
 - Alle neun Aktionsarten gegen ausführbare Testdienste im echten HA-Service-Registry: Push, Sirene, Schalter, Skript, Licht, Rollos, Snapshot, Aufzeichnung und TTS.
 - Kamerafehler unterdrücken den Text-Push nicht. Langsame Verdachts-Pushs blockieren den bestätigten Sirenenalarm nicht. Selbst übernommene Ausgänge werden bei Entschärfung oder Timerende abgeschaltet.
 - Private Kameradateien, Kameraleserechte und PIN-Versuchslimit.
-- **42 Chromium-Browserprüfungen** gegen den echten Test-Core: CRUD über die deutsche Oberfläche, eigene Profile mit Auswahl und Duplizieren, Profilwechsel/PIN, mobile Darstellung und Dark Theme, Formulare, Text-Escaping und sichtbarer Verbindungsverlust mit Schreibsperre.
+- **43 Chromium-Browserprüfungen** gegen den echten Test-Core: CRUD über die deutsche Oberfläche, eigene Profile mit Auswahl und Duplizieren, Profilwechsel/PIN, mobile Darstellung und Dark Theme, Formulare, Text-Escaping und sichtbarer Verbindungsverlust mit Schreibsperre.
 - Beobachtung trotz bestätigter Korrelation ohne Geräte, Push, Kamera und Simulation; eigene Stufen mit echten Aktionszuordnungen; generische HA-An/Aus-Anbindung.
 - Private PNG-/JPG-Grundrisse: Authentifizierung, Adminrechte, ungültige Bilder, Revisionen, Raumgeometrie, Upload und Neustart.
 - Grafische Profilsymbole, freie MDI-Kennung, Speicherung und unveränderte Profilregeln. Direkter Datei-Dialog, ungültiger Upload ohne leere Etage, lokale Flächenvorschläge, korrigierbare Eckpunkte und bewusstes Übernehmen der Raumzuordnung.

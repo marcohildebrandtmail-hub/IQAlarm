@@ -52,6 +52,7 @@ class IQAlarmRuntime:
         self.cancels: list[Callable] = []
         self.stopped = False
         self._timer_running = False
+        self._saved_grade_stamp = ()
         self._next_simulation = 0.0
         self._next_prune = 0.0
         self._failed_pins: list[float] = []
@@ -200,7 +201,11 @@ class IQAlarmRuntime:
         try:
             windows_changed = self._update_windows(time.time())
             self.engine.tick(time.time())
-            if self.engine._outbox or windows_changed:
+            if (
+                self.engine._outbox
+                or windows_changed
+                or self._grade_stamp() != self._saved_grade_stamp
+            ):
                 if self.flush_task is None or self.flush_task.done():
                     self.flush_task = self.hass.async_create_background_task(
                         self.flush(), "IQAlarm timer update"
@@ -281,13 +286,23 @@ class IQAlarmRuntime:
         if save:
             await self.persist()
 
+    def _grade_stamp(self):
+        return tuple(
+            sorted(
+                (key, value.get("grade"), value.get("next_decay"))
+                for key, value in self.engine.rule_grades.items()
+            )
+        )
+
     async def persist(self) -> None:
         async with self.storage_lock:
+            stamp = self._grade_stamp()
             await self.store.async_save(
                 config=self.config,
                 state=deepcopy(self.engine.persistent_state()),
                 outputs=deepcopy(self.dispatcher.outputs),
             )
+            self._saved_grade_stamp = stamp
 
     async def flush(self) -> None:
         events = self.engine.drain()
@@ -295,6 +310,8 @@ class IQAlarmRuntime:
         secure_event = None
         if not events:
             self.publish()
+            if self._grade_stamp() != self._saved_grade_stamp:
+                await self._flush_persistence()
             return
         for event in events:
             self.hass.bus.async_fire(EVENT_TYPE, event.to_dict())
@@ -339,6 +356,9 @@ class IQAlarmRuntime:
             self.cleanup_tasks.add(cleanup)
             cleanup.add_done_callback(self.cleanup_tasks.discard)
         self.publish()
+        await self._flush_persistence()
+
+    async def _flush_persistence(self):
         try:
             async with asyncio.timeout(2):
                 await self.persist()

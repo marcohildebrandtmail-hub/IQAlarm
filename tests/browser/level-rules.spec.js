@@ -280,3 +280,25 @@ test("quiet floorplan labels stay minimal and live colors fade on retained SVG n
   await page.screenshot({path:"test-results/quiet-floorplan-two-rings.png",fullPage:true});
   await panel.evaluate(el=>{el.data=el.__liveOriginal;delete el.__liveOriginal;delete el.__fadePolygon;delete el.__ringNode;el._render();});
 });
+
+
+test("live confirmation decays and is published without further sensor events",async({page})=>{
+  const data=await ws(page,"get");
+  data.config.rules.timer_grade={id:"timer_grade",name:"Live-Rückstufung",stage_id:"2",conditions:[{sensor_ids:[ids.person,ids.person2,ids.outside],roles:[],event:"active",count:1}],window_seconds:60,confirmation_target:3,confirmation_thresholds:[1,2,3],confirmation_decay_seconds:[2,2,2],confirmation_memory_seconds:30};
+  data.config.profiles.qa_night.rule_ids=["timer_grade"];
+  await save(page,data.config);await ws(page,"set_mode",{mode:"qa_night"});
+  for(const id of [ids.person,ids.person2,ids.outside])await state(page,id,"on");
+  const grade=page.locator('[data-rule-grade="timer_grade"]');
+  await expect(grade).toContainText("Bestätigt · 3 von 3");
+  await expect(page.locator('.status-rings')).toHaveAttribute('aria-label','Alarmstufe 2, Bestätigungsgrad 3 von 3');
+  await expect(page.locator('[data-confirmation-ring]')).toHaveAttribute('stroke-dashoffset','0');
+  // From here no HA state, profile, configuration or browser clock is changed.
+  for(const current of [2,1,0]){
+    await expect(grade).toContainText(`Bestätigungsgrad · ${current} von 3`);
+    await expect(page.locator('.status-rings')).toHaveAttribute('aria-label',`Alarmstufe 2, Bestätigungsgrad ${current} von 3`);
+  }
+  await expect(grade).toContainText("Bestätigung gespeichert bis");
+  const current=await ws(page,"get");
+  expect(current.status.rule_progress[0].remembered).toBe(true);
+  expect(current.status.confirmed).toBe(false);
+});

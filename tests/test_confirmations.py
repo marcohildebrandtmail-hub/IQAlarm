@@ -338,3 +338,35 @@ def test_grade_configuration_rejects_invalid_steps(graded, field, value):
     data["rules"]["outside"][field] = value
     with pytest.raises(ValueError):
         Configuration.from_dict(data)
+
+
+def test_runtime_publishes_and_persists_decay_without_another_sensor_event(
+    graded, tmp_path, monkeypatch
+):
+    import asyncio
+
+    from safety_support import local_runtime, runtime_module
+
+    async def scenario():
+        with_decay(graded)
+        complete(graded)
+        runtime = local_runtime(tmp_path)
+        runtime.engine = graded
+        runtime._next_simulation = runtime._next_prune = 1000
+        await runtime.flush()
+        queued = runtime.queue.qsize()
+        writes = len(runtime.store.writes)
+        published = len(runtime.hass.published)
+        monkeypatch.setattr(runtime_module.time, "time", lambda: 163)
+        await runtime._tick(None)
+        await runtime.hass.drain()
+        assert graded.rule_grades["outside"]["grade"] == 2
+        assert len(runtime.hass.published) > published
+        assert len(runtime.store.writes) == writes + 1
+        assert runtime.store.state["rule_grades"]["outside"]["grade"] == 2
+        assert runtime.queue.qsize() == queued
+        await runtime._tick(None)
+        await runtime.hass.drain()
+        assert len(runtime.store.writes) == writes + 1
+
+    asyncio.run(scenario())
