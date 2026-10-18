@@ -732,10 +732,25 @@ class CorrelationEngine:
             waiting = self.rule_pending.get(rule.id)
             if waiting:
                 chain = [Evidence(**value) for value in waiting["chain"]]
-                if any(
-                    e.entity_id in self.quarantine or self.raw.get(e.entity_id) is None
-                    for e in chain
-                ):
+                alarm = self.config.stage(rule.stage_id).requires_confirmation
+                invalid = (
+                    any(
+                        e.entity_id in self.quarantine or self.raw.get(e.entity_id) is None
+                        for e in chain
+                    )
+                    if alarm
+                    else match_rule(
+                        self.config,
+                        rule,
+                        self.sensors,
+                        self.raw,
+                        list(self.evidence),
+                        self.quarantine,
+                        now,
+                    )
+                    is None
+                )
+                if invalid:
                     del self.rule_pending[rule.id]
                 elif now < waiting["until"]:
                     pending.append((waiting["until"], rule, chain))

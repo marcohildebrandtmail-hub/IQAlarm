@@ -268,6 +268,30 @@ def test_pending_match_is_cancelled_when_a_source_loses_connection(free):
     assert not free.confirmed and free.pending_until is None
 
 
+@pytest.mark.parametrize("event", ["unavailable", "flapping"])
+def test_diagnostic_conditions_can_use_a_delay_and_clear_on_recovery(free, event):
+    custom(
+        free,
+        delay_seconds=5,
+        conditions=[RuleCondition(sensor_ids=["binary_sensor.window"], event=event)],
+    )
+    free.set_profile("armed_night", 100)
+    if event == "unavailable":
+        free.feed("binary_sensor.window", None, 101)
+    else:
+        for index, value in enumerate((True, False, True)):
+            free.feed("binary_sensor.window", value, 101 + index)
+    deadline = free.pending_until
+    assert deadline is not None and free.level == 1
+    free.tick(deadline)
+    assert free.level == 3 and not free.confirmed
+    if event == "unavailable":
+        free.feed("binary_sensor.window", False, deadline + 1)
+    else:
+        free.clear_quarantine(None, deadline + 1)
+    assert free.level == 1
+
+
 def test_new_rules_cannot_use_faults_as_alarm_confirmation(free):
     with pytest.raises(ValueError, match="Störungen"):
         custom(
