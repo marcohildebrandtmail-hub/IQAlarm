@@ -883,6 +883,10 @@ class Configuration:
                         "Störungen und Prellen dürfen keinen Bestätigungsspeicher füllen"
                     )
                 if rule.prerequisite_rule_id:
+                    if len(rule.conditions) > 3:
+                        raise ValueError(
+                            "Mit gespeicherter Bestätigung sind höchstens 3 neue Bedingungen erlaubt"
+                        )
                     parent = self.rules.get(rule.prerequisite_rule_id)
                     if (
                         parent is None

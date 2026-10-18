@@ -163,6 +163,46 @@ def test_profile_switch_and_unarm_clear_confirmation_memory(graded):
     assert not graded.confirmed
 
 
+def test_entry_delay_can_finish_after_memory_expiry_and_restore(graded):
+    graded.config.rules["entry"].delay_seconds = 30
+    complete(graded)
+    graded.feed("binary_sensor.window", True, 280)
+    assert graded.pending_until == 310 and not graded.confirmed
+    state = deepcopy(graded.persistent_state())
+    restored = CorrelationEngine(graded.config)
+    for key in restored.sensors:
+        restored.seed(key, graded.raw.get(key))
+    restored.restore(state, 290)
+    assert restored.pending_until == 310
+    restored.tick(310)
+    assert restored.level == 5 and restored.confirmed
+
+
+def test_offline_source_is_not_shown_as_a_completed_grade(graded):
+    complete(graded)
+    graded.feed("binary_sensor.two", None, 110)
+    progress = graded.snapshot(110)["rule_progress"][0]
+    assert progress["current"] == 2 and not progress["complete"]
+
+
+def test_memory_rejects_tampered_expiry_and_source_identity(graded):
+    complete(graded)
+    state = deepcopy(graded.persistent_state())
+    for mutation in ("expiry", "source"):
+        config = deepcopy(graded.config)
+        saved = deepcopy(state)
+        if mutation == "expiry":
+            saved["rule_confirmations"]["outside"]["until"] += 1000
+        else:
+            config.sensors["binary_sensor.three"].source_id = "other-device"
+        engine = CorrelationEngine(config)
+        for key in engine.sensors:
+            engine.seed(key, False)
+        engine.restore(saved, 200)
+        engine.feed("binary_sensor.window", True, 201)
+        assert not engine.confirmed
+
+
 def test_configuration_rejects_missing_self_or_higher_dependencies(graded):
     for parent in ("missing", "entry"):
         data = graded.config.to_dict()
