@@ -133,7 +133,7 @@ async def verify_windows(hass, entry, admin_token, user_token, calls):
             )
             assert runtime.windows[window["id"]].reading["opening"] is False
             hass.states.async_set(window["contact_entity_id"], "on")
-            await asyncio.sleep(0.4)
+            await hass.async_block_till_done()
             assert runtime.engine.level == 2, runtime.snapshot()
             await asyncio.wait_for(runtime.queue.join(), 5)
             assert any(

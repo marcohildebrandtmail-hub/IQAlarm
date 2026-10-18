@@ -97,7 +97,12 @@ class IQAlarmRuntime:
                 )
             if seed:
                 self.engine.seed(tracker.window.sensor_id, tracker.reading["opening"])
-            elif tracker.reading["opening_stable"]:
+            elif tracker.reading["opening_stable"] or (
+                tracker.window.contact_entity_id and tracker.reading["opening"] is not None
+            ):
+                # A physical contact remains an immediate alarm input. Waiting for
+                # handle codes must not discard motion arriving while positions
+                # settle, nor hide real contact edges from flap diagnosis.
                 self.engine.feed(tracker.window.sensor_id, tracker.reading["opening"], now)
         return changed
 
