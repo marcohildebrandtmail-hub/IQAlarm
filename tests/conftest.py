@@ -11,12 +11,19 @@ package.__path__ = [str(Path(__file__).resolve().parents[1] / "custom_components
 sys.modules["iqalarm_core"] = package
 
 from iqalarm_core.correlation_engine import CorrelationEngine  # noqa: E402
-from iqalarm_core.models import Configuration, Room, SensorConfig  # noqa: E402
+from iqalarm_core.models import AlarmStage, Configuration, Room, SensorConfig  # noqa: E402
 
 
 @pytest.fixture
 def config():
     result = Configuration(
+        secure_stage_id="0",
+        stages=[
+            AlarmStage("0", "Sicher", "#16816a"),
+            AlarmStage("1", "Vorfeld-Erkennung", "#2986bb"),
+            AlarmStage("2", "Verdacht / Einzelsensor", "#b87808"),
+            AlarmStage("3", "Bestätigter Alarm", "#d34454", True, True, True),
+        ],
         rooms={
             "living": Room("living", "Wohnzimmer", adjacent=["hall"]),
             "hall": Room("hall", "Flur"),
@@ -48,6 +55,8 @@ def config():
     )
 
     result.validate()
+    for profile in result.profiles.values():
+        profile.stage_targets["fault"] = "0"
     return result
 
 

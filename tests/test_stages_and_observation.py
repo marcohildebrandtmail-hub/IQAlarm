@@ -90,6 +90,7 @@ def test_override_can_target_a_separate_fifth_stage(engine):
 @pytest.mark.parametrize("count", [1, 2, 3, 6, 12, 32])
 def test_stage_count_is_not_fixed(config, count):
     config.stages = [AlarmStage(f"step{i}", f"Eigene Stufe {i}", "#123456") for i in range(count)]
+    config.secure_stage_id = "step0"
     for profile in config.profiles.values():
         profile.stage_targets.clear()
     config.validate()

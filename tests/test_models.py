@@ -171,3 +171,33 @@ def test_configuration_validates_and_prunes_room_order(config):
     config.settings.room_order = ["bed", "missing_room", "living"]
     config.validate()
     assert config.settings.room_order == ["bed", "living"]
+
+
+def test_sensor_order_roundtrip_deduplicates_and_prunes_removed_or_moved_sensors(config):
+    config.settings.sensor_order = {
+        "living": [
+            "binary_sensor.motion",
+            "binary_sensor.window",
+            "binary_sensor.motion",
+            "binary_sensor.removed",
+        ],
+        "bed": ["binary_sensor.bed_motion"],
+        "removed_room": ["binary_sensor.window"],
+    }
+    saved = Configuration.from_dict(config.to_dict())
+    assert saved.settings.sensor_order == {
+        "living": ["binary_sensor.motion", "binary_sensor.window"],
+        "bed": ["binary_sensor.bed_motion"],
+    }
+    saved.sensors["binary_sensor.motion"].room_id = "bed"
+    saved.validate()
+    assert saved.settings.sensor_order["living"] == ["binary_sensor.window"]
+    assert saved.settings.sensor_order["bed"] == ["binary_sensor.bed_motion"]
+
+
+@pytest.mark.parametrize(
+    "order", [[], {"living": "binary_sensor.window"}, {"living": [1]}, {"living": ["../secret"]}]
+)
+def test_invalid_sensor_order_is_rejected(order):
+    with pytest.raises(ValueError):
+        Settings(sensor_order=order)

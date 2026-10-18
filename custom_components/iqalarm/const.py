@@ -4,7 +4,7 @@ from enum import IntEnum, StrEnum
 
 DOMAIN = "iqalarm"
 NAME = "IQAlarm"
-VERSION = "2.4.11"
+VERSION = "2.5.0"
 STORAGE_VERSION = 1
 EVENT_TYPE = "iqalarm_event"
 SIGNAL_UPDATE = "iqalarm_update"
@@ -13,6 +13,8 @@ MAX_EVENTS = 500
 RULE_NAMES = {
     "perimeter": "Vorfeld erkannt",
     "single": "Unbestätigtes Einzelereignis",
+    "motion": "Unbestätigte Innenbewegung",
+    "fault": "Sensor nicht verfügbar",
     "flapping": "Sensor-Prellen",
     "perimeter_contact": "Vorfeld + Öffnung",
     "contact_motion": "Öffnung + Bewegung",
@@ -20,7 +22,7 @@ RULE_NAMES = {
     "multi_motion": "Zwei Innenraumsensoren",
     "immediate": "Freigegebene Einzelauslösung / Gefahr",
 }
-UNCONFIRMED_RULES = frozenset(("perimeter", "single", "flapping"))
+UNCONFIRMED_RULES = frozenset(("perimeter", "single", "motion", "fault", "flapping"))
 
 
 class RunState(StrEnum):

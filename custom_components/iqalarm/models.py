@@ -515,6 +515,7 @@ class Settings:
     floorplan_disarmed_animation: bool = False
     floorplan_armed_animation: bool = True
     room_order: list[str] = field(default_factory=list)
+    sensor_order: dict[str, list[str]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         for key in (
@@ -565,6 +566,17 @@ class Settings:
             raise ValueError("Raum-Reihenfolge darf nur Raum-IDs enthalten")
         if len(self.room_order) > 250:
             raise ValueError("Maximal 250 Räume in der Reihenfolge erlaubt")
+        if not isinstance(self.sensor_order, dict) or len(self.sensor_order) > 251:
+            raise ValueError("Sensor-Reihenfolge muss ein Objekt mit maximal 251 Gruppen sein")
+        for room_id, order in self.sensor_order.items():
+            if not isinstance(room_id, str) or (room_id and not ID_RE.fullmatch(room_id)):
+                raise ValueError("Ungültiger Raum in der Sensor-Reihenfolge")
+            if not isinstance(order, list) or len(order) > 1250:
+                raise ValueError(
+                    "Sensor-Reihenfolge benötigt eine Liste mit maximal 1250 Einträgen"
+                )
+            for sensor_id in order:
+                entity(sensor_id, ALLOWED_SENSOR_DOMAINS)
 
 
 @dataclass
@@ -591,10 +603,12 @@ class AlarmStage:
 
 def default_stages() -> list[AlarmStage]:
     return [
-        AlarmStage("0", "Sicher", "#16816a"),
-        AlarmStage("1", "Vorfeld-Erkennung", "#2986bb"),
-        AlarmStage("2", "Verdacht / Einzelsensor", "#b87808"),
-        AlarmStage("3", "Bestätigter Alarm", "#d34454", True, True, True),
+        AlarmStage("0", "Deaktiviert", "#ffffff"),
+        AlarmStage("1", "Sicher", "#64bc29"),
+        AlarmStage("2", "Bewegung Außen", "#08ba1d"),
+        AlarmStage("3", "Erste Sensorauslösung / Fehlerfall", "#cad345"),
+        AlarmStage("4", "Bewegung Innen", "#bc2929"),
+        AlarmStage("5", "ALARM!!!", "#8000ff", True, True, True),
     ]
 
 
@@ -675,6 +689,7 @@ class Configuration:
     floorplans: dict[str, FloorPlan] = field(default_factory=dict)
     windows: dict[str, WindowConfig] = field(default_factory=dict)
     policy_version: int = 2
+    secure_stage_id: str = "1"
 
     def all_sensors(self) -> dict[str, SensorConfig]:
         return self.sensors | {
@@ -711,10 +726,15 @@ class Configuration:
         return next(index for index, stage in enumerate(self.stages) if stage.id == stage_id)
 
     def default_stage_targets(self) -> dict[str, str]:
-        quiet = [stage.id for stage in self.stages if not stage.requires_confirmation]
+        secure_rank = self.stage_rank(self.secure_stage_id)
+        quiet = [
+            stage.id for stage in self.stages[secure_rank + 1 :] if not stage.requires_confirmation
+        ] or [self.secure_stage_id]
         return {
             rule: (
-                quiet[min(1 if rule == "perimeter" else 2, len(quiet) - 1)]
+                quiet[
+                    min(0 if rule == "perimeter" else 2 if rule == "motion" else 1, len(quiet) - 1)
+                ]
                 if rule in UNCONFIRMED_RULES
                 else self.stages[-1].id
             )
@@ -760,6 +780,11 @@ class Configuration:
         baseline = self.stages[0]
         if baseline.requires_confirmation or baseline.allow_loud or baseline.latch:
             raise ValueError("Stufe 0 ist der lautlose Normalzustand")
+        secure = self.stage(self.secure_stage_id)
+        if secure.requires_confirmation or secure.allow_loud or secure.latch:
+            raise ValueError(
+                "Der aktive Normalzustand muss lautlos, ohne Bestätigung und Halten sein"
+            )
         stage_ids = {stage.id for stage in self.stages}
         defaults = self.default_stage_targets()
         for key, profile in self.profiles.items():
@@ -799,7 +824,7 @@ class Configuration:
             loud = action.kind in {"siren", "switch", "script", "tts"} or action.critical
             if loud and (action.level == "diagnostic" or not self.stage(action.level).allow_loud):
                 raise ValueError(
-                    "Akustische/freie Aktionen und kritische Pushs benötigen eine freigegebene bestätigte Stufe (standardmäßig nur in Stufe 3)"
+                    "Akustische/freie Aktionen und kritische Pushs benötigen eine freigegebene bestätigte Alarmstufe"
                 )
         observer = self.settings.observation_profile_id
         if observer not in (None, "live") and (
@@ -819,6 +844,24 @@ class Configuration:
             raise ValueError("Nicht unterstützte Korrelationsversion")
         if self.settings.room_order:
             self.settings.room_order = [r for r in self.settings.room_order if r in self.rooms]
+        sensors = self.all_sensors()
+        self.settings.sensor_order = {
+            room_id: list(
+                dict.fromkeys(
+                    sensor_id
+                    for sensor_id in order
+                    if sensor_id in sensors
+                    and (
+                        sensors[sensor_id].room_id == room_id
+                        or room_id in sensors[sensor_id].front_of
+                        if room_id
+                        else not sensors[sensor_id].room_id and not sensors[sensor_id].front_of
+                    )
+                )
+            )
+            for room_id, order in self.settings.sensor_order.items()
+            if not room_id or room_id in self.rooms
+        }
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -856,6 +899,7 @@ class Configuration:
                 for key, value in data.get("windows", {}).items()
             },
             policy_version=data.get("policy_version", 2),
+            secure_stage_id=data.get("secure_stage_id", "1"),
         )
         result.validate()
         return result
@@ -866,6 +910,15 @@ def migrate_configuration(data: dict) -> dict:
     if not isinstance(data, dict):
         raise ValueError("Ungültige Konfiguration")
     result = deepcopy(data)
+    # Existing installations keep their stage identities, actions and baseline.
+    # Six-stage defaults apply to new configurations; the active baseline is explicit.
+    if "secure_stage_id" not in result and result.get("stages"):
+        result["secure_stage_id"] = result["stages"][0]["id"]
+        for profile in result.get("profiles", {}).values():
+            targets = profile.get("stage_targets", {})
+            if "single" in targets:
+                targets.setdefault("motion", targets["single"])
+            targets.setdefault("fault", result["stages"][0]["id"])
     if type(result.get("policy_version", 1)) is not int or result.get("policy_version", 1) not in (
         1,
         2,

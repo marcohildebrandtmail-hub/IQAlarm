@@ -139,6 +139,24 @@ async def verify(hass, target) -> str:
         hass.states.async_set(entity_id, "off")
 
     data = runtime.config.to_dict()
+    assert len(data["stages"]) == 6 and data["secure_stage_id"] == "1"
+    # Continue the established compatibility suite with an existing four-stage setup.
+    data["stages"] = [
+        {"id": "0", "name": "Sicher", "color": "#16816a"},
+        {"id": "1", "name": "Vorfeld-Erkennung", "color": "#2986bb"},
+        {"id": "2", "name": "Verdacht / Einzelsensor", "color": "#b87808"},
+        {
+            "id": "3",
+            "name": "Bestätigter Alarm",
+            "color": "#d34454",
+            "requires_confirmation": True,
+            "allow_loud": True,
+            "latch": True,
+        },
+    ]
+    data["secure_stage_id"] = "0"
+    for profile in data["profiles"].values():
+        profile["stage_targets"] = {}
     data["rooms"] = {
         "living": {"id": "living", "name": "Wohnzimmer", "adjacent": [], "home_enabled": False}
     }
@@ -322,6 +340,9 @@ async def verify(hass, target) -> str:
     from verify_safety import verify_safety
 
     await verify_safety(hass, entry, calls, capture)
+    from verify_six_stages import verify_six_stages
+
+    await verify_six_stages(hass, entry, calls)
     runtime = entry.runtime_data
 
     hass.states.async_set("binary_sensor.window", "off")

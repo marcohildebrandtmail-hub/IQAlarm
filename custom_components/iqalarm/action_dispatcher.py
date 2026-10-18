@@ -379,7 +379,7 @@ class ActionDispatcher:
             async with self.locks[target]:
                 if generation is not None and generation != self.runtime.generation:
                     return
-                if secure_only and self.runtime.engine.level != 0:
+                if secure_only and not self.runtime.engine.secure:
                     return
                 owned = self.outputs.get(target)
                 if owned is None:

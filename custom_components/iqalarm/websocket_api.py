@@ -176,6 +176,7 @@ async def ws_config(hass, connection, msg) -> None:
         vol.Required("revision"): int,
         vol.Optional("item", default={}): dict,
         vol.Optional("key"): str,
+        vol.Optional("remove_sources", default=False): bool,
     }
 )
 @websocket_api.require_admin
@@ -220,10 +221,26 @@ async def ws_crud(hass, connection, msg) -> None:
                         profile[reference] = [value for value in profile[reference] if value != key]
             if collection == "windows":
                 virtual = f"binary_sensor.iqalarm_window_{key}"
+                removed = {virtual}
+                if msg.get("remove_sources"):
+                    members = set(instance.config.windows[key].members)
+                    members.update(
+                        item["entity_id"]
+                        for item in instance.snapshot().get("window_details", {}).get(key, [])
+                    )
+                    shared = {
+                        source
+                        for window_id, window in instance.config.windows.items()
+                        if window_id != key
+                        for source in window.members
+                    }
+                    for source in members - shared:
+                        data["sensors"].pop(source, None)
+                        removed.add(source)
                 for profile in data["profiles"].values():
                     if profile.get("sensor_ids") is not None:
                         profile["sensor_ids"] = [
-                            value for value in profile["sensor_ids"] if value != virtual
+                            value for value in profile["sensor_ids"] if value not in removed
                         ]
             del data[collection][key]
         else:

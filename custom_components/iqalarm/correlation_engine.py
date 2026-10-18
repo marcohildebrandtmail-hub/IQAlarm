@@ -88,6 +88,14 @@ class CorrelationEngine:
     def level(self) -> int:
         return self.config.stage_rank(self.stage_id)
 
+    @property
+    def baseline_stage_id(self) -> str:
+        return self.config.secure_stage_id if self.profile_id else self.config.stages[0].id
+
+    @property
+    def secure(self) -> bool:
+        return self.severity == Level.SECURE
+
     def target(self, rule: str) -> str:
         return self.profile.stage_targets[rule] if self.profile else self.config.stages[0].id
 
@@ -187,7 +195,7 @@ class CorrelationEngine:
                 self.profile_id = previous_profile
                 raise ValueError("Scharfschalten verhindert: " + "; ".join(blockers))
         self.severity = Level.SECURE
-        self.stage_id = self.config.stages[0].id
+        self.stage_id = self.baseline_stage_id
         self.latched = False
         self.held_alarm = None
         self.confirmation_rule = None
@@ -321,6 +329,7 @@ class CorrelationEngine:
                     f"{sensor.name or entity_id}: nicht verfügbar",
                     entity_id=entity_id,
                 )
+            self._recompute(now)
             return
         if old is None:
             # Restored/rediscovered states are a baseline, not independent evidence.
@@ -330,6 +339,7 @@ class CorrelationEngine:
                 f"{sensor.name or entity_id}: wieder verfügbar",
                 entity_id=entity_id,
             )
+            self._recompute(now)
             return
         if old == active:
             return
@@ -492,6 +502,9 @@ class CorrelationEngine:
     def _confirm(self, chain: list[Evidence], now: float, reason: str, rule: str) -> None:
         if any(e.entity_id in self.quarantine for e in chain):
             return
+        if self.target(rule) == self.config.stages[0].id:
+            self._recompute(now)
+            return
         if (
             self.confirmed
             and (self.latched or all(self._fresh(e, now) for e in self.breach_chain))
@@ -540,7 +553,7 @@ class CorrelationEngine:
             Level.SUSPICION: "single",
             Level.BREACH: "contact_motion",
         }.get(level)
-        stage_id = self.target(rule) if rule else self.config.stages[0].id
+        stage_id = self.target(rule) if rule else self.baseline_stage_id
         if (self.latched and self.config.stage_rank(stage_id) <= self.level) or (
             self.severity == level and self.stage_id == stage_id
         ):
@@ -581,11 +594,23 @@ class CorrelationEngine:
             self.breach_chain = []
             self.confirmation_rule = None
         valid = [e for e in self.evidence if self._fresh(e, now)]
-        suspects = [e for e in valid if e.role not in PERIMETER_ROLES]
+        suspects = [e for e in valid if e.role not in PERIMETER_ROLES | INTERIOR_ROLES]
+        motion = [e for e in valid if e.role in INTERIOR_ROLES]
         perimeter = [e for e in valid if e.role in PERIMETER_ROLES]
-        choices = [(0, Level.SECURE, None, "Korrelationsfenster abgelaufen; keine Bestätigung", [])]
+        choices = [
+            (
+                self.config.stage_rank(self.baseline_stage_id),
+                Level.SECURE,
+                None,
+                "Überwachung bereit; keine Bestätigung"
+                if self.profile_id
+                else "Anlage deaktiviert",
+                [],
+            )
+        ]
         for signals, severity, rule in (
             (suspects, Level.SUSPICION, "single"),
+            (motion, Level.SUSPICION, "motion"),
             (perimeter, Level.PERIMETER, "perimeter"),
         ):
             if signals:
@@ -595,7 +620,7 @@ class CorrelationEngine:
                         severity,
                         rule,
                         RULE_NAMES[rule],
-                        [current] if current else signals[-1:],
+                        [current] if current in signals else signals[-1:],
                     )
                 )
         if self.profile and any(
@@ -610,6 +635,16 @@ class CorrelationEngine:
                     Level.SUSPICION,
                     "flapping",
                     "Sensor-Prellen; keine unabhängige Bestätigung",
+                    [],
+                )
+            )
+        if any(self.raw.get(key) is None and self._included(s) for key, s in self.sensors.items()):
+            choices.append(
+                (
+                    self.config.stage_rank(self.target("fault")),
+                    Level.SUSPICION,
+                    "fault",
+                    "Sensor nicht verfügbar; keine Einbruchsbestätigung",
                     [],
                 )
             )
@@ -644,7 +679,23 @@ class CorrelationEngine:
 
     def room_status(self, room_id: str, now: float) -> dict[str, Any]:
         valid = [e for e in self.evidence if self._fresh(e, now)]
-        suspicious = any(e.room_id == room_id and e.role not in PERIMETER_ROLES for e in valid)
+        contacts = any(
+            e.room_id == room_id and e.role not in PERIMETER_ROLES | INTERIOR_ROLES for e in valid
+        )
+        motion = any(e.room_id == room_id and e.role in INTERIOR_ROLES for e in valid)
+        fault = any(
+            s.room_id == room_id and self.raw.get(key) is None and self._included(s)
+            for key, s in self.sensors.items()
+        )
+        flapping = any(
+            self.sensors[key].room_id == room_id
+            and self._included(self.sensors[key])
+            and self.profile
+            and 0 <= now - q["since"] < self.profile.correlation_seconds
+            for key, q in self.quarantine.items()
+            if key in self.sensors
+        )
+        suspicious = contacts or motion or fault or flapping
         perimeter = any(
             e.role in PERIMETER_ROLES
             and self._perimeter_matches(e, Evidence("", "", "", room_id, now, ""))
@@ -658,14 +709,18 @@ class CorrelationEngine:
             )
             for e in self.breach_chain
         )
+        ranks = [self.config.stage_rank(self.baseline_stage_id)]
+        for present, rule in (
+            (contacts, "single"),
+            (motion, "motion"),
+            (fault, "fault"),
+            (flapping, "flapping"),
+            (perimeter, "perimeter"),
+        ):
+            if present:
+                ranks.append(self.config.stage_rank(self.target(rule)))
         return {
-            "level": self.level
-            if breach
-            else self.config.stage_rank(self.target("single"))
-            if suspicious
-            else self.config.stage_rank(self.target("perimeter"))
-            if perimeter
-            else 0,
+            "level": self.level if breach else max(ranks),
             "confirmed": breach,
             "suspicion": suspicious,
             "perimeter": perimeter,
@@ -708,6 +763,7 @@ class CorrelationEngine:
             "active": self.reactions_enabled,
             "observing": not self.reactions_enabled,
             "confirmed": self.confirmed,
+            "secure": self.secure,
             "evaluation_profile_id": self.evaluation_profile_id,
             "profile_id": self.profile_id,
             "profile_name": (
@@ -837,7 +893,7 @@ class CorrelationEngine:
             self.latched = False
             self.held_alarm = None
             self.severity = Level.SECURE
-            self.stage_id = self.config.stages[0].id
+            self.stage_id = self.baseline_stage_id
             self.confirmation_rule = None
             self.pending_until = None
             self.pending_rule = None

@@ -1,0 +1,33 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+
+let Panel;
+globalThis.HTMLElement = class {};
+globalThis.customElements = {get(){return undefined;},define(name,value){if(name==="iqalarm-panel")Panel=value;}};
+await import("../../custom_components/iqalarm/frontend/iqalarm-panel.js");
+
+function setup() {
+  const panel=Object.create(Panel.prototype);
+  panel.data={config:{settings:{sensor_order:{k:["binary_sensor.iqalarm_window_w","binary_sensor.b"]}},sensors:{
+    "binary_sensor.a":{entity_id:"binary_sensor.a",room_id:"k",front_of:[]},
+    "binary_sensor.b":{entity_id:"binary_sensor.b",room_id:"k",front_of:[]},
+    "binary_sensor.other":{entity_id:"binary_sensor.other",room_id:"r",front_of:[]},
+    "binary_sensor.shared":{entity_id:"binary_sensor.shared",room_id:null,front_of:["k","r"]},
+  },windows:{w:{id:"w",room_id:"k",enabled:true,handle_entity_ids:[]}}}};
+  return panel;
+}
+test("saved room order mixes composite windows and raw sensors, appending new entries",()=>{
+  const panel=setup();
+  assert.deepEqual(panel._orderedSensors("k").map(s=>s.entity_id),["binary_sensor.iqalarm_window_w","binary_sensor.b","binary_sensor.a","binary_sensor.shared"]);
+  assert.deepEqual(panel._orderedSensors("r").map(s=>s.entity_id),["binary_sensor.other","binary_sensor.shared"]);
+});
+test("placing a sensor before or after another preserves every other group",()=>{
+  const panel=setup(),config=structuredClone(panel.data.config);
+  config.settings.sensor_order.r=["binary_sensor.shared","binary_sensor.other"];
+  panel._placeSensor(config,"binary_sensor.a","k","binary_sensor.iqalarm_window_w");
+  assert.deepEqual(config.settings.sensor_order.k,["binary_sensor.a","binary_sensor.iqalarm_window_w","binary_sensor.b","binary_sensor.shared"]);
+  assert.deepEqual(config.settings.sensor_order.r,["binary_sensor.shared","binary_sensor.other"]);
+  panel.data.config=config;
+  panel._placeSensor(config,"binary_sensor.a","k","binary_sensor.b",true);
+  assert.deepEqual(config.settings.sensor_order.k,["binary_sensor.iqalarm_window_w","binary_sensor.b","binary_sensor.a","binary_sensor.shared"]);
+});

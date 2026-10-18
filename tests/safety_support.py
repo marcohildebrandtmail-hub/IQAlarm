@@ -141,6 +141,13 @@ class LocalHA:
 
 def base_config():
     return models.Configuration(
+        secure_stage_id="0",
+        stages=[
+            models.AlarmStage("0", "Sicher", "#16816a"),
+            models.AlarmStage("1", "Vorfeld-Erkennung", "#2986bb"),
+            models.AlarmStage("2", "Verdacht / Einzelsensor", "#b87808"),
+            models.AlarmStage("3", "Bestätigter Alarm", "#d34454", True, True, True),
+        ],
         rooms={"r": models.Room("r", "Test-Raum")},
         sensors={
             "binary_sensor.contact": models.SensorConfig(

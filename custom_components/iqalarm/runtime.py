@@ -298,7 +298,8 @@ class IQAlarmRuntime:
         for event in events:
             self.hass.bus.async_fire(EVENT_TYPE, event.to_dict())
             if (
-                event.kind in ("level_changed", "confirmation_changed") and event.level > 0
+                event.kind in ("level_changed", "confirmation_changed")
+                and event.stage_id != self.engine.baseline_stage_id
             ) or event.kind == "quarantined_flapping":
                 if not event.reactions_enabled:
                     continue
@@ -311,10 +312,11 @@ class IQAlarmRuntime:
                 else:
                     queue.put_nowait((event, generation))
         if (
-            self.engine.level == 0
+            self.engine.secure
             and self.dispatcher.outputs
             and any(
-                event.level == 0 and event.kind in {"level_expired", "confirmation_changed"}
+                event.stage_id == self.engine.baseline_stage_id
+                and event.kind in {"level_expired", "confirmation_changed"}
                 for event in events
             )
         ):

@@ -4,16 +4,26 @@
 
 ## Frei konfigurierbare Alarmstufen
 
-Die folgenden vier Stufen sind Startvorgaben. Unter **Profile & System → Alarmstufen** lassen sich 1–32 Stufen mit eigenen Namen und Farben festlegen. Die Reihenfolge bestimmt die Zahl im Kreis; die Bezeichnung steht darüber. Jedes Profil ordnet die Ereignisarten seinen Stufen zu. Aktionen verweisen auf feste Stufenkennungen, sodass Umbenennungen keine Zuordnungen lösen. Vor dem Entfernen einer verwendeten Stufe müssen Regeln und Aktionen umgestellt werden.
+Die folgenden sechs Stufen sind die Startvorgaben ab 2.5.0. Unter **Level-Konfiguration** lassen sich weiterhin 1–32 Stufen mit eigenen Namen und Farben festlegen. Die Reihenfolge bestimmt die Zahl im Kreis; die Bezeichnung steht darüber. Jedes Profil ordnet Ereignisarten seinen Stufen zu. Aktionen verweisen auf feste Stufenkennungen. Bestehende eigene Stufen und Zuordnungen bleiben bei einem Update erhalten.
 
 | Stufe | Bedeutung | Standardlogik |
 | --- | --- | --- |
-| 0 | Sicher | Keine frischen Sicherheitssignale |
-| 1 | Vorfeld | Person-/Perimeter-Erkennung; Gedächtnis standardmäßig 180 s |
-| 2 | Verdacht | Einzelkontakt oder unbestätigte Bewegung; Korrelation standardmäßig 60 s |
-| 3 | Bestätigter Alarm | Zwei unabhängige, zeitlich und räumlich passende Quellen oder ausdrücklich freigegebener Override |
+| 0 | Deaktiviert | Anlage ausgeschaltet; die optionale Live-Beobachtung läuft ohne Geräteaktionen weiter |
+| 1 | Sicher | Aktives Profil ohne aktuelles Sicherheitssignal |
+| 2 | Bewegung Außen | Person-/Perimeter-Erkennung; Gedächtnis standardmäßig 180 s |
+| 3 | Erste Sensorauslösung / Fehlerfall | Einzelkontakt, Prellen oder fehlende Sensorverbindung; keine Einbruchsbestätigung |
+| 4 | Bewegung Innen | Unbestätigte Innenbewegung, sofern das Profil sie auswertet |
+| 5 | ALARM!!! | Unabhängige, zeitlich und räumlich passende Quellen oder ausdrücklich freigegebener Override |
 
-Bestätigte Stufen können bis zum Ausschalten gehalten werden. Unbestätigte Ereignisse laufen nach ihrem Zeitfenster aus. Sirenen, freie Schalter-/Skriptaktionen, TTS und kritische Pushs sind nur bei Bestätigung und ausdrücklich freigegebener Stufe erlaubt. Stufe 0 ist immer der lautlose Normalzustand. Prellen und Einzelsignale dürfen keiner bestätigungspflichtigen Stufe zugeordnet werden.
+Innenbewegung allein erzeugt auch auf Stufe 4 keinen Vollalarm. Im Nachtprofil bleibt sie ohne vorherige passende Öffnung ohne Eskalation. Stufe 5 benötigt eine Bestätigung; erst dort sind standardmäßig Sirenen und kritische Pushs freigegeben. Ein allein prellender Sensor kann diese Stufe nicht erreichen.
+
+Der **Normalzustand bei aktivem Profil** ist separat wählbar (standardmäßig Stufe 1). Beim Rückfall werden eigene Alarmausgänge abgeschaltet. Stufe 0 und der aktive Normalzustand bleiben lautlos. Auslöser auf Stufe 0 sind deaktiviert. Alte Vier-Stufen-Konfigurationen behalten ihren bisherigen Normalzustand und ihre Aktionskennungen.
+
+### Sensoren bearbeiten, sortieren und löschen
+
+Unter **Kameras & Sensoren** öffnet ein Klick auf einen Eintrag den Sensor-Dialog. Dort lassen sich Anzeigename und Raum ändern, die Position mit **Nach oben / Nach unten** verschieben und der Sensor nach Rückfrage aus IQAlarm löschen. Am Desktop lassen sich Einträge auch innerhalb ihrer Gruppe oder in einen anderen Raum ziehen. Die Reihenfolge wird pro Raum gespeichert und auch im Live-Cockpit angezeigt. Ein zusammengeführtes Fenster bleibt ein Eintrag; seine Quellen bleiben darunter gruppiert.
+
+**Sensor löschen** entfernt IQAlarm-Zuordnungen und bereinigt Profil- und Sortierverweise. Bei einem zusammengeführten Fenster werden auch dessen zugehörige IQAlarm-Eingangszuordnungen entfernt; mit einem anderen Fenster gemeinsam verwendete Quellen bleiben erhalten. Die ursprünglichen Home-Assistant-Entitäten werden nicht gelöscht. **Fenster entfernen** in der technischen Fensterliste löst weiterhin nur die Zusammenführung auf.
 
 ### MACO-/Kontakt-Prellen
 
