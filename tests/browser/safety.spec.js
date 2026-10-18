@@ -32,7 +32,7 @@ test("import uses binary lock values and verified boolean camera detection",asyn
     await page.locator(`[data-room-select="${id}"]`).selectOption("living");
     await page.locator(`[data-candidate-check="${id}"]`).check();
   }
-  await page.getByRole("button",{name:"Sensoren importieren",exact:true}).click();
+  await page.getByRole("button",{name:"2 Sensoren importieren",exact:true}).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
   const result=await ws(page,"get");
   expect(result.config.sensors["binary_sensor.safety_deadbolt"].active_states).toEqual(["on"]);
@@ -108,6 +108,8 @@ test("window wizard supports explicit enum contact values",async({page})=>{
   await expect(wizard.getByRole("button",{name:"Zustand übernehmen",exact:true})).toBeEnabled();
   await wizard.getByRole("button",{name:"Zustand übernehmen",exact:true}).click();
   await state(page,"sensor.safety_enum_window","open",{friendly_name:"QA Textkontakt"});
+  await expect(wizard.locator("#preview .signal span")).toHaveText("open");
+  await expect(wizard.locator("#preview p")).toHaveText("Signale stabil");
   await expect(wizard.getByRole("button",{name:"Zustand übernehmen",exact:true})).toBeEnabled();
   await wizard.getByRole("button",{name:"Zustand übernehmen",exact:true}).click();
   await wizard.getByRole("button",{name:"Fenster speichern",exact:true}).click();

@@ -1711,7 +1711,7 @@ class IQAlarmPanel extends HTMLElement {
               throw new Error(`Für „${cand.name || eid}“ muss ein Raum ausgewählt werden.`);
             }
 
-            
+
             const isCam = eid.startsWith("camera.") || eid.startsWith("image_processing.");
             if(cand.setup_required)throw new Error(cand.setup_reason||"Personenerkennung zuerst manuell prüfen");
             const sensorObj = {
