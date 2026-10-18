@@ -30,6 +30,8 @@ def test_motion_ignored_for_evaluation_is_still_visible_on_floorplan(engine):
 
 def test_profile_name_and_id_never_select_motion_or_contact_policy(engine):
     engine.config.profiles["armed_night"].motion_mode = "always"
+    engine.config.profiles["armed_night"].multi_motion = True
+    engine.config.profiles["armed_night"].confirmation_paths = [["living", "hall"]]
     engine.set_profile("armed_night", 100)
     engine.feed("binary_sensor.motion", True, 101)
     assert engine.level == 2

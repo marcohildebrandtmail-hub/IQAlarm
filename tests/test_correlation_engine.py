@@ -55,19 +55,19 @@ def test_unrelated_camera_does_not_confirm_contact(engine):
     assert engine.level == Level.SUSPICION
 
 
-def test_global_camera_confirms_any_contact(engine):
+def test_unassigned_camera_does_not_confirm_any_contact(engine):
     engine.config.sensors["binary_sensor.terrace"].front_of = []
     engine.set_mode("armed_night", 100)
     engine.feed("binary_sensor.terrace", True, 101)
     engine.feed("binary_sensor.lock", True, 105)
-    assert engine.level == Level.BREACH
+    assert engine.level == Level.SUSPICION
 
 
-def test_independent_contacts_confirm_across_house(engine):
+def test_independent_contacts_do_not_confirm_across_house(engine):
     engine.set_mode("armed_night", 100)
     engine.feed("binary_sensor.window", True, 101)
     engine.feed("binary_sensor.lock", True, 110)
-    assert engine.level == Level.BREACH
+    assert engine.level == Level.SUSPICION
 
 
 def test_one_sensor_cannot_confirm_itself_even_without_flap(engine):

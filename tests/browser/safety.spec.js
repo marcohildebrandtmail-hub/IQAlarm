@@ -1,0 +1,117 @@
+import {test,expect} from "@playwright/test";
+
+async function ws(page,type,data={}){return page.evaluate(({type,data})=>window.iqTest.request({type:`iqalarm/${type}`,...data}),{type,data});}
+async function state(page,id,value,attributes={}){
+  await page.locator("iqalarm-panel").evaluate(async(el,{id,value,attributes})=>{
+    const response=await el.hass.fetchWithAuth(`/api/states/${id}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({state:value,attributes})});
+    if(!response.ok)throw Error("Cannot set disposable test state");
+  },{id,value,attributes});
+}
+async function save(page,config){const current=await ws(page,"get");return ws(page,"config/save",{config,revision:current.config.revision});}
+
+test.beforeEach(async({page})=>{
+  await page.goto("/iqalarm-test");
+  await expect(page.getByText("Live verbunden · lokal")).toBeVisible();
+  let current=await ws(page,"get");
+  if(current.status.active)current=await ws(page,"set_mode",{mode:"inactive",code:"2468"});
+  await page.evaluate(config=>window.safetyOriginal=config,current.config);
+});
+test.afterEach(async({page})=>{
+  const original=await page.evaluate(()=>window.safetyOriginal);
+  if(original){const current=await ws(page,"get");if(current.status.active)await ws(page,"set_mode",{mode:"inactive",code:"2468"});await save(page,original);}
+});
+
+test("import uses binary lock values and verified boolean camera detection",async({page})=>{
+  await state(page,"binary_sensor.safety_deadbolt","off",{friendly_name:"QA Türschloss",device_class:"lock"});
+  await state(page,"camera.safety_person","idle",{friendly_name:"QA Personenkamera",person_detected:true});
+  await page.getByRole("tab",{name:"Kameras & Sensoren"}).click();
+  await page.getByRole("button",{name:"Sensoren automatisch erkennen",exact:true}).click();
+  await expect(page.locator('[data-candidate-check="binary_sensor.safety_deadbolt"]')).toBeVisible();
+  await page.locator("iqalarm-panel").evaluate(el=>el._assistantToggleAll(false));
+  for(const id of ["binary_sensor.safety_deadbolt","camera.safety_person"]){
+    await page.locator(`[data-room-select="${id}"]`).selectOption("living");
+    await page.locator(`[data-candidate-check="${id}"]`).check();
+  }
+  await page.getByRole("button",{name:"Sensoren importieren",exact:true}).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  const result=await ws(page,"get");
+  expect(result.config.sensors["binary_sensor.safety_deadbolt"].active_states).toEqual(["on"]);
+  expect(result.config.sensors["camera.safety_person"].active_states).toEqual(["true"]);
+  expect(result.config.sensors["camera.safety_person"].attribute).toBe("person_detected");
+});
+
+test("unchecking a level trigger persists its removal",async({page})=>{
+  const data=await ws(page,"get"),target=data.config.stages.at(-1).id,baseline=data.config.stages[0].id;
+  for(const p of Object.values(data.config.profiles))p.stage_targets.contact_motion=target;
+  await save(page,data.config);
+  await page.getByRole("tab",{name:"Level-Konfiguration"}).click();
+  await page.locator(`[data-stage="${target}"]`).click();
+  const field=page.locator('#stage-single-form [name="rule_contact_motion"]');
+  await expect(field).toBeChecked();await field.uncheck();
+  await page.getByRole("button",{name:"Level speichern",exact:true}).click();
+  await expect(field).not.toBeChecked();
+  const saved=await ws(page,"get");
+  expect(Object.values(saved.config.profiles).every(p=>p.stage_targets.contact_motion===baseline)).toBe(true);
+});
+
+test("ordinary sensor table updates live without replacing forms",async({page})=>{
+  await state(page,"binary_sensor.safety_motion","off",{friendly_name:"QA Status",device_class:"motion"});
+  const data=await ws(page,"get");
+  data.config.sensors["binary_sensor.safety_motion"]={entity_id:"binary_sensor.safety_motion",role:"interior_motion",room_id:"living",name:"QA Status"};
+  await save(page,data.config);
+  await page.getByRole("tab",{name:"Kameras & Sensoren"}).click();
+  const field=page.locator('[data-sensor-status="binary_sensor.safety_motion"]');
+  await expect(field).toHaveText("Ruhig");
+  await state(page,"binary_sensor.safety_motion","on",{friendly_name:"QA Status",device_class:"motion"});
+  await expect(field).toHaveText("Aktiv");
+});
+
+test("floorplan and room deletion validates before committing anything",async({page})=>{
+  await state(page,"binary_sensor.safety_frame","off");
+  const data=await ws(page,"get");
+  data.config.rooms.safety_room={id:"safety_room",name:"QA Raum",adjacent:[]};
+  data.config.floorplans.safety_plan={id:"safety_plan",name:"QA Grundriss",zones:{safety_room:[[0.1,0.1],[0.4,0.1],[0.4,0.4],[0.1,0.4]]},width:100,height:100};
+  data.config.windows.safety_window={id:"safety_window",name:"QA Fenster",room_id:"safety_room",contact_entity_id:"binary_sensor.safety_frame",mappings:[{state:"closed",values:{"binary_sensor.safety_frame":"off"}},{state:"open",values:{"binary_sensor.safety_frame":"on"}}]};
+  await save(page,data.config);
+  await page.getByRole("tab",{name:"Räume & Grundriss"}).click();
+  await page.locator("#plan-select").selectOption("safety_plan");
+  await page.getByRole("button",{name:"Grundriss löschen",exact:true}).click();
+  await page.getByRole("dialog").getByRole("button",{name:"Grundriss löschen",exact:true}).click();
+  await expect(page.locator("#toast")).toContainText("Zuerst zusammengeführte Fenster");
+  const saved=await ws(page,"get");expect(saved.config.floorplans.safety_plan).toBeTruthy();expect(saved.config.rooms.safety_room).toBeTruthy();
+});
+
+test("orthogonalization saves the edited draft rather than old geometry",async({page})=>{
+  const data=await ws(page,"get");
+  data.config.floorplans.safety_draft={id:"safety_draft",name:"QA Entwurf",zones:{living:[[0.1,0.1],[0.4,0.1],[0.4,0.4],[0.1,0.4]]},width:100,height:100};
+  await save(page,data.config);
+  await page.getByRole("tab",{name:"Räume & Grundriss"}).click();
+  await page.locator("#plan-select").selectOption("safety_draft");
+  await page.locator("iqalarm-panel").evaluate(el=>{el.zoneRoom="living";el.points=[[0.1,0.1],[0.8,0.1],[0.8,0.4],[0.1,0.4]];el._storeDraft();});
+  await page.getByRole("button",{name:"90° Begradigen",exact:true}).first().click();
+  await expect.poll(async()=>Math.max(...(await ws(page,"get")).config.floorplans.safety_draft.zones.living.map(p=>p[0]))).toBe(0.8);
+});
+
+test("window wizard supports explicit enum contact values",async({page})=>{
+  await state(page,"sensor.safety_enum_window","closed",{friendly_name:"QA Textkontakt"});
+  await page.getByRole("tab",{name:"Kameras & Sensoren"}).click();
+  await page.getByRole("button",{name:"Fenster einrichten",exact:true}).click();
+  const wizard=page.locator("iqalarm-window-assistant");
+  await wizard.getByLabel("Fenstername",{exact:true}).fill("QA Textfenster");
+  await wizard.getByLabel("Raum",{exact:true}).selectOption("living");
+  await wizard.getByLabel("Fensterkontakt",{exact:true}).selectOption("sensor.safety_enum_window");
+  await wizard.getByText("Weitere Einstellungen",{exact:true}).click();
+  await wizard.getByLabel("Kontakt geöffnet bei",{exact:true}).fill("open, tilted");
+  await wizard.getByLabel("Kontakt geschlossen bei",{exact:true}).fill("closed");
+  await wizard.getByLabel("Stabilisierungszeit (Sekunden)",{exact:true}).fill("0.2");
+  await wizard.getByRole("button",{name:"Weiter: Fensterstellungen",exact:true}).click();
+  await expect(wizard.getByRole("button",{name:"Zustand übernehmen",exact:true})).toBeEnabled();
+  await wizard.getByRole("button",{name:"Zustand übernehmen",exact:true}).click();
+  await state(page,"sensor.safety_enum_window","open",{friendly_name:"QA Textkontakt"});
+  await expect(wizard.getByRole("button",{name:"Zustand übernehmen",exact:true})).toBeEnabled();
+  await wizard.getByRole("button",{name:"Zustand übernehmen",exact:true}).click();
+  await wizard.getByRole("button",{name:"Fenster speichern",exact:true}).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  const saved=await ws(page,"get"),window=Object.values(saved.config.windows).find(w=>w.name==="QA Textfenster");
+  expect(saved.status.raw[`binary_sensor.iqalarm_window_${window.id}`]).toBe(true);
+});

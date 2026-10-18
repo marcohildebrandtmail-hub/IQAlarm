@@ -355,6 +355,34 @@ def classify_entity(entity_id: str, name: str, device_class: str | None) -> str 
     return None
 
 
+def sensor_setup(state, device_id: str | None = None) -> dict:
+    """Propose real raw formats; a camera requires a verified detection attribute."""
+    domain = state.entity_id.split(".", 1)[0]
+    result = {
+        "source_id": f"device:{device_id}" if device_id else state.entity_id,
+        "attribute": None,
+        "active_states": ["unlocked", "open"] if domain == "lock" else ["on"],
+        "active_above": None,
+        "setup_required": False,
+        "setup_reason": "",
+    }
+    if domain in {"camera", "image_processing"}:
+        for attribute in ("person_detected", "person", "persons", "person_count", "count_person"):
+            value = state.attributes.get(attribute)
+            if isinstance(value, bool):
+                result.update(attribute=attribute, active_states=["true"])
+                break
+            if isinstance(value, (int, float)):
+                result.update(attribute=attribute, active_above=0)
+                break
+        else:
+            result.update(
+                setup_required=True,
+                setup_reason="Kein geprüftes Personenattribut: Personen-Binary-Sensor wählen oder Kamera manuell einrichten",
+            )
+    return result
+
+
 def discover_sensors(
     hass: HomeAssistant,
     current_sensors: dict[str, Any],
@@ -473,6 +501,7 @@ def discover_sensors(
                 "device_name": device_name,
                 "manufacturer": manufacturer,
                 "model": model,
+                **sensor_setup(state, device_id),
             }
         )
 

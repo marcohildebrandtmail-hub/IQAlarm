@@ -202,13 +202,13 @@ async def verify(hass, target) -> str:
     hass.states.async_set("binary_sensor.motion", "off")
     hass.states.async_set("binary_sensor.window", "on")
     await hass.async_block_till_done()
-    await asyncio.wait_for(runtime.queue.join(), 10)
+    await asyncio.wait_for(asyncio.gather(runtime.queue.join(), runtime.urgent_queue.join()), 10)
     assert runtime.engine.level == 2
     assert any(c[0] == "notify" for c in calls)
     assert not any(c[0] == "siren" for c in calls)
     hass.states.async_set("binary_sensor.motion", "on")
     await hass.async_block_till_done()
-    await asyncio.wait_for(runtime.queue.join(), 10)
+    await asyncio.wait_for(asyncio.gather(runtime.queue.join(), runtime.urgent_queue.join()), 10)
     assert runtime.engine.level == 3
     assert hass.states.get("alarm_control_panel.iqalarm").state == "triggered"
     assert any(c[:2] == ("siren", "turn_on") for c in calls)
@@ -319,6 +319,9 @@ async def verify(hass, target) -> str:
     from verify_windows import verify_windows
 
     await verify_windows(hass, entry, admin_token, user_token, calls)
+    from verify_safety import verify_safety
+
+    await verify_safety(hass, entry, calls, capture)
     runtime = entry.runtime_data
 
     hass.states.async_set("binary_sensor.window", "off")
@@ -423,12 +426,22 @@ async def verify_profiles(hass, entry, admin_token, user_token, calls) -> None:
             assert not changed["success"]
             hass.states.async_set("binary_sensor.window", "on")
             await hass.async_block_till_done()
-            await asyncio.wait_for(entry.runtime_data.queue.join(), 5)
+            await asyncio.wait_for(
+                asyncio.gather(
+                    entry.runtime_data.queue.join(), entry.runtime_data.urgent_queue.join()
+                ),
+                5,
+            )
             assert entry.runtime_data.engine.level == 2
             assert len(calls) == before, "Excluded suspicion actions were executed"
             hass.states.async_set("binary_sensor.motion", "on")
             await hass.async_block_till_done()
-            await asyncio.wait_for(entry.runtime_data.queue.join(), 5)
+            await asyncio.wait_for(
+                asyncio.gather(
+                    entry.runtime_data.queue.join(), entry.runtime_data.urgent_queue.join()
+                ),
+                5,
+            )
             assert hass.states.get("alarm_control_panel.iqalarm").state == "triggered"
             assert calls[before:] == [
                 (
@@ -586,7 +599,7 @@ async def verify_actions(hass, runtime, calls, capture) -> None:
         "Slow suspicion notification blocked full alarm"
     )
     delayed_release.set()
-    await asyncio.wait_for(runtime.queue.join(), 5)
+    await asyncio.wait_for(asyncio.gather(runtime.queue.join(), runtime.urgent_queue.join()), 5)
     await runtime.set_mode("disarmed", "2468")
     assert hass.states.get("siren.test").state == "off"
     data = runtime.config.to_dict()

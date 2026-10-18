@@ -101,6 +101,7 @@ class SensorConfig:
     active_states: list[str] = field(default_factory=lambda: ["on"])
     camera_entity_id: str | None = None
     sensor_kind: str | None = None
+    active_above: float | None = None
 
     def __post_init__(self) -> None:
         entity(self.entity_id, ALLOWED_SENSOR_DOMAINS)
@@ -155,6 +156,10 @@ class SensorConfig:
                 raise ValueError("unknown/unavailable sind niemals Alarmauslöser")
         if self.attribute is not None:
             text(self.attribute, "Attribut", 100)
+        if self.active_above is not None:
+            number(self.active_above, -1_000_000, 1_000_000, "Erkennungsschwelle")
+            if not self.attribute:
+                raise ValueError("Numerische Erkennungsschwelle benötigt ein Attribut")
         if self.entity_id.startswith(("camera.", "image_processing.")) and not self.attribute:
             raise ValueError("Kamera/Bildauswertung benötigt ein explizites Erkennungsattribut")
         if self.role in CONTACT_ROLES and self.room_id is None:
@@ -196,6 +201,12 @@ class WindowConfig:
     enabled: bool = True
     entry_delay: bool = False
     contact_open_states: list[str] = field(default_factory=lambda: ["on"])
+    contact_closed_states: list[str] = field(default_factory=lambda: ["off"])
+    immediate: bool = False
+    debounce_ms: int = 0
+    flap_enabled: bool = True
+    flap_window: float = 15
+    flap_threshold: int = 3
 
     @property
     def sensor_id(self) -> str:
@@ -229,11 +240,21 @@ class WindowConfig:
             entity(self.lock_entity_id, {"lock"})
         if not self.position_inputs or len(set(self.position_inputs)) != len(self.position_inputs):
             raise ValueError("Mindestens ein eindeutiger Stellungssensor erforderlich")
-        for key in ("enabled", "entry_delay"):
+        for key in ("enabled", "entry_delay", "immediate", "flap_enabled"):
             if type(getattr(self, key)) is not bool:
                 raise ValueError(f"{key} muss boolesch sein")
         number(self.settle_seconds, 0.2, 10, "Stabilisierungszeit")
-        for key in ("availability_states", "allow_unknown_inputs", "contact_open_states"):
+        number(self.debounce_ms, 0, 60000, "Entprellzeit")
+        number(self.flap_window, 1, 300, "Prellfenster")
+        number(self.flap_threshold, 3, 100, "Prellschwelle")
+        if type(self.debounce_ms) is not int or type(self.flap_threshold) is not int:
+            raise ValueError("Entprellzeit und Prellschwelle müssen ganzzahlig sein")
+        for key in (
+            "availability_states",
+            "allow_unknown_inputs",
+            "contact_open_states",
+            "contact_closed_states",
+        ):
             values = getattr(self, key)
             if not isinstance(values, list) or len(values) > 20 or len(set(values)) != len(values):
                 raise ValueError(f"Ungültige Liste: {key}")
@@ -244,6 +265,13 @@ class WindowConfig:
             "unavailable",
         }:
             raise ValueError("Ungültige Kontakt-Offenwerte")
+        if not self.contact_closed_states or set(self.contact_closed_states) & {
+            "unknown",
+            "unavailable",
+        }:
+            raise ValueError("Ungültige Kontakt-Geschlossenwerte")
+        if set(self.contact_open_states) & set(self.contact_closed_states):
+            raise ValueError("Offen- und Geschlossenwerte müssen verschieden sein")
         if self.allow_unknown_inputs and (
             not self.availability_entity_id
             or set(self.allow_unknown_inputs) - set(self.handle_entity_ids)
@@ -271,6 +299,17 @@ class WindowConfig:
                 ):
                     raise ValueError(
                         "Keine Verbindung darf nicht als Fensterstellung eingelernt werden"
+                    )
+            if self.contact_entity_id:
+                contact = values[self.contact_entity_id]
+                allowed = (
+                    self.contact_open_states
+                    if WINDOW_STATES[state][1] in ("open", "tilted")
+                    else self.contact_closed_states
+                )
+                if contact not in allowed:
+                    raise ValueError(
+                        "Fensterstellung widerspricht den Kontakt-Offen-/Geschlossenwerten"
                     )
             signature = tuple(sorted(values.items()))
             if signature in signatures:
@@ -309,9 +348,9 @@ class Profile:
     exit_seconds: float = 0
     perimeter_contact: bool = True
     contact_motion: bool = True
-    multi_contact: bool = True
-    multi_motion: bool = True
-    adjacent_rooms: bool = True
+    multi_contact: bool = False
+    multi_motion: bool = False
+    adjacent_rooms: bool = False
     name: str = ""
     icon: str | None = None
     motion_mode: str = "always"
@@ -324,6 +363,7 @@ class Profile:
     room_ids: list[str] | None = None
     sensor_ids: list[str] | None = None
     action_ids: list[str] | None = None
+    confirmation_paths: list[list[str]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         for key in ("perimeter_seconds", "correlation_seconds"):
@@ -357,6 +397,22 @@ class Profile:
             raise ValueError("Ungültige Stufenzuordnungen")
         if any(not isinstance(value, str) for value in self.stage_targets.values()):
             raise ValueError("Stufenziele müssen IDs sein")
+        if not isinstance(self.confirmation_paths, list) or len(self.confirmation_paths) > 500:
+            raise ValueError("Maximal 500 ausdrückliche Bestätigungswege erlaubt")
+        seen_paths = set()
+        for path in self.confirmation_paths:
+            if (
+                not isinstance(path, list)
+                or len(path) != 2
+                or any(not isinstance(room, str) for room in path)
+                or path[0] == path[1]
+            ):
+                raise ValueError(
+                    "Bestätigungsweg benötigt zwei verschiedene Räume in Ereignisreihenfolge"
+                )
+            if tuple(path) in seen_paths:
+                raise ValueError("Bestätigungsweg darf nicht doppelt vorhanden sein")
+            seen_paths.add(tuple(path))
         for key in ("room_ids", "sensor_ids", "action_ids"):
             values = getattr(self, key)
             if values is not None and (
@@ -596,6 +652,7 @@ class Configuration:
     stages: list[AlarmStage] = field(default_factory=default_stages)
     floorplans: dict[str, FloorPlan] = field(default_factory=dict)
     windows: dict[str, WindowConfig] = field(default_factory=dict)
+    policy_version: int = 2
 
     def all_sensors(self) -> dict[str, SensorConfig]:
         return self.sensors | {
@@ -604,10 +661,16 @@ class Configuration:
                 Role.ENTRY,
                 window.room_id,
                 name=window.name,
-                source_id=f"window:{window.id}",
+                source_id=self.sensors[window.contact_entity_id].source_id or f"window:{window.id}"
+                if window.contact_entity_id in self.sensors
+                else f"window:{window.id}",
                 enabled=window.enabled,
                 entry_delay=window.entry_delay,
-                flap_enabled=True,
+                immediate=window.immediate,
+                debounce_ms=window.debounce_ms,
+                flap_enabled=window.flap_enabled,
+                flap_window=window.flap_window,
+                flap_threshold=window.flap_threshold,
                 sensor_kind="generic",
             )
             for window in self.windows.values()
@@ -655,8 +718,10 @@ class Configuration:
         for key, window in self.windows.items():
             if key != window.id or window.room_id not in self.rooms:
                 raise ValueError("Fenster verweist auf einen unbekannten Raum")
-            if not window.mappings:
-                raise ValueError("Fenster benötigt mindestens eine eingelernte Stellung")
+            if not {"closed", "open"} <= {mapping["state"] for mapping in window.mappings}:
+                raise ValueError(
+                    "Fenster benötigt mindestens die eingelernten Stellungen Geschlossen und Offen"
+                )
             if used.intersection(window.position_inputs):
                 raise ValueError("Ein Stellungssensor darf nur zu einem Fenster gehören")
             used.update(window.position_inputs)
@@ -684,6 +749,8 @@ class Configuration:
                 profile.icon = profile_icon(profile.name, key, profile.reactions_enabled)
             for rule, target in defaults.items():
                 profile.stage_targets.setdefault(rule, target)
+            if any(room not in self.rooms for path in profile.confirmation_paths for room in path):
+                raise ValueError("Bestätigungsweg verweist auf unbekannten Raum")
             if set(profile.stage_targets.values()) - stage_ids:
                 raise ValueError("Profil verweist auf eine unbekannte Alarmstufe")
             for rule in UNCONFIRMED_RULES:
@@ -726,6 +793,8 @@ class Configuration:
                 raise ValueError("Grundriss verweist auf einen unbekannten Raum")
         if type(self.revision) is not int or self.revision < 0:
             raise ValueError("Ungültige Konfigurationsrevision")
+        if self.policy_version != 2:
+            raise ValueError("Nicht unterstützte Korrelationsversion")
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -762,6 +831,7 @@ class Configuration:
                 key: construct(WindowConfig, value)
                 for key, value in data.get("windows", {}).items()
             },
+            policy_version=data.get("policy_version", 2),
         )
         result.validate()
         return result
@@ -772,6 +842,44 @@ def migrate_configuration(data: dict) -> dict:
     if not isinstance(data, dict):
         raise ValueError("Ungültige Konfiguration")
     result = deepcopy(data)
+    if type(result.get("policy_version", 1)) is not int or result.get("policy_version", 1) not in (
+        1,
+        2,
+    ):
+        raise ValueError("Nicht unterstützte Korrelationsversion")
+    legacy_policy = result.get("policy_version", 1) < 2
+    if legacy_policy:
+        for sensor in result.get("sensors", {}).values():
+            if (
+                sensor.get("entity_id", "").startswith("binary_sensor.")
+                and sensor.get("role") == "lock_contact"
+                and not sensor.get("attribute")
+                and sensor.get("active_states") == ["unlocked", "open"]
+            ):
+                sensor["active_states"] = ["on"]
+            if (
+                sensor.get("entity_id", "").startswith(("camera.", "image_processing."))
+                and sensor.get("attribute") == "person_detected"
+                and sensor.get("active_states") == ["on"]
+            ):
+                sensor["active_states"] = ["true", "on", "1"]
+    for window in result.get("windows", {}).values():
+        contact = result.get("sensors", {}).get(window.get("contact_entity_id"), {})
+        for name in (
+            "entry_delay",
+            "immediate",
+            "debounce_ms",
+            "flap_enabled",
+            "flap_window",
+            "flap_threshold",
+        ):
+            if name in contact and name not in window:
+                window[name] = contact[name]
+        window.setdefault(
+            "contact_closed_states",
+            ["on"] if window.get("contact_open_states") == ["off"] else ["off"],
+        )
+    result["policy_version"] = 2
     profiles = result.setdefault(
         "profiles", {key: asdict(value) for key, value in default_profiles().items()}
     )
@@ -853,7 +961,13 @@ class EventLog:
             self.category = (
                 "fault"
                 if self.kind
-                in {"quarantined_flapping", "sensor_unavailable", "runtime_error", "action_failed"}
+                in {
+                    "quarantined_flapping",
+                    "sensor_unavailable",
+                    "runtime_error",
+                    "action_failed",
+                    "window_position_ambiguous",
+                }
                 else "alarm"
                 if self.confirmed and self.reactions_enabled and self.level > 0
                 else "warning"

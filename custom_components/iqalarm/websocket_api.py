@@ -15,7 +15,7 @@ from .compat import vol
 from .const import ALLOWED_SENSOR_DOMAINS, DOMAIN, SIGNAL_UPDATE
 from .floorplan_analysis import analyze_image
 from .models import Action, FloorPlan, Profile, Room, SensorConfig, WindowConfig, construct
-from .sensor_discovery import discover_sensors
+from .sensor_discovery import discover_sensors, sensor_setup
 from .windows import capture_position, inspect_window
 
 
@@ -202,6 +202,11 @@ async def ws_crud(hass, connection, msg) -> None:
                     room["adjacent"] = [r for r in room["adjacent"] if r != key]
                 for plan in data["floorplans"].values():
                     plan["zones"].pop(key, None)
+                    plan.get("labels", {}).pop(key, None)
+                for profile in data["profiles"].values():
+                    profile["confirmation_paths"] = [
+                        path for path in profile.get("confirmation_paths", []) if key not in path
+                    ]
             reference = {"rooms": "room_ids", "sensors": "sensor_ids", "actions": "action_ids"}.get(
                 collection
             )
@@ -367,6 +372,8 @@ def ws_catalog(hass, connection, msg) -> None:
                 "entity_id": s.entity_id,
                 "name": s.attributes.get("friendly_name", s.entity_id),
                 "state": s.state,
+                "platform": entry.platform if entry else None,
+                **sensor_setup(s, entry.device_id if entry else None),
                 "area_id": area_id,
                 "attributes": {
                     k: v
@@ -393,7 +400,11 @@ def ws_catalog(hass, connection, msg) -> None:
 def ws_discover_sensors(hass, connection, msg) -> None:
     try:
         instance = runtime(hass)
-        candidates = discover_sensors(hass, instance.config.sensors, instance.config.rooms)
+        candidates = discover_sensors(
+            hass,
+            instance.config.sensors | dict.fromkeys(instance.config.window_members()),
+            instance.config.rooms,
+        )
         connection.send_result(
             msg["id"],
             {

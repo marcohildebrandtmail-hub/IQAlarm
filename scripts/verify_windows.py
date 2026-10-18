@@ -135,7 +135,9 @@ async def verify_windows(hass, entry, admin_token, user_token, calls):
             hass.states.async_set(window["contact_entity_id"], "on")
             await hass.async_block_till_done()
             assert runtime.engine.level == 2, runtime.snapshot()
-            await asyncio.wait_for(runtime.queue.join(), 5)
+            await asyncio.wait_for(
+                asyncio.gather(runtime.queue.join(), runtime.urgent_queue.join()), 5
+            )
             assert any(
                 domain == "notify" and "Prüffenster" in str(data.get("message", ""))
                 for domain, service, data in calls

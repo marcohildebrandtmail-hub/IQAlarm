@@ -105,7 +105,7 @@ def test_scoped_global_perimeter_and_spatial_perimeter(engine):
     engine.feed("binary_sensor.global_person", True, 102)
     assert engine.level == Level.PERIMETER
     engine.feed("binary_sensor.lock", True, 103)
-    assert engine.level == Level.BREACH
+    assert engine.level == Level.SUSPICION
 
 
 def test_custom_timers_are_used_without_changing_standard_profile(engine):

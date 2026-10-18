@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import hmac
 import logging
+import math
 import time
 from collections.abc import Callable
 from copy import deepcopy
@@ -37,8 +38,14 @@ class IQAlarmRuntime:
         self.dispatcher = ActionDispatcher(hass, self)
         self.generation = 0
         self.queue: asyncio.Queue[tuple[EventLog, int]] = asyncio.Queue(maxsize=200)
+        self.urgent_queue: asyncio.Queue[tuple[EventLog, int]] = asyncio.Queue(maxsize=200)
         self.worker: asyncio.Task | None = None
+        self.urgent_worker: asyncio.Task | None = None
+        self.maintenance_task: asyncio.Task | None = None
+        self.flush_task: asyncio.Task | None = None
         self.action_tasks: set[asyncio.Task] = set()
+        self.urgent_tasks: set[asyncio.Task] = set()
+        self.cleanup_tasks: set[asyncio.Task] = set()
         self.lock = asyncio.Lock()
         self.storage_lock = asyncio.Lock()
         self.pin_lock = asyncio.Lock()
@@ -64,6 +71,14 @@ class IQAlarmRuntime:
         value = state.attributes.get(sensor.attribute) if sensor.attribute else state.state
         if value is None:
             return None
+        if sensor.active_above is not None:
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+            ):
+                return None
+            return value > sensor.active_above
         normalized = str(value).lower() if isinstance(value, bool) else str(value)
         return normalized in sensor.active_states
 
@@ -73,6 +88,14 @@ class IQAlarmRuntime:
                 sensor.entity_id, self.active_state(sensor, self.hass.states.get(sensor.entity_id))
             )
         self.windows = {key: WindowTracker(window) for key, window in self.config.windows.items()}
+        registry = er.async_get(self.hass)
+        for window in self.config.windows.values():
+            record = (
+                registry.async_get(window.contact_entity_id) if window.contact_entity_id else None
+            )
+            sensor = self.engine.sensors[window.sensor_id]
+            if record and record.device_id and sensor.source_id.startswith("window:"):
+                sensor.source_id = f"device:{record.device_id}"
         self._update_windows(time.time(), seed=True)
 
     def _window_states(self, window) -> dict[str, str]:
@@ -103,12 +126,36 @@ class IQAlarmRuntime:
                 # A physical contact remains an immediate alarm input. Waiting for
                 # handle codes must not discard motion arriving while positions
                 # settle, nor hide real contact edges from flap diagnosis.
-                self.engine.feed(tracker.window.sensor_id, tracker.reading["opening"], now)
+                source = tracker.window.sensor_id
+                if tracker.reading["available"] and tracker.reading["opening"] is None:
+                    if self.engine.raw.get(source) is not None:
+                        self.engine._log(
+                            now,
+                            "window_position_ambiguous",
+                            f"{tracker.window.name}: Stellung nicht eindeutig; keine erfundene Öffnung",
+                            entity_id=source,
+                        )
+                    self.engine.raw[source] = None
+                    self.engine.debouncing.pop(source, None)
+                else:
+                    if (
+                        self.engine.raw.get(source) is None
+                        and tracker.ambiguity_baseline is not None
+                    ):
+                        self.engine.seed(source, tracker.ambiguity_baseline)
+                    self.engine.feed(source, tracker.reading["opening"], now)
+                    tracker.ambiguity_baseline = None
         return changed
 
     async def start(self) -> None:
         await self.store.async_load()
         self.engine = CorrelationEngine(self.store.config)
+        registry = er.async_get(self.hass)
+        for sensor in self.config.sensors.values():
+            record = registry.async_get(sensor.entity_id)
+            if record and record.device_id and sensor.source_id in ("", sensor.entity_id):
+                sensor.source_id = f"device:{record.device_id}"
+        self.engine.sensors = self.config.all_sensors()
         self.seed()
         if self.store.state:
             self.engine.restore(self.store.state, time.time())
@@ -120,6 +167,9 @@ class IQAlarmRuntime:
         self.cancels.append(self.hass.bus.async_listen(EVENT_HOMEASSISTANT_STOP, self._ha_stop))
         self.worker = self.hass.async_create_background_task(
             self._action_worker(), "IQAlarm actions"
+        )
+        self.urgent_worker = self.hass.async_create_background_task(
+            self._action_worker(urgent=True), "IQAlarm confirmed actions"
         )
         await self.flush()
 
@@ -148,7 +198,21 @@ class IQAlarmRuntime:
             windows_changed = self._update_windows(time.time())
             self.engine.tick(time.time())
             if self.engine._outbox or windows_changed:
-                await self.flush()
+                if self.flush_task is None or self.flush_task.done():
+                    self.flush_task = self.hass.async_create_background_task(
+                        self.flush(), "IQAlarm timer update"
+                    )
+            if self.maintenance_task is None or self.maintenance_task.done():
+                self.maintenance_task = self.hass.async_create_background_task(
+                    self._maintenance(), "IQAlarm output maintenance"
+                )
+        finally:
+            self._timer_running = False
+
+    async def _maintenance(self) -> None:
+        try:
+            if any("resume_at" in owned for owned in self.dispatcher.outputs.values()):
+                await self.dispatcher.resume_outputs()
             if time.time() >= self._next_simulation:
                 self._next_simulation = time.time() + 180
                 await self.dispatcher.simulate(dt_util.now().hour)
@@ -161,11 +225,9 @@ class IQAlarmRuntime:
             if time.time() >= self._next_prune:
                 self._next_prune = time.time() + 3600
                 await self.dispatcher.prune_media()
-        except (HomeAssistantError, OSError) as err:
+        except (HomeAssistantError, OSError, TimeoutError) as err:
             _LOGGER.error("IQAlarm timer failed: %s", err)
             self.report("runtime_error", f"Timer/Speicherung: {err}")
-        finally:
-            self._timer_running = False
 
     async def _ha_stop(self, event) -> None:
         await self.stop()
@@ -181,11 +243,37 @@ class IQAlarmRuntime:
         if self.worker:
             self.worker.cancel()
             await asyncio.gather(self.worker, return_exceptions=True)
+        for task in (self.urgent_worker, self.maintenance_task, self.flush_task):
+            if task:
+                task.cancel()
+        await asyncio.gather(
+            *(
+                task
+                for task in (self.urgent_worker, self.maintenance_task, self.flush_task)
+                if task
+            ),
+            return_exceptions=True,
+        )
         for task in self.action_tasks:
             task.cancel()
         await asyncio.gather(*self.action_tasks, return_exceptions=True)
+        for task in self.cleanup_tasks:
+            task.cancel()
+        await asyncio.gather(*self.cleanup_tasks, return_exceptions=True)
         # Turn off owned outputs at shutdown; arming/full-alarm state is retained.
+        resume = (
+            deepcopy(self.dispatcher.outputs)
+            if self.engine.confirmed and self.engine.reactions_enabled
+            else {}
+        )
         await self.dispatcher.cleanup(force=True)
+        if resume:
+            self.dispatcher.outputs = {
+                target: owned
+                for target, owned in resume.items()
+                if owned.get("alarm_until", owned.get("until", 0)) > time.time()
+                and owned["kind"] in {"siren", "light", "switch"}
+            }
         self.dispatcher.release_media_path()
         if save:
             await self.persist()
@@ -204,10 +292,6 @@ class IQAlarmRuntime:
         if not events:
             self.publish()
             return
-        try:
-            await self.persist()
-        except (HomeAssistantError, OSError) as err:
-            self.report("runtime_error", f"Zustand nicht gespeichert: {err}")
         for event in events:
             self.hass.bus.async_fire(EVENT_TYPE, event.to_dict())
             if (
@@ -215,14 +299,36 @@ class IQAlarmRuntime:
             ) or event.kind == "quarantined_flapping":
                 if not event.reactions_enabled:
                     continue
-                if self.queue.full():
+                queue = self.urgent_queue if event.confirmed else self.queue
+                if queue.full():
                     self.report(
                         "action_failed",
                         "Aktionswarteschlange voll; Ereignis im Logbuch gespeichert",
                     )
                 else:
-                    self.queue.put_nowait((event, generation))
+                    queue.put_nowait((event, generation))
+        if (
+            self.engine.level == 0
+            and self.dispatcher.outputs
+            and any(
+                event.level == 0 and event.kind in {"level_expired", "confirmation_changed"}
+                for event in events
+            )
+        ):
+            cleanup = self.hass.async_create_background_task(
+                self.dispatcher.cleanup(
+                    force=True, alarm_only=True, secure_only=True, generation=generation
+                ),
+                "IQAlarm secure output cleanup",
+            )
+            self.cleanup_tasks.add(cleanup)
+            cleanup.add_done_callback(self.cleanup_tasks.discard)
         self.publish()
+        try:
+            async with asyncio.timeout(2):
+                await self.persist()
+        except (HomeAssistantError, OSError, TimeoutError) as err:
+            self.report("runtime_error", f"Zustand nicht gespeichert: {err}")
 
     @callback
     def publish(self) -> None:
@@ -246,25 +352,29 @@ class IQAlarmRuntime:
         self.hass.bus.async_fire(EVENT_TYPE, event.to_dict())
         self.publish()
 
-    async def _action_worker(self) -> None:
+    async def _action_worker(self, urgent: bool = False) -> None:
+        queue = self.urgent_queue if urgent else self.queue
+        tasks = self.urgent_tasks if urgent else set()
         while True:
-            event, generation = await self.queue.get()
-            if len(self.action_tasks) >= 32 and not event.confirmed:
-                await asyncio.wait(self.action_tasks, return_when=asyncio.FIRST_COMPLETED)
+            if len(tasks) >= 16:
+                await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            event, generation = await queue.get()
             task = self.hass.async_create_background_task(
-                self._dispatch_event(event, generation), "IQAlarm stage actions"
+                self._dispatch_event(event, generation, queue), "IQAlarm stage actions"
             )
             self.action_tasks.add(task)
+            tasks.add(task)
             task.add_done_callback(self.action_tasks.discard)
+            task.add_done_callback(tasks.discard)
 
-    async def _dispatch_event(self, event: EventLog, generation: int) -> None:
+    async def _dispatch_event(self, event: EventLog, generation: int, queue=None) -> None:
         try:
             if generation == self.generation:
                 await self.dispatcher.dispatch(event, generation)
         except (HomeAssistantError, OSError) as err:
             self.report("action_failed", f"Aktionsausführung: {err}")
         finally:
-            self.queue.task_done()
+            (queue or self.queue).task_done()
 
     async def validate_code(self, code: str | None) -> None:
         async with self.pin_lock:
@@ -313,9 +423,10 @@ class IQAlarmRuntime:
             self.engine.set_profile(profile_id, time.time())
             if previous != (self.engine.mode, self.engine.profile_id):
                 self.generation += 1
+            generation = self.generation
             await self.flush()
         if not self.engine.reactions_enabled:
-            await self.dispatcher.cleanup(force=True)
+            await self.dispatcher.cleanup(force=True, generation=generation)
             await self.persist()
 
     async def update_config(self, data: dict, revision: int) -> None:
@@ -331,6 +442,12 @@ class IQAlarmRuntime:
             )
         candidate = Configuration.from_dict(data)
         registry = er.async_get(self.hass)
+        for sensor in candidate.sensors.values():
+            record = registry.async_get(sensor.entity_id)
+            if record and record.platform == "iqalarm":
+                raise ValueError("IQAlarm-Ausgabesensoren sind keine unabhängigen Alarmeingänge")
+            if record and record.device_id and sensor.source_id in ("", sensor.entity_id):
+                sensor.source_id = f"device:{record.device_id}"
         for window in candidate.windows.values():
             if any(
                 (entry := registry.async_get(source)) and entry.platform == "iqalarm"

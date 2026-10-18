@@ -57,7 +57,7 @@ async def verify_v2(hass, entry, admin_token, user_token, calls):
     hass.states.async_set("binary_sensor.window", "on")
     hass.states.async_set("binary_sensor.motion", "on")
     await hass.async_block_till_done()
-    await asyncio.wait_for(runtime.queue.join(), 5)
+    await asyncio.wait_for(asyncio.gather(runtime.queue.join(), runtime.urgent_queue.join()), 5)
     await runtime.dispatcher.simulate(19)
     assert runtime.engine.confirmed and not runtime.engine.reactions_enabled
     assert len(calls) == before, "Observer executed an action, camera or simulation"
@@ -129,7 +129,7 @@ async def verify_v2(hass, entry, admin_token, user_token, calls):
     hass.states.async_set("binary_sensor.window", "on")
     hass.states.async_set("binary_sensor.motion", "on")
     await hass.async_block_till_done()
-    await asyncio.wait_for(runtime.queue.join(), 5)
+    await asyncio.wait_for(asyncio.gather(runtime.queue.join(), runtime.urgent_queue.join()), 5)
     assert runtime.engine.level == 4 and runtime.engine.stage_id == "verified"
     assert any(call[:2] == ("notify", "test_phone") for call in calls[before:])
     assert hass.states.get("alarm_control_panel.iqalarm").state == "triggered"

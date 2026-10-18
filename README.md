@@ -23,15 +23,17 @@ Ein isolierter Sensor liefert keine Einbruchsbestätigung mehr. Die Quarantäne 
 
 Die optionale Mindest-Aktivzeit filtert kurze Impulse, während die Prell-Erkennung weiterhin die ungefilterten Wechsel beobachtet. Werte pro Sensor überschreiben die Vorgabe der Rolle; `0` verwendet die Rollenvorgabe.
 
-### Räumliche Bestätigung
+### Räumliche Bestätigung ab 2.4.0
 
-- Vorfeld + Öffnung: nur vor dem zugeordneten Raum; ein globales Vorfeld gilt für das gesamte Haus.
-- Öffnung + Innenraum: im selben Raum oder optional in einem direkt angrenzenden Raum. Eine Verbindung gilt in beide Richtungen, ohne transitive Weitergabe über mehrere Räume.
-- Zwei Öffnungssensoren: im gesamten Haus innerhalb des Korrelationsfensters.
-- Zwei Innenraumsensoren: bei aktivierter Profilregel innerhalb des Korrelationsfensters.
-- Mehrere Entitäten desselben physischen Sensors müssen dieselbe **Signalquellenkennung** erhalten. Eine Quelle kann sich niemals selbst bestätigen.
+- **Person vor dem passenden Eingang:** Nur die Rolle `perimeter_camera` bestätigt eine Person. Die Kamera muss dem betroffenen Raum oder dessen Vorfeld zugeordnet sein und vor der Öffnung ausgelöst haben. Eine nicht zugeordnete Kamera und generische Außenbewegung bleiben Vorfeldanzeigen.
+- **Öffnung und neue Innenbewegung:** Ein echter Öffnungskontakt und Bewegung im selben Raum bestätigen sich innerhalb des Zeitfensters. Im Nachtprofil muss die Bewegung nach der Öffnung beginnen. Eine Entriegelung am Türschloss ersetzt keinen Öffnungskontakt.
+- **Gezielt erlaubte Wege:** Unter **Profile & System → Profil bearbeiten → Ausdrückliche Bestätigungswege** lässt sich etwa Wohnzimmer → Flur erlauben. Der Weg gilt nur in dieser Richtung und direkt; allgemeine Nachbarschaft, Hausfreigabe oder mehrere Zwischenräume reichen nicht.
+- **Zwei Kontakte / zwei Bewegungsmelder:** Diese Regeln sind zunächst ausgeschaltet. Nach ausdrücklicher Aktivierung gelten ebenfalls derselbe Raum oder ein erlaubter Bestätigungsweg. Fenster in Raum Z und Bewegung in einem unverbundenen Raum A bestätigen keinen Einbruch.
+- **Physische Unabhängigkeit:** Entitäten eines registrierten HA-Geräts erhalten automatisch dieselbe Signalquellenkennung. Ein zusammengeführtes Fenster und seine Rohsignale zählen einmal. Eine bewusst eigene Kennung kann getrennte Hardware beschreiben; sie muss der tatsächlichen Installation entsprechen.
 
-Kamera und Öffnung werden auch in umgekehrter Reihenfolge berücksichtigt, solange beide Ereignisse noch in ihrem jeweiligen Zeitfenster liegen.
+Das Logbuch erklärt passende Auslöseketten und abgelehnte räumliche Kombinationen. Ein allein prellendes MACO-Schloss erzeugt weiterhin höchstens Verdacht beziehungsweise eine Diagnose. Ein bereits bestätigter Alarm kann auf eine höhere eigene Stufe eskalieren, auch wenn die bisherige Stufe gehalten wird.
+
+**Migration:** Vorhandene Räume, Profile, Aktionen, PIN, Fenster, Grundrisse und Quarantäne bleiben erhalten. Bisherige implizite globale Kamera- oder Nachbarschaftsbestätigungen werden durch die obigen Regeln ersetzt. Bereits gespeicherte Bestätigungen werden beim Laden erneut geprüft. Erlaubte Wege und Personenzuordnungen müssen anhand der tatsächlichen Installation kontrolliert werden; IQAlarm erfindet keine räumlichen Verbindungen.
 
 ## Unabhängige IQAlarm-Profile
 
@@ -41,7 +43,7 @@ Jedes Profil legt unabhängig fest:
 
 - Räume und Sensoren (gemeinsame Schnittmenge), erlaubte Aktionen und eigene Timer.
 - Vorfeld und Kontakte auswerten oder nur live anzeigen.
-- Bewegung immer, erst nach Öffnung oder nur live anzeigen. Eine Bewegungsfreigabe kann auf betroffene Räume oder das Haus begrenzt werden; die räumliche Bestätigung bleibt erforderlich.
+- Bewegung immer, erst nach Öffnung oder nur live anzeigen. Bei „erst nach Öffnung“ gilt die Freigabe für den betroffenen Raum und ausdrücklich erlaubte Bestätigungswege.
 - Welche Kombinationen bestätigen und auf welche eigene Alarmstufe sie führen.
 - Ob Reaktionen und Anwesenheitssimulation erlaubt sind.
 
@@ -79,9 +81,9 @@ Unter **Kameras & Sensoren → Türen, Fenster & Schlösser (Außenhaut) → Fen
 
 Alle Quellen stehen eingerückt unter dem Fenster; sie erscheinen nicht zusätzlich verstreut in der Außenhautliste oder als neue Vorschläge im Entitätskatalog. Die Integration erzeugt einen HA-Sensor für die Fensterstellung und einen Öffnungs-Binary-Sensor. Zuordnungen und eindeutige Entity-IDs bleiben bei Neustarts erhalten. Beim Entfernen der Zusammenführung werden die IQAlarm-Ausgabesensoren entfernt; die ursprünglichen HA-Entitäten bleiben bestehen.
 
-**Fehler sind keine Fensterstellung.** Bei einem ausgefallenen benötigten Eingang oder einer ausgefallenen Verbindungsüberwachung steht im Panel „Keine Verbindung“ und der Stellungssensor wird nicht verfügbar. Unbekannte Signalkombinationen werden als „Stellung nicht eindeutig“ angezeigt. Eine ausdrücklich dokumentierte Codierung `unknown` kann für Griffsignale nur mit separater Verbindungsüberwachung aktiviert werden. `unavailable` ist immer ein Fehler. Ein weiterhin verfügbarer physischer Fensterkontakt wird trotz eines ausgefallenen Griffs unabhängig für die Alarmbewertung ausgewertet. Kurze Zwischenmeldungen werden vor der Erkennung stabilisiert.
+**Fehler sind keine Fensterstellung.** Bei einem ausgefallenen benötigten Eingang oder einer ausgefallenen Verbindungsüberwachung steht im Panel „Keine Verbindung“ und der Stellungssensor wird nicht verfügbar. Unbekannte Signalkombinationen werden als „Stellung nicht eindeutig“ angezeigt. Eine ausdrücklich dokumentierte Codierung `unknown` kann für Griffsignale nur mit separater Verbindungsüberwachung aktiviert werden. `unavailable` ist immer ein Fehler. Ein weiterhin verfügbarer physischer Fensterkontakt wird trotz eines ausgefallenen Griffs unabhängig für die Alarmbewertung ausgewertet. Kurze Zwischenmeldungen werden vor der Erkennung stabilisiert. Ein erreichbarer, vorübergehend mehrdeutiger Griffzustand verschluckt keine anschließende echte Öffnung. Nach einem tatsächlichen Verbindungsausfall wird dagegen keine Öffnungsflanke erfunden. Textkontakte unterstützen getrennte Listen für geöffnet und geschlossen. Widersprüchliche oder unvollständige Kalibrierungen werden vor dem Speichern abgelehnt. Schutzparameter des vorhandenen Kontakts werden übernommen und können im Assistenten angepasst werden.
 
-**Fenstergriff und Türschloss sind eigene Gerätearten.** Fenstergriffe liefern reine Informationen: Sie ändern keine Alarmstufe, bestätigen keinen Einbruch, verhindern keine Scharfschaltung und werden durch normales Ver-/Entriegeln nicht in Prell-Quarantäne gesetzt. Bei ausgeschalteter Anlage erscheinen Entriegelungshinweise nicht in der Übersicht; bei eingeschalteter Anlage werden sie kompakt als **Potenziell unsicher** dargestellt. In den Sensordetails bleiben sie sichtbar. Eindeutig als Fenstergriff benannte Bestandsentitäten werden bei der Migration so eingeordnet; die Geräteart kann manuell angepasst werden. Bestehende falsche Griff-Quarantäne und darauf beruhende Bestätigungen werden beim Laden verworfen. Türschlösser behalten ihre profilabhängige Alarmbewertung.
+**Fenstergriff und Türschloss sind eigene Gerätearten.** Fenstergriffe liefern reine Informationen: Sie ändern keine Alarmstufe, bestätigen keinen Einbruch, verhindern keine Scharfschaltung und werden durch normales Ver-/Entriegeln nicht in Prell-Quarantäne gesetzt. Bei ausgeschalteter Anlage erscheinen Entriegelungshinweise nicht in der Übersicht; bei eingeschalteter Anlage werden sie kompakt als **Potenziell unsicher** dargestellt. In den Sensordetails bleiben sie sichtbar. Eindeutig als Fenstergriff benannte Bestandsentitäten werden bei der Migration so eingeordnet; die Geräteart kann manuell angepasst werden. Bestehende falsche Griff-Quarantäne und darauf beruhende Bestätigungen werden beim Laden verworfen. Türschlösser behalten ihre profilabhängige Verdachts- und Prellbewertung. Eine vorherige passende Personenerkennung kann bestätigen; Entriegelung plus Innenbewegung allein genügt nicht.
 
 Ein zusammengeführtes Fenster zählt als **eine physische Alarmquelle**. Seine Griffsignale und sein Kontakt können sich niemals gegenseitig einen Einbruch bestätigen. Profile mit expliziter Sensorauswahl berücksichtigen auch die ausgewählten Stellungseingänge eines zusammengeführten Fensters. Information, Warnung, Alarm und Störung werden unabhängig von den eigenen Alarmstufen ausgewiesen; **Isoliert** bezeichnet einen bewusst deaktivierten Eintrag, **Prell-Quarantäne** einen technischen Ausschluss.
 
@@ -93,12 +95,14 @@ Unterstützt: **Home Assistant ab 2025.12.0**, geprüft mit 2025.12.5 und 2026.1
 2. Home Assistant neu starten.
 3. Unter **Einstellungen → Geräte & Dienste → Integration hinzufügen → IQAlarm** einrichten. Optional eine 4–12-stellige PIN zum Entschärfen vergeben.
 4. Im Seitenmenü **IQAlarm** öffnen. Das Konfigurationspanel ist Administratoren vorbehalten.
-5. Räume aus HA importieren oder anlegen, Nachbarräume verknüpfen und Sensoren zuweisen. Der Import übernimmt zunächst nur die Räume; Sensorrollen werden bewusst zugeordnet.
-6. Unter **Profile & System** Zeiten und Regeln kontrollieren. Standardmäßig verhindern offene Kontakte und nicht verfügbare Sensoren das Scharfschalten.
+5. Räume aus HA importieren oder anlegen und Sensoren sowie Personenkameras zuweisen. Der Import übernimmt zunächst nur die Räume; Sensorrollen werden bewusst zugeordnet.
+6. Unter **Profile & System** Zeiten und Regeln kontrollieren. Erlaubte Bestätigungswege ausdrücklich auswählen. Standardmäßig verhindern offene Kontakte und nicht verfügbare Sensoren das Scharfschalten; Fenstergriff-Informationen blockieren nicht.
 7. Unter **Level-Konfiguration** die eigenen Dienste und Geräte zuweisen. Es werden keine Sirenen oder Benachrichtigungsziele automatisch ausgewählt.
 8. Trockenläufe ausführen und anschließend mit bewusst gewähltem realem Aktionstest die eigenen Geräte prüfen.
 
 Die gesamte Alarmkonfiguration erfolgt im Panel. Es sind keine HA-Automatisierungen und keine YAML-Regeln erforderlich. Änderungen an Räumen, Sensoren, Profilen und Aktionen sind im unscharfen Zustand möglich. Gleichzeitige Änderungen aus mehreren Browserfenstern werden über Konfigurationsrevisionen geschützt.
+
+Alarm und Anwesenheitssimulation führen getrennte Besitzzeiten für übernommene Lichter. Das Beenden der Simulation schaltet kein noch für einen Alarm benötigtes Licht aus. Eine inzwischen deaktivierte Anlage startet keine neue Simulationsaktion.
 
 Die Präsenzsimulation ist zusätzlich als native Schalter-Entität verfügbar und benötigt zusätzlich die Freigabe des aktiven Schutzprofils. Sie verwendet lokale HA-Zeit, schaltet zufällig ausgewählte ausgeschaltete Lichter zwischen den gewählten Stunden ein und übernimmt keine bereits eingeschalteten Lichter.
 
@@ -106,7 +110,7 @@ Die Präsenzsimulation ist zusätzlich als native Schalter-Entität verfügbar u
 
 Bevorzugt wird die Personen-Erkennungsentität der Kamera, beispielsweise ein `binary_sensor` von Frigate, Reolink oder UniFi. Dazu kann eine `camera.*` für Bilder und Aufzeichnungen verknüpft werden.
 
-Direkte `camera.*`-/`image_processing.*`-Auslöser benötigen ein explizites Erkennungsattribut und passende aktive Werte. `streaming` oder `idle` werden nicht als Personenerkennung interpretiert. Boolesche Attribute verwenden `true`/`false`; Zählattribute benötigen explizit angegebene Werte.
+Direkte `camera.*`-/`image_processing.*`-Auslöser benötigen ein explizites Erkennungsattribut und passende aktive Werte. `streaming` oder `idle` werden nicht als Personenerkennung interpretiert. Der Import erkennt boolesche Personenattribute (`true`) und numerische Personenzähler (Schwelle größer null). Ohne geeignetes Erkennungsattribut verlangt er eine manuelle Zuordnung. Numerische Schwellen und aktive Textwerte lassen sich im Sensorformular einstellen.
 
 Snapshots werden über `camera.snapshot`, Aufzeichnungen über `camera.record` ausgeführt. IQAlarm gibt ausschließlich sein eigenes Verzeichnis `/config/.iqalarm_media` für diese Dateizugriffe frei. Die Kamera muss den jeweiligen Dienst unterstützen; Aufzeichnungen benötigen eine stream-fähige Kamera. Automatische Snapshots sind eingeschaltet, automatische Aufzeichnung ist optional.
 
@@ -119,13 +123,13 @@ Dateien liegen außerhalb des öffentlichen `/local`-Bereichs und werden standar
 - Freie Schalter-/Skript-/Sprachaktionen sind unteren Stufen nicht erlaubt, weil damit eine Innensirene indirekt ausgelöst werden könnte.
 - Kritische Pushs/Bilder brauchen einen passenden `notify.mobile_app_*`-Dienst. Generische `notify.*`-Entitäten unterstützen gewöhnliche Textnachrichten über `notify.send_message`.
 - Vorlagen unterstützen `{{room}}`, `{{sensor}}`, `{{level}}`, `{{reason}}`, `{{chain}}`, `{{mode}}` und den Profilnamen `{{profile}}`. Andere Jinja-Ausdrücke werden nicht ausgeführt.
-- IQAlarm schaltet selbst eingeschaltete Sirenen, Schalter, Skripte und Lichter nach der konfigurierten Dauer oder beim Entschärfen aus. Bereits eingeschaltete Geräte werden nicht zum späteren Abschalten übernommen. Rollos werden geöffnet und bleiben offen.
+- IQAlarm schaltet selbst eingeschaltete Sirenen, Schalter, Skripte und Lichter nach der konfigurierten Dauer, beim tatsächlichen Rückfall auf Stufe 0 oder beim Entschärfen aus. Ein ausdrücklich ausgeführter Gerätetest behält seine eigene Dauer. Bereits eingeschaltete Geräte werden nicht zum späteren Abschalten übernommen. Rollos werden geöffnet und bleiben offen.
 - Aktionsfehler erscheinen im Logbuch. Ein fehlerhafter Kameraabruf unterdrückt die Textbenachrichtigung nicht. Langsame Push-/Kameradienste blockieren die Sireneneskalation nicht.
 - Ein Trockenlauf verändert keine Alarmstufe und schaltet keine Geräte. Nur der ausdrücklich aktivierte reale Test führt Aktionen aus.
 
 PINs werden ausschließlich gesalzen und gehasht gespeichert. Wiederholt falsche Versuche werden begrenzt. Konfiguration, Quarantäne, aktive Timer, Auslösekette und bis zu 500 Ereignisse liegen im privaten HA-Store `.storage/iqalarm.configuration`; das Panel zeigt die letzten 50 Ereignisse.
 
-Nach einem Neustart wird der gewählte Modus einschließlich Quarantäne und bestätigtem Alarm wiederhergestellt. Bereits gespeicherte Alarmaktionen werden nicht erneut abgespielt. Während des Herunterfahrens werden von IQAlarm übernommene Ausgänge ausgeschaltet. Ein während des Neustarts abgelaufener bestätigter Eingangstimer eskaliert nach dem Laden.
+Nach einem Neustart wird der gewählte Modus einschließlich Quarantäne und bestätigtem Alarm wiederhergestellt. Pushs, Skripte und Sprachmeldungen werden nicht erneut abgespielt. Während des Herunterfahrens werden von IQAlarm übernommene Ausgänge ausgeschaltet. Bei weiterhin gültigem bestätigtem Alarm werden ausschließlich eigene Sirenen, Lichter und Schalter bis zum ursprünglichen Ablaufzeitpunkt wieder eingeschaltet; fehlgeschlagene Wiederaufnahmen werden begrenzt erneut versucht. Ein während des Neustarts abgelaufener bestätigter Eingangstimer eskaliert nach dem Laden.
 
 **Override, Rauch und Panik:** Diese ausdrücklich gewählten Sensoren dürfen bei scharfer Anlage alleine die im Profil zugeordnete bestätigte Stufe auslösen. Beim Override wird die normale Wartezeit auf einen zweiten Sensor bewusst aufgehoben. Rauch/Panik werden hier nur innerhalb des scharfen Alarmprofils verarbeitet; bestehende eigenständige Rauchmelderfunktionen bleiben erforderlich.
 

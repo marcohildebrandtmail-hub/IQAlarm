@@ -28,7 +28,11 @@ def inspect_window(window: WindowConfig, states: dict[str, str]) -> dict:
     locked = True if lock == "locked" else False if lock in ("unlocked", "open") else None
     contact = values.get(window.contact_entity_id, "unavailable")
     opening = (
-        None if contact in ("unknown", "unavailable") else contact in window.contact_open_states
+        True
+        if contact in window.contact_open_states
+        else False
+        if contact in window.contact_closed_states
+        else None
     )
     mapping = next(
         (
@@ -42,7 +46,7 @@ def inspect_window(window: WindowConfig, states: dict[str, str]) -> dict:
     position, handle = (
         WINDOW_STATES[state][1:] if state in WINDOW_STATES else ("unknown", "unknown")
     )
-    if opening is None and not faults and mapping:
+    if opening is None and not window.contact_entity_id and not faults and mapping:
         opening = position in ("open", "tilted")
     return {
         "state": state,
@@ -80,7 +84,10 @@ def capture_position(window: WindowConfig, states: dict[str, str], state: str) -
         raise ValueError("Keine Verbindung: Zuerst alle benötigten Signale prüfen")
     values = {source: normalize(states.get(source)) for source in window.position_inputs}
     if window.contact_entity_id:
-        opened = values[window.contact_entity_id] in window.contact_open_states
+        contact = values[window.contact_entity_id]
+        if contact not in window.contact_open_states + window.contact_closed_states:
+            raise ValueError("Kontaktwert unbekannt: Offen-/Geschlossenwerte im Assistenten prüfen")
+        opened = contact in window.contact_open_states
         if opened != (WINDOW_STATES[state][1] in ("open", "tilted")):
             raise ValueError(
                 "Fensterkontakt passt nicht zur gewählten Stellung. Kontakt oder Invertierung prüfen."
@@ -104,6 +111,8 @@ class WindowTracker:
     last_known: dict | None = None
     contact_state: str | None = None
     contact_changed_at: float = 0
+    last_alarm_opening: bool | None = None
+    ambiguity_baseline: bool | None = None
 
     def update(self, states: dict[str, str], now: float, *, seed: bool = False) -> bool:
         signature = tuple((source, states.get(source)) for source in self.window.position_inputs)
@@ -111,6 +120,9 @@ class WindowTracker:
         if changed:
             self.last_signature, self.changed_at = signature, now
         incoming = inspect_window(self.window, states)
+        if not incoming["available"]:
+            self.last_alarm_opening = None
+            self.ambiguity_baseline = None
         stable = seed or now - self.changed_at >= self.window.settle_seconds
         if not stable and incoming["available"]:
             # Retain a stable last position only as a labelled transition; a working
@@ -140,6 +152,11 @@ class WindowTracker:
             else stable
         )
         incoming["last_known"] = self.last_known
+        if incoming["available"] and incoming["opening_stable"]:
+            if incoming["opening"] is None:
+                self.ambiguity_baseline = self.last_alarm_opening
+            else:
+                self.last_alarm_opening = incoming["opening"]
         previous = self.reading
         if previous == incoming:
             return False

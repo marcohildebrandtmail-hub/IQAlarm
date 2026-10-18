@@ -39,7 +39,8 @@ def test_new_motion_edge_after_window_confirms(engine):
     assert engine.level == Level.BREACH
 
 
-def test_adjacent_hall_motion_confirms_window(engine):
+def test_explicit_hall_path_confirms_window(engine):
+    engine.config.profiles["armed_night"].confirmation_paths = [["living", "hall"]]
     engine.set_mode("armed_night", 100)
     engine.feed("binary_sensor.window", True, 101)
     engine.feed("binary_sensor.hall_motion", True, 113)
@@ -75,7 +76,7 @@ def test_away_two_independent_motion_sensors(mode, engine):
     engine.feed("binary_sensor.bed_motion", True, 101)
     assert engine.level == Level.SUSPICION
     engine.feed("binary_sensor.hall_motion", True, 103)
-    assert engine.level == Level.BREACH
+    assert engine.level == Level.SUSPICION
 
 
 def test_away_motion_before_window_is_valid(engine):
@@ -90,7 +91,7 @@ def test_house_gate_still_respects_confirmation_topology(engine):
     engine.set_mode("armed_night", 100)
     engine.feed("binary_sensor.window", True, 101)
     engine.feed("binary_sensor.bed_motion", True, 103)
-    assert any(e.entity_id == "binary_sensor.bed_motion" for e in engine.evidence)
+    assert not any(e.entity_id == "binary_sensor.bed_motion" for e in engine.evidence)
     assert engine.level == Level.SUSPICION
 
 

@@ -33,9 +33,7 @@ class IQAlarmSimulationSwitch(IQAlarmEntity, SwitchEntity):
             self.runtime.engine.config = candidate
             self.runtime.publish()
         if not enabled:
-            for target in self.runtime.dispatcher.simulation_outputs:
-                if target in self.runtime.dispatcher.outputs:
-                    self.runtime.dispatcher.outputs[target]["until"] = 0
+            self.runtime.dispatcher.release_simulation()
             await self.runtime.dispatcher.cleanup()
 
     async def async_turn_on(self, **kwargs) -> None:

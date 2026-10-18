@@ -47,6 +47,7 @@ class CorrelationEngine:
         self.confirmation_rule: str | None = None
         self.pending_rule: str | None = None
         self.latched = False
+        self.held_alarm: dict | None = None
         self.last_profile_id: str | None = None
         self._last_time = 0.0
 
@@ -187,6 +188,7 @@ class CorrelationEngine:
         self.severity = Level.SECURE
         self.stage_id = self.config.stages[0].id
         self.latched = False
+        self.held_alarm = None
         self.confirmation_rule = None
         self.pending_rule = None
         self.evidence.clear()
@@ -231,15 +233,12 @@ class CorrelationEngine:
             return False
         if first == second:
             return True
-        if not self.profile.adjacent_rooms:
-            return False
-        a, b = self.config.rooms.get(first), self.config.rooms.get(second)
-        return bool(a and b and (second in a.adjacent or first in b.adjacent))
+        return bool(self.profile and [first, second] in self.profile.confirmation_paths)
 
     def _perimeter_matches(self, perimeter: Evidence, contact: Evidence) -> bool:
         sensor = self.sensors[perimeter.entity_id]
         spaces = sensor.front_of or ([sensor.room_id] if sensor.room_id else [])
-        return not spaces or contact.room_id in spaces
+        return bool(spaces and contact.room_id in spaces)
 
     def _fresh(self, evidence: Evidence, now: float) -> bool:
         if self.profile is None or evidence.entity_id in self.quarantine:
@@ -290,7 +289,7 @@ class CorrelationEngine:
         for other in self.evidence:
             if other.source_id == source or not self._fresh(other, now):
                 continue
-            if other.role in PERIMETER_ROLES:
+            if other.role == Role.PERIMETER_CAMERA:
                 candidate = Evidence(
                     entity_id, source, sensor.role, sensor.room_id, now, sensor.name
                 )
@@ -394,19 +393,21 @@ class CorrelationEngine:
             and self.profile.motion_mode == "after_contact"
             and not sensor.immediate
         ):
-            contacts = [e for e in valid if e.role in CONTACT_ROLES]
-            if not any(
-                self.profile.motion_scope == "house" or self._same_space(e.room_id, current.room_id)
-                for e in contacts
-            ):
+            contacts = [e for e in valid if e.role in CONTACT_ROLES and e.role != Role.LOCK]
+            if not any(self._same_space(e.room_id, current.room_id) for e in contacts):
+                if contacts:
+                    self._log(
+                        now,
+                        "correlation_rejected",
+                        f"Keine Bestätigung: {current.name} im Raum {self.config.rooms[current.room_id].name} gehört nicht zum Raum oder freigegebenen Weg von {contacts[-1].name}",
+                        [contacts[-1], current],
+                    )
                 return
         # Keep one latest activation per entity: on/off/on from one contact can
         # never provide its own second factor, even with flap protection disabled.
         self.evidence = deque((e for e in valid if e.entity_id != entity_id), maxlen=2000)
         self.evidence.append(current)
         self._log(now, "signal", f"Signal: {current.name}", [current])
-        if self.latched:
-            return
         if sensor.immediate or sensor.role in (Role.PANIC, Role.SMOKE):
             self._confirm(
                 [current],
@@ -422,8 +423,21 @@ class CorrelationEngine:
                 matches.append((self.config.stage_rank(self.target(rule)), rule, other))
         if matches:
             _, rule, other = max(matches, key=lambda match: match[0])
-            self._confirm([other, current], now, RULE_NAMES[rule], rule)
+            self._confirm(
+                [other, current],
+                now,
+                f"{RULE_NAMES[rule]}: {other.name} → {current.name}, Abstand {abs(current.timestamp - other.timestamp):g} s",
+                rule,
+            )
             return
+        others = [e for e in valid if e.source_id != current.source_id]
+        if others:
+            self._log(
+                now,
+                "correlation_rejected",
+                f"Keine Bestätigung: {others[-1].name} und {current.name} besitzen keine freigegebene räumliche, zeitliche und fachliche Verknüpfung",
+                [others[-1], current],
+            )
         self._recompute(now, current)
 
     def _pair_rule(self, first: Evidence, second: Evidence) -> str | None:
@@ -435,31 +449,61 @@ class CorrelationEngine:
             or (b in PERIMETER_ROLES and a in CONTACT_ROLES)
         ):
             perimeter, contact = (first, second) if a in PERIMETER_ROLES else (second, first)
-            if self._perimeter_matches(perimeter, contact):
+            if (
+                perimeter.role == Role.PERIMETER_CAMERA
+                and perimeter.timestamp <= contact.timestamp
+                and self._perimeter_matches(perimeter, contact)
+            ):
                 return "perimeter_contact"
+        if self.profile.contact_motion and (
+            (a in CONTACT_ROLES and b in INTERIOR_ROLES)
+            or (b in CONTACT_ROLES and a in INTERIOR_ROLES)
+        ):
+            contact, motion = (first, second) if a in CONTACT_ROLES else (second, first)
+            if (
+                contact.role != Role.LOCK
+                and self._same_space(contact.room_id, motion.room_id)
+                and (
+                    self.profile.motion_mode != "after_contact"
+                    or contact.timestamp <= motion.timestamp
+                )
+            ):
+                return "contact_motion"
         if (
-            self.profile.contact_motion
-            and (
-                (a in CONTACT_ROLES and b in INTERIOR_ROLES)
-                or (b in CONTACT_ROLES and a in INTERIOR_ROLES)
-            )
+            self.profile.multi_contact
+            and a in CONTACT_ROLES
+            and b in CONTACT_ROLES
+            and Role.LOCK not in (a, b)
             and self._same_space(first.room_id, second.room_id)
         ):
-            return "contact_motion"
-        if self.profile.multi_contact and a in CONTACT_ROLES and b in CONTACT_ROLES:
             return "multi_contact"
-        if self.profile.multi_motion and a in INTERIOR_ROLES and b in INTERIOR_ROLES:
+        if (
+            self.profile.multi_motion
+            and a in INTERIOR_ROLES
+            and b in INTERIOR_ROLES
+            and self._same_space(first.room_id, second.room_id)
+        ):
             return "multi_motion"
         return None
 
     def _confirm(self, chain: list[Evidence], now: float, reason: str, rule: str) -> None:
         if any(e.entity_id in self.quarantine for e in chain):
             return
+        if (
+            self.confirmed
+            and (self.latched or all(self._fresh(e, now) for e in self.breach_chain))
+            and self.config.stage_rank(self.target(rule)) <= self.level
+        ):
+            return
         # Only a chain involving a configured entry contact gets an entry delay.
         entry = any(
             self.sensors[e.entity_id].entry_delay and e.role in CONTACT_ROLES for e in chain
         )
-        duration = self.profile.entry_seconds if entry and self.reactions_enabled else 0
+        duration = (
+            self.profile.entry_seconds
+            if entry and self.reactions_enabled and not self.confirmed
+            else 0
+        )
         if duration:
             deadline = now + duration
             if self.pending_until is None:
@@ -494,7 +538,9 @@ class CorrelationEngine:
             Level.BREACH: "contact_motion",
         }.get(level)
         stage_id = self.target(rule) if rule else self.config.stages[0].id
-        if self.latched or (self.severity == level and self.stage_id == stage_id):
+        if (self.latched and self.config.stage_rank(stage_id) <= self.level) or (
+            self.severity == level and self.stage_id == stage_id
+        ):
             return
         previous_rank = self.level
         previous_confirmed = self.confirmed
@@ -502,6 +548,12 @@ class CorrelationEngine:
         if level == Level.BREACH:
             self.confirmation_rule = rule
             self.latched = self.reactions_enabled and self.config.stage(stage_id).latch
+            if self.latched:
+                self.held_alarm = {
+                    "stage_id": stage_id,
+                    "rule": rule,
+                    "chain": [asdict(e) for e in chain or []],
+                }
         kind = "level_expired" if self.level < previous_rank else "level_changed"
         if previous_confirmed != self.confirmed:
             kind = "confirmation_changed"
@@ -512,6 +564,16 @@ class CorrelationEngine:
             return
         if self.severity == Level.BREACH:
             if self.breach_chain and all(self._fresh(e, now) for e in self.breach_chain):
+                return
+            if self.held_alarm and self.reactions_enabled:
+                self.breach_chain = [Evidence(**e) for e in self.held_alarm["chain"]]
+                self._set_level(
+                    Level.BREACH,
+                    now,
+                    "Höhere Stufe abgelaufen; gehaltene Bestätigung bleibt aktiv",
+                    self.breach_chain,
+                    self.held_alarm["rule"],
+                )
                 return
             self.breach_chain = []
             self.confirmation_rule = None
@@ -676,6 +738,7 @@ class CorrelationEngine:
             "severity": int(self.severity),
             "stage_id": self.stage_id,
             "latched": self.latched,
+            "held_alarm": self.held_alarm,
             "confirmation_rule": self.confirmation_rule,
             "pending_rule": self.pending_rule,
             "last_profile_id": self.last_profile_id,
@@ -701,6 +764,7 @@ class CorrelationEngine:
         self.latched = (
             bool(data.get("latched", self.severity == Level.BREACH)) and self.reactions_enabled
         )
+        self.held_alarm = data.get("held_alarm") if self.reactions_enabled else None
         self.confirmation_rule = data.get("confirmation_rule")
         self.pending_rule = data.get("pending_rule", "contact_motion")
         self.last_profile_id = data.get("last_profile_id", self.profile_id)
@@ -714,14 +778,18 @@ class CorrelationEngine:
         self.arming_until = data.get("arming_until")
         self.pending_until = data.get("pending_until")
         self.pending_chain = [
-            Evidence(**e)
+            Evidence(
+                **(e | {"source_id": self.sensors[e["entity_id"]].source_id or e["entity_id"]})
+            )
             for e in data.get("pending_chain", [])
             if e["entity_id"] in self.sensors
             and not self.sensors[e["entity_id"]].information_only
             and e["entity_id"] not in self.grouped_inputs
         ]
         self.breach_chain = [
-            Evidence(**e)
+            Evidence(
+                **(e | {"source_id": self.sensors[e["entity_id"]].source_id or e["entity_id"]})
+            )
             for e in data.get("breach_chain", [])
             if e["entity_id"] in self.sensors
             and not self.sensors[e["entity_id"]].information_only
@@ -729,7 +797,9 @@ class CorrelationEngine:
         ]
         self.evidence = deque(
             (
-                Evidence(**e)
+                Evidence(
+                    **(e | {"source_id": self.sensors[e["entity_id"]].source_id or e["entity_id"]})
+                )
                 for e in data.get("evidence", [])
                 if e["entity_id"] in self.sensors
                 and not self.sensors[e["entity_id"]].information_only
@@ -741,13 +811,21 @@ class CorrelationEngine:
             (EventLog(**e) for e in data.get("events", [])[:MAX_EVENTS]), maxlen=MAX_EVENTS
         )
         previous_chain = data.get("breach_chain", []) + data.get("pending_chain", [])
-        if any(
+        invalid_confirmation = any(
+            len(chain) > 1
+            and not any(
+                self._pair_rule(a, b) for a in chain for b in chain if a.timestamp <= b.timestamp
+            )
+            for chain in (self.breach_chain, self.pending_chain)
+        )
+        if invalid_confirmation or any(
             e["entity_id"] not in self.sensors
             or self.sensors[e["entity_id"]].information_only
             or e["entity_id"] in self.grouped_inputs
             for e in previous_chain
         ):
             self.latched = False
+            self.held_alarm = None
             self.severity = Level.SECURE
             self.stage_id = self.config.stages[0].id
             self.confirmation_rule = None
@@ -755,4 +833,10 @@ class CorrelationEngine:
             self.pending_rule = None
             self.pending_chain = []
             self.breach_chain = []
+        elif self.latched and self.held_alarm is None:
+            self.held_alarm = {
+                "stage_id": self.stage_id,
+                "rule": self.confirmation_rule or "contact_motion",
+                "chain": [asdict(e) for e in self.breach_chain],
+            }
         self.tick(now)
