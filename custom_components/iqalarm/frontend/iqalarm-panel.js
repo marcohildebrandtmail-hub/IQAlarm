@@ -1,7 +1,7 @@
-import {DraftJournal} from "./floorplan-drafts.js?v=2.4.7";
-import "./window-assistant.js?v=2.4.7";
-import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.4.7";
-/* IQAlarm 2.4.7 · native ES module · no CDN, framework or build required. */
+import {DraftJournal} from "./floorplan-drafts.js?v=2.4.8";
+import "./window-assistant.js?v=2.4.8";
+import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.4.8";
+/* IQAlarm 2.4.8 · native ES module · no CDN, framework or build required. */
 const WINDOW_CSS = `.window-group{padding:18px 0;border-bottom:1px solid var(--divider-color,#dce3ec)}.window-inputs{margin:14px 0 0 24px;padding-left:18px;border-left:2px solid var(--divider-color,#dce3ec)}.window-inputs code{display:block;font-size:10px;overflow-wrap:anywhere;color:var(--secondary-text-color,#64758b)}.information{border-color:color-mix(in srgb,var(--primary-color,#2986bb) 25%,transparent)}.information summary,details.banner summary{cursor:pointer;font-size:13px}.information ha-icon{color:var(--primary-color,#2986bb)}`;
 const FLOORPLAN_MOTION_HOLD_SECONDS = 15;
 const CATEGORIES={information:"Information",warning:"Warnung",alarm:"Alarm",fault:"Störung",isolated:"Isoliert"};
@@ -348,7 +348,7 @@ class IQAlarmPanel extends HTMLElement {
     this._dialog(id?"Fenster bearbeiten":"Fenster einrichten","<iqalarm-window-assistant></iqalarm-window-assistant>","window");
     const dialog=this.shadowRoot.getElementById("editor"),wizard=dialog.querySelector("iqalarm-window-assistant"),revision=this._dialogRevision;
     dialog.querySelector(".dialog-foot")?.setAttribute("hidden","");
-    wizard.setup({hass:this._hass,catalog:this.catalog,rooms:this.data.config.rooms,sensors:this.data.config.sensors,windows:this.data.config.windows||{},initial:this.data.config.windows?.[id],onCancel:()=>dialog.close(),onSave:async window=>{
+    wizard.setup({hass:this._hass,catalog:this.catalog,rooms:this.data.config.rooms,orderedRooms:this._orderedRooms(),sensors:this.data.config.sensors,windows:this.data.config.windows||{},initial:this.data.config.windows?.[id],onCancel:()=>dialog.close(),onSave:async window=>{
       const config=structuredClone(this.data.config);config.windows||={};config.windows[window.id]=window;
       this.data=await this._call("config/save",{config,revision});dialog.close();this._render();this._toast("Fenster eingerichtet");
     }});
