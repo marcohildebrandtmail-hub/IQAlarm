@@ -18,6 +18,7 @@ from .const import (
     Mode,
     Role,
 )
+from .level_rules import LevelRule, default_rules, upgrade_level_rules
 
 ENTITY_RE = re.compile(r"^[a-z_][a-z0-9_]*\.[a-z0-9_]+$")
 ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,100}$")
@@ -365,6 +366,7 @@ class Profile:
     sensor_ids: list[str] | None = None
     action_ids: list[str] | None = None
     confirmation_paths: list[list[str]] = field(default_factory=list)
+    rule_ids: list[str] | None = None
 
     def __post_init__(self) -> None:
         for key in ("perimeter_seconds", "correlation_seconds"):
@@ -414,7 +416,7 @@ class Profile:
             if tuple(path) in seen_paths:
                 raise ValueError("Bestätigungsweg darf nicht doppelt vorhanden sein")
             seen_paths.add(tuple(path))
-        for key in ("room_ids", "sensor_ids", "action_ids"):
+        for key in ("room_ids", "sensor_ids", "action_ids", "rule_ids"):
             values = getattr(self, key)
             if values is not None and (
                 not isinstance(values, list)
@@ -439,6 +441,7 @@ class Action:
     color: list[int] | None = None
     media_player: str | None = None
     enabled: bool = True
+    profile_ids: list[str] | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.id, str) or not ID_RE.fullmatch(self.id):
@@ -468,8 +471,14 @@ class Action:
             entity(self.target, {self.kind})
         if self.kind == "notify":
             entity(self.target, {"notify"})
-        if self.kind in {"snapshot", "record"}:
+        if self.kind in {"snapshot", "record"} and self.target != "trigger_camera":
             entity(self.target, {"camera"})
+        if self.profile_ids is not None and (
+            not isinstance(self.profile_ids, list)
+            or len(self.profile_ids) > 50
+            or any(not isinstance(p, str) or not ID_RE.fullmatch(p) for p in self.profile_ids)
+        ):
+            raise ValueError("Ungültige Alarmmodus-Zuordnung der Aktion")
         if self.kind == "tts":
             entity(self.media_player, {"media_player"})
         if self.camera_entity_id:
@@ -671,6 +680,18 @@ def default_profiles() -> dict[str, Profile]:
             else "always",
             contacts_enabled=m != Mode.HOME,
             simulation_enabled=m == Mode.VACATION,
+            rule_ids=["perimeter", "fault", "immediate"]
+            + (
+                [
+                    "single",
+                    "flapping",
+                    "perimeter_contact",
+                    "contact_motion" if m == Mode.NIGHT else "contact_motion_any_order",
+                ]
+                if m != Mode.HOME
+                else []
+            )
+            + (["motion"] if m in (Mode.AWAY, Mode.VACATION) else []),
             **({"correlation_seconds": 45, "entry_seconds": 5} if m == Mode.VACATION else {}),
         )
         for m in ARMED_MODES
@@ -690,6 +711,7 @@ class Configuration:
     windows: dict[str, WindowConfig] = field(default_factory=dict)
     policy_version: int = 2
     secure_stage_id: str = "1"
+    rules: dict[str, LevelRule] | None = field(default_factory=default_rules)
 
     def all_sensors(self) -> dict[str, SensorConfig]:
         return self.sensors | {
@@ -742,8 +764,10 @@ class Configuration:
         }
 
     def validate(self) -> None:
-        if len(self.rooms) > 250 or len(self.sensors) > 1000 or len(self.actions) > 100:
-            raise ValueError("Maximal 250 Räume, 1000 Sensoren und 100 Aktionen erlaubt")
+        if self.rules is not None and (not isinstance(self.rules, dict) or len(self.rules) > 500):
+            raise ValueError("Maximal 500 Levelregeln als Objekt erlaubt")
+        if len(self.rooms) > 250 or len(self.sensors) > 1000 or len(self.actions) > 500:
+            raise ValueError("Maximal 250 Räume, 1000 Sensoren und 500 Aktionen erlaubt")
         for key, room in self.rooms.items():
             if key != room.id or set(room.adjacent) - self.rooms.keys():
                 raise ValueError("Raum-Verknüpfung verweist auf unbekannten Raum")
@@ -794,13 +818,14 @@ class Configuration:
             text(profile.name, "Profilname", 100)
             if profile.icon is None:
                 profile.icon = profile_icon(profile.name, key, profile.reactions_enabled)
-            for rule, target in defaults.items():
-                profile.stage_targets.setdefault(rule, target)
+            if self.rules is None:
+                for rule, target in defaults.items():
+                    profile.stage_targets.setdefault(rule, target)
             if any(room not in self.rooms for path in profile.confirmation_paths for room in path):
                 raise ValueError("Bestätigungsweg verweist auf unbekannten Raum")
-            if set(profile.stage_targets.values()) - stage_ids:
+            if self.rules is None and set(profile.stage_targets.values()) - stage_ids:
                 raise ValueError("Profil verweist auf eine unbekannte Alarmstufe")
-            for rule in UNCONFIRMED_RULES:
+            for rule in UNCONFIRMED_RULES if self.rules is None else ():
                 if self.stage(profile.stage_targets[rule]).requires_confirmation:
                     raise ValueError(
                         "Unbestätigte Signale benötigen eine lautlose Stufe ohne Bestätigungspflicht"
@@ -811,14 +836,67 @@ class Configuration:
                 ("action_ids", self.actions),
             ):
                 values = getattr(profile, field_name)
-                if values is not None and set(values) - known.keys():
+                if self.rules is None and values is not None and set(values) - known.keys():
                     raise ValueError(f"Profil {profile.name}: unbekannte Zuordnung in {field_name}")
+            if (
+                self.rules is not None
+                and profile.rule_ids is not None
+                and set(profile.rule_ids) - self.rules.keys()
+            ):
+                raise ValueError(f"Profil {profile.name}: unbekannte Levelregel")
+        if self.rules is not None:
+            if not isinstance(self.rules, dict) or len(self.rules) > 500:
+                raise ValueError("Maximal 500 Levelregeln erlaubt")
+            sensors = self.all_sensors()
+            for key, rule in self.rules.items():
+                if not isinstance(rule, LevelRule):
+                    raise ValueError("Ungültige Levelregel")
+                if key != rule.id or rule.stage_id not in stage_ids:
+                    raise ValueError("Regel verweist auf eine unbekannte Alarmstufe")
+                if rule.stage_id in (baseline.id, secure.id):
+                    raise ValueError(
+                        "Deaktiviert und Sicher ergeben sich automatisch ohne Sensorregel"
+                    )
+                if rule.room_ids is not None and set(rule.room_ids) - self.rooms.keys():
+                    raise ValueError("Regel verweist auf einen unbekannten Raum")
+                if any(room not in self.rooms for path in rule.paths for room in path):
+                    raise ValueError("Regel verweist auf einen unbekannten Bestätigungsweg")
+                for condition in rule.conditions:
+                    if set(condition.sensor_ids) - sensors.keys():
+                        raise ValueError("Regel verweist auf einen unbekannten Sensor")
+                    if rule.enabled and not (condition.sensor_ids or condition.roles):
+                        raise ValueError("Aktive Regel benötigt Sensoren oder Sensorgruppen")
+                    if (
+                        rule.enabled
+                        and not condition.roles
+                        and len({sensors[s].source_id or s for s in condition.sensor_ids})
+                        < condition.count
+                    ):
+                        raise ValueError("Bedingung enthält zu wenige unabhängige Sensoren")
+                if self.stage(rule.stage_id).requires_confirmation:
+                    if any(c.event in ("unavailable", "flapping") for c in rule.conditions):
+                        raise ValueError(
+                            "Störungen und Prellen dürfen keinen bestätigten Alarm erzeugen"
+                        )
+                    if sum(c.count for c in rule.conditions) < 2 and not (
+                        len(rule.conditions) == 1 and rule.conditions[0].event == "override"
+                    ):
+                        raise ValueError(
+                            "Bestätigte Alarmstufe benötigt unabhängige Quellen oder einen freigegebenen Gefahrensensor"
+                        )
+            self.settings.simulation_enabled = any(
+                p.simulation_enabled for p in self.profiles.values()
+            )
         names = [profile.name.strip().casefold() for profile in self.profiles.values()]
         if len(set(names)) != len(names):
             raise ValueError("Profilnamen müssen eindeutig sein")
         if any(key != action.id for key, action in self.actions.items()):
             raise ValueError("Aktions-ID stimmt nicht überein")
         for action in self.actions.values():
+            if self.rules is not None and action.profile_ids is None:
+                raise ValueError("Aktion benötigt eine ausdrückliche Alarmmodus-Zuordnung")
+            if action.profile_ids is not None and set(action.profile_ids) - self.profiles.keys():
+                raise ValueError("Aktion verweist auf einen unbekannten Alarmmodus")
             if action.level != "diagnostic" and action.level not in stage_ids:
                 raise ValueError("Aktion verweist auf eine unbekannte Alarmstufe")
             loud = action.kind in {"siren", "switch", "script", "tts"} or action.critical
@@ -871,6 +949,8 @@ class Configuration:
         data = migrate_configuration(data)
         if not isinstance(data, dict) or set(data) - {f.name for f in fields(cls)}:
             raise ValueError("Ungültige Konfiguration")
+        if data.get("rules") is not None and not isinstance(data["rules"], dict):
+            raise ValueError("Levelregeln müssen ein Objekt sein")
         for key in ("rooms", "sensors", "profiles", "actions", "settings", "floorplans", "windows"):
             if key in data and not isinstance(data[key], dict):
                 raise ValueError(f"{key} muss ein Objekt sein")
@@ -900,6 +980,9 @@ class Configuration:
             },
             policy_version=data.get("policy_version", 2),
             secure_stage_id=data.get("secure_stage_id", "1"),
+            rules={key: construct(LevelRule, value) for key, value in data["rules"].items()}
+            if data.get("rules") is not None
+            else None,
         )
         result.validate()
         return result
@@ -1008,6 +1091,8 @@ def migrate_configuration(data: dict) -> dict:
     settings.setdefault("floorplan_disarmed_cameras", True)
     settings.setdefault("floorplan_disarmed_animation", False)
     settings.setdefault("floorplan_armed_animation", True)
+    if "rules" not in result:
+        upgrade_level_rules(result, [asdict(stage) for stage in default_stages()])
     return result
 
 

@@ -1,7 +1,8 @@
-import {DraftJournal} from "./floorplan-drafts.js?v=2.5.0";
-import "./window-assistant.js?v=2.5.0";
-import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.5.0";
-/* IQAlarm 2.5.0 · native ES module · no CDN, framework or build required. */
+import {DraftJournal} from "./floorplan-drafts.js?v=2.6.0";
+import {renderLevels, renderProfiles, renderDisplaySettings, openRuleDialog, readRuleForm} from "./level-configuration.js?v=2.6.0";
+import "./window-assistant.js?v=2.6.0";
+import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.6.0";
+/* IQAlarm 2.6.0 · native ES module · no CDN, framework or build required. */
 const WINDOW_CSS = `.window-group{padding:18px 0;border-bottom:1px solid var(--divider-color,#dce3ec)}.window-inputs{margin:14px 0 0 24px;padding-left:18px;border-left:2px solid var(--divider-color,#dce3ec)}.window-inputs code{display:block;font-size:10px;overflow-wrap:anywhere;color:var(--secondary-text-color,#64758b)}.information{border-color:color-mix(in srgb,var(--primary-color,#2986bb) 25%,transparent)}.information summary,details.banner summary{cursor:pointer;font-size:13px}.information ha-icon{color:var(--primary-color,#2986bb)}`;
 const FLOORPLAN_MOTION_HOLD_SECONDS = 15;
 const CATEGORIES={information:"Information",warning:"Warnung",alarm:"Alarm",fault:"Störung",isolated:"Isoliert"};
@@ -481,7 +482,7 @@ class IQAlarmPanel extends HTMLElement {
         const sensors = this._displaySensors(), count = prefix => sensors.filter(s => (s.room_id === r.id || s.front_of.includes(r.id)) && prefix.some(p => s.role.startsWith(p))).length;
         const isFirst = i === 0, isLast = i === rooms.length - 1;
         return `<article class="card"><div class="row between"><h2>${esc(r.name)}</h2><div class="row" style="gap:4px"><button class="icon-button room-nav-btn" aria-label="${esc(r.name)} nach links" title="Nach links verschieben" data-command="room-move-left" data-room-id="${r.id}" ${isFirst ? "disabled" : ""} data-config>${icon("arrow-left")}</button><button class="icon-button room-nav-btn" aria-label="${esc(r.name)} nach rechts" title="Nach rechts verschieben" data-command="room-move-right" data-room-id="${r.id}" ${isLast ? "disabled" : ""} data-config>${icon("arrow-right")}</button><button class="icon-button" aria-label="${esc(r.name)} bearbeiten" data-command="room-edit" data-id="${r.id}" data-config>${icon("pencil-outline")}</button><button class="icon-button danger" aria-label="${esc(r.name)} löschen" data-command="room-delete" data-id="${r.id}" data-config>${icon("delete-outline")}</button></div></div><div class="topology"><span><strong>${count(["perimeter"])}</strong>${icon("cctv")} Vorfeld</span>${icon("arrow-right")}<span><strong>${count(["entry", "lock", "vibration"])}</strong>Außenhaut</span>${icon("arrow-right")}<span><strong>${count(["interior"])}</strong>Innenraum</span></div><p>Überwachung nach gewähltem IQAlarm-Profil</p><p>Angrenzend: ${r.adjacent.length ? r.adjacent.map(id => esc(this.data.config.rooms[id]?.name)).join(", ") : "Keine Räume verknüpft"}</p><button class="small" style="margin-top:16px" data-tab="2">Sensoren zuweisen ${icon("arrow-right")}</button></article>`;
-      }).join("") || this._empty("Deine Räume fehlen noch", "Importiere HA-Bereiche oder lege den ersten Raum an.", "floor-plan")}</div><div class="help">Eine Raumverbindung gilt in beiden Richtungen und genau einen Schritt weit. Vorfeld ohne Raumzuordnung zeigt Erkennungen an und bestätigt keine beliebigen Kontakte. Andere Räume benötigen einen ausdrücklichen Bestätigungsweg im Profil.</div>` + this._floorplan(true);
+      }).join("") || this._empty("Deine Räume fehlen noch", "Importiere HA-Bereiche oder lege den ersten Raum an.", "floor-plan")}</div><div class="help">Eine Raumverbindung gilt in beiden Richtungen und genau einen Schritt weit. Vorfeld ohne Raumzuordnung zeigt Erkennungen an und bestätigt keine beliebigen Kontakte. Andere Räume benötigen einen ausdrücklichen Bestätigungsweg im Profil.</div>` + this._floorplan(true) + (this.data.config.rules ? renderDisplaySettings(this) : "");
   }
 
   _sensorTable(items, emptyTitle, emptyDetail, emptyIcon = "access-point") {
@@ -683,6 +684,7 @@ class IQAlarmPanel extends HTMLElement {
   }
 
   _levels() {
+    if (this.data.config.rules) return renderLevels(this);
     const c = this.data.config, isDiag = this.stage === "diagnostic";
     const stageIndex = c.stages.findIndex(s => s.id === this.stage);
     const currentStage = c.stages[stageIndex] || c.stages[0];
@@ -706,6 +708,7 @@ class IQAlarmPanel extends HTMLElement {
     return `<div class="wide"><h3>Ausdrückliche Bestätigungswege</h3><p>Im selben Raum ist die räumliche Zuordnung bereits erfüllt. Für andere Räume gezielt die Richtung freigeben: Öffnung in Raum A → Bewegung in Raum B. Nachbarschaft allein gibt keinen Weg frei.</p><label class="field" style="margin-top:12px">Freigegebene Wege<select name="confirmation_paths" multiple size="6">${rooms.flatMap(a=>rooms.filter(b=>a.id!==b.id).map(b=>`<option value="${esc(a.id)}:${esc(b.id)}"${(profile.confirmation_paths||[]).some(path=>path[0]===a.id&&path[1]===b.id)?" selected":""}>${esc(a.name)} → ${esc(b.name)}</option>`)).join("")}</select><small>Leere Auswahl: ausschließlich derselbe Raum. Mehrfachauswahl mit Strg / ⌘.</small></label></div>`;
   }
   _rules() {
+    if (this.data.config.rules) return renderProfiles(this);
     const c = this.data.config, keys = Object.keys(c.profiles), idx = keys.indexOf(this.profile), p = c.profiles[this.profile], s = c.settings;
     const names = collection => Object.fromEntries(Object.entries(collection).map(([id, item]) => [id, item.name || item.entity_id || `${KINDS[item.kind]} · ${item.target} · ${item.level}`]));
     return this._head("Profile & System", "Profile bestimmen die gesamte Steuerung. Namen, Reihenfolge und Regeln sind frei wählbar.", `<button class="primary" data-command="profile-new" data-config>${icon("plus")}Profil anlegen</button>`) + this._lockNote() +
@@ -1882,16 +1885,17 @@ class IQAlarmPanel extends HTMLElement {
   }
 
   _actionDialog(id) {
+    this._actionProfile = this.profile;
     const a = this.data.config.actions[id] || {level: this.stage, kind: "notify", target: "", title: "IQAlarm · Stufe {{level}}", message: "{{room}}: {{sensor}} — {{reason}}\n{{chain}}", enabled: true, critical: false, duration: 180, brightness: 100};
     const kinds = Object.fromEntries(Object.entries(KINDS).filter(([kind]) => this.data.config.stages.find(stage => stage.id === a.level)?.allow_loud || !["siren", "switch", "script", "tts"].includes(kind)));
-    this._dialog(id ? "Aktion bearbeiten" : "Aktion hinzufügen", `<div class="form-grid"><label class="field">Aktionsart<select name="kind">${options(kinds, a.kind)}</select></label><label class="field">Ziel / Dienst<input name="target" list="action-targets" value="${esc(a.target)}" required><datalist id="action-targets"></datalist><small>Ein konkreter notify-Dienst oder eine Geräte-Entität.</small></label><label class="field wide" data-kinds="notify">Titel<input name="title" value="${esc(a.title)}" maxlength="200"></label><label class="field wide" data-kinds="notify,tts">Nachricht<textarea name="message" maxlength="3000">${esc(a.message)}</textarea><small>{{room}} · {{sensor}} · {{level}} · {{reason}} · {{chain}}</small></label><label class="field wide" data-kinds="notify">Kamera-Snapshot anhängen<select name="camera_entity_id">${this._entityOptions(["camera"], a.camera_entity_id)}</select></label><div class="wide" data-kinds="notify">${this._checkbox("critical", "Kritischer Alarm (nur für bestätigte, akustisch freigegebene Stufen)", a.critical)}</div><label class="field wide" data-kinds="tts">Lautsprecher<select name="media_player">${this._entityOptions(["media_player"], a.media_player)}</select></label><div data-kinds="siren,switch,script,light,record">${this._number("duration", "Automatisch aus nach / Aufnahmedauer (Sekunden)", a.duration, 1, 3600)}</div><div data-kinds="light">${this._number("brightness", "Helligkeit (%)", a.brightness, 1, 100)}</div><label class="field" data-kinds="light">Warnfarbe<input name="color" type="color" value="${a.color ? '#' + a.color.map(n => n.toString(16).padStart(2, '0')).join('') : '#ff3344'}"></label><div data-kinds="light">${this._checkbox("use_color", "Warnfarbe verwenden", !!a.color)}</div><div class="wide">${this._checkbox("enabled", "Aktion aktivieren", a.enabled)}</div></div><div class="help">Selbst eingeschaltete Sirenen, Schalter und Lichter werden zeitgesteuert oder beim Entschärfen ausgeschaltet. Bereits eingeschaltete Geräte werden nicht abgeschaltet. Rollos werden geöffnet und bleiben offen.</div>`, "action", id);
+    this._dialog(id ? "Aktion bearbeiten" : "Aktion hinzufügen", `<div class="form-grid"><label class="field">Aktionsart<select name="kind">${options(kinds, a.kind)}</select></label><label class="field">Ziel / Dienst<input name="target" list="action-targets" value="${esc(a.target)}" required><datalist id="action-targets"></datalist><small>Ein konkreter notify-Dienst oder eine Geräte-Entität. Für Snapshot/Aufzeichnung: trigger_camera verwendet die Kamera der Auslösekette.</small></label><label class="field wide" data-kinds="notify">Titel<input name="title" value="${esc(a.title)}" maxlength="200"></label><label class="field wide" data-kinds="notify,tts">Nachricht<textarea name="message" maxlength="3000">${esc(a.message)}</textarea><small>{{room}} · {{sensor}} · {{level}} · {{reason}} · {{chain}}</small></label><label class="field wide" data-kinds="notify">Kamera-Snapshot anhängen<select name="camera_entity_id">${this._entityOptions(["camera"], a.camera_entity_id)}</select></label><div class="wide" data-kinds="notify">${this._checkbox("critical", "Kritischer Alarm (nur für bestätigte, akustisch freigegebene Stufen)", a.critical)}</div><label class="field wide" data-kinds="tts">Lautsprecher<select name="media_player">${this._entityOptions(["media_player"], a.media_player)}</select></label><div data-kinds="siren,switch,script,light,record">${this._number("duration", "Automatisch aus nach / Aufnahmedauer (Sekunden)", a.duration, 1, 3600)}</div><div data-kinds="light">${this._number("brightness", "Helligkeit (%)", a.brightness, 1, 100)}</div><label class="field" data-kinds="light">Warnfarbe<input name="color" type="color" value="${a.color ? '#' + a.color.map(n => n.toString(16).padStart(2, '0')).join('') : '#ff3344'}"></label><div data-kinds="light">${this._checkbox("use_color", "Warnfarbe verwenden", !!a.color)}</div><div class="wide">${this._checkbox("enabled", "Aktion aktivieren", a.enabled)}</div></div><div class="help">Selbst eingeschaltete Sirenen, Schalter und Lichter werden zeitgesteuert oder beim Entschärfen ausgeschaltet. Bereits eingeschaltete Geräte werden nicht abgeschaltet. Rollos werden geöffnet und bleiben offen.</div>`, "action", id);
     this._actionVisibility(a.kind);
   }
 
   _actionVisibility(kind) {
     const dialog = this.shadowRoot.getElementById("editor");
     dialog.querySelectorAll("[data-kinds]").forEach(e => {e.hidden = !e.dataset.kinds.split(",").includes(kind);});
-    const targets = kind === "notify" ? [...this.catalog.notify_services, ...this._entities(["notify"]).map(e => e.entity_id)] : this._entities([kind === "snapshot" || kind === "record" ? "camera" : kind]).map(e => e.entity_id);
+    const targets = ["snapshot","record"].includes(kind) && this.data.config.rules ? ["trigger_camera", ...this._entities(["camera"]).map(e => e.entity_id)] : kind === "notify" ? [...this.catalog.notify_services, ...this._entities(["notify"]).map(e => e.entity_id)] : this._entities([kind === "snapshot" || kind === "record" ? "camera" : kind]).map(e => e.entity_id);
     dialog.querySelector("#action-targets").innerHTML = [...new Set(targets)].map(id => `<option value="${esc(id)}"></option>`).join("");
   }
 
@@ -2007,6 +2011,23 @@ class IQAlarmPanel extends HTMLElement {
     const command = button.dataset.command, id = button.dataset.id || button.dataset.sensorId;
     try {
       if (command === "menu") this.dispatchEvent(new CustomEvent("hass-toggle-menu", {bubbles: true, composed: true}));
+      else if (command === "rule-new" || command === "rule-edit") openRuleDialog(this,id);
+      else if (command === "rule-delete") this._dialog("Levelregel löschen","<p>Die Regel wird entfernt. Ihre Zuordnungen zu Alarmmodi werden bereinigt.</p>","delete-rules",id);
+      else if (command === "rule-condition-add" || command === "rule-condition-remove") {
+        const form=this.shadowRoot.getElementById("editor-form"), draft=readRuleForm(form);
+        this._draftRuleProfiles=new FormData(form).getAll("rule_profiles");
+        if(command==="rule-condition-add"&&draft.conditions.length<4)draft.conditions.push({sensor_ids:[],roles:[],event:"active",count:1,max_age_seconds:null});
+        else if(command==="rule-condition-remove"&&draft.conditions.length>1)draft.conditions.splice(Number(button.dataset.index),1);
+        openRuleDialog(this,form.dataset.id,draft,this._dialogRevision);
+      }
+      else if (command === "profile-action-new") {this.stage=button.dataset.stageId;this._actionDialog();}
+      else if (command === "profile-action-delete") this._dialog("Aktion aus diesem Alarmmodus entfernen",`<p>Diese Aktion wird für „${esc(this.data.config.profiles[this.profile].name)}“ entfernt. Andere Alarmmodi behalten ihre Aktionen.</p>`,"profile-action-remove",id);
+      else if (command === "profile-level-test") {
+        const card=button.closest("[data-profile-action-stage]"),dry_run=!card.querySelector("[data-real-level-test]").checked;
+        button.disabled=true;
+        const result=await this._call("test_level",{level:button.dataset.stageId,profile_id:this.profile,dry_run});
+        card.querySelector("[data-level-test-plan]").innerHTML=`<p>${dry_run?"Trockenlauf abgeschlossen. Keine Geräte wurden geschaltet.":"Realer Test abgeschlossen. Ausführungsfehler stehen im Logbuch."}</p><pre>${esc(JSON.stringify(result.actions,null,2))}</pre>`;
+      }
       else if (command === "close") { this.liveRoom = null; const ed = this.shadowRoot.getElementById("editor"); ed.classList.remove("wide"); ed.close(); }
       else if (command === "rooms-sort") this._roomsSortDialog();
       else if (command === "room-move-left") await this._moveRoomOrder(button.dataset.roomId, "left");
@@ -2215,6 +2236,11 @@ class IQAlarmPanel extends HTMLElement {
       if(Array.isArray(p.sensor_ids))p.sensor_ids=p.sensor_ids.filter(id=>!removedSensors.has(id));
       p.confirmation_paths=(p.confirmation_paths||[]).filter(path=>path.every(room=>config.rooms[room]));
     }
+    for(const rule of Object.values(config.rules||{})){
+      if(Array.isArray(rule.room_ids)){rule.room_ids=rule.room_ids.filter(r=>config.rooms[r]);if(!rule.room_ids.length)rule.enabled=false;}
+      rule.paths=rule.paths.filter(path=>path.every(r=>config.rooms[r]));
+      for(const condition of rule.conditions){condition.sensor_ids=condition.sensor_ids.filter(id=>!removedSensors.has(id));if(!condition.roles.length&&condition.sensor_ids.length<condition.count)rule.enabled=false;}
+    }
     for (const fp of Object.values(config.floorplans)) {
       for (const rid of Object.keys(fp.zones || {})) if (!config.rooms[rid]) delete fp.zones[rid];
       for (const rid of Object.keys(fp.labels || {})) if (!config.rooms[rid]) delete fp.labels[rid];
@@ -2230,7 +2256,20 @@ class IQAlarmPanel extends HTMLElement {
     const button = form.querySelector('[type="submit"]');
     this._requestBusy = true; if (button) button.disabled = true;
     try {
-      if (form.id === "stage-single-form") {
+      if (["profile-levels-form","system-levels-form","display-levels-form","simulation-levels-form"].includes(form.id)) {
+        const config=structuredClone(this.data.config),s=config.settings;
+        if(form.id==="profile-levels-form"){
+          const p=config.profiles[this.profile];p.name=get("profile_name").trim();p.icon=get("profile_icon").trim()||null;
+          p.rule_ids=Object.keys(config.rules).filter(id=>bool(`use_rule_${id}`));p.reactions_enabled=bool("reactions_enabled");p.simulation_enabled=bool("simulation_enabled");p.exit_seconds=num("exit_seconds");
+        }else if(form.id==="system-levels-form"){
+          s.observation_profile_id=bool("live_evaluation")?"live":null;
+          ["diagnose_disarmed","block_open_on_arm","block_unavailable_on_arm"].forEach(k=>s[k]=bool(k));s.retention_days=num("retention_days");
+          s.debounce_by_role=Object.fromEntries(Object.keys(ROLES).map(k=>[k,num(`debounce_${k}`)]));
+        }else if(form.id==="display-levels-form"){
+          ["floorplan_disarmed_motion","floorplan_disarmed_contacts","floorplan_disarmed_cameras","floorplan_disarmed_animation","floorplan_armed_animation"].forEach(k=>s[k]=bool(k));s.recent_seconds=num("recent_seconds");
+        }else{s.simulation_start=num("simulation_start");s.simulation_end=num("simulation_end");s.simulation_lights=fields.getAll("simulation_lights");}
+        this.data=await this._call("config/save",{config,revision:this._viewRevision});
+      } else if (form.id === "stage-single-form") {
         const config = structuredClone(this.data.config);
         const idx = config.stages.findIndex(s => s.id === this.stage);
         if (idx >= 0) {
@@ -2242,7 +2281,7 @@ class IQAlarmPanel extends HTMLElement {
             allow_loud: idx > 0 && bool("stage_loud"),
             latch: idx > 0 && bool("stage_latch"),
           };
-          if (idx > 0) {
+          if (idx > 0 && !config.rules) {
             for (const key of Object.keys(RULES)) {
               if (bool(`rule_${key}`)) {
                 for (const prof of Object.values(config.profiles)) prof.stage_targets[key] = this.stage;
@@ -2277,7 +2316,23 @@ class IQAlarmPanel extends HTMLElement {
         this.data = await this._call("config/save", {config, revision: this._viewRevision});
       } else if (form.id === "editor-form") {
         const type = form.dataset.type, id = form.dataset.id;
-        if (type === "sensor-move") {
+        if (type === "level-rule") {
+          const config=structuredClone(this.data.config),item=readRuleForm(form),key=id||randomId();
+          item.id=key;config.rules[key]=item;
+          const owners=fields.getAll("rule_profiles");
+          for(const [profileId,p]of Object.entries(config.profiles)){
+            const selection=new Set(p.rule_ids===null?Object.keys(config.rules):p.rule_ids);
+            if(owners.includes(profileId))selection.add(key);else selection.delete(key);
+            p.rule_ids=[...selection];
+          }
+          this.data=await this._call("config/save",{config,revision:this._dialogRevision});this.stage=item.stage_id;
+        } else if (type === "profile-action-remove") {
+          const config=structuredClone(this.data.config),action=config.actions[id];
+          if(!action)throw new Error("Aktion wurde bereits entfernt.");
+          action.profile_ids=(action.profile_ids||Object.keys(config.profiles)).filter(p=>p!==this.profile);
+          if(!action.profile_ids.length)delete config.actions[id];
+          this.data=await this._call("config/save",{config,revision:this._dialogRevision});
+        } else if (type === "sensor-move") {
           const config = structuredClone(this.data.config);
           this._setDisplayName(config, id, get("display_name"));
           this.data = await this._call("config/save", {config, revision: this._dialogRevision});
@@ -2405,9 +2460,27 @@ class IQAlarmPanel extends HTMLElement {
             item = {level: old?.level || this.stage, kind, target: get("target"), title: get("title"), message: get("message"), duration: num("duration"), brightness: num("brightness"), critical: kind === "notify" && bool("critical"), camera_entity_id: kind === "notify" ? get("camera_entity_id") || null : null, media_player: kind === "tts" ? get("media_player") || null : null, enabled: bool("enabled"), color: kind === "light" && bool("use_color") ? [1, 3, 5].map(i => parseInt(get("color").slice(i, i + 2), 16)) : null}; if (id) item.id = id;
           } else if (type === "profile") {
             collection = "profiles";
-            item = this._profileTemplate ? structuredClone(this.data.config.profiles[this._profileTemplate]) : {reactions_enabled:true, action_ids:null, motion_mode:"always"};
+            item = this._profileTemplate ? structuredClone(this.data.config.profiles[this._profileTemplate]) : {reactions_enabled:true, action_ids:null, motion_mode:"always",rule_ids:[]};
             item.name = get("name").trim(); item.icon = get("profile_icon").trim() || null;
           } else if (type === "floorplan") { collection = "floorplans"; item = {...(this.data.config.floorplans[id] || {}), name:get("name")}; if (id) item.id = id; } else throw new Error("Unbekanntes Formular");
+          if(this.data.config.rules && (type==="action"||type==="profile")){
+            const config=structuredClone(this.data.config),key=id||randomId();
+            if(type==="action"){
+              const profileId=this._actionProfile||this.profile,old=config.actions[id];
+              const others=old?(old.profile_ids||Object.keys(config.profiles)).filter(p=>p!==profileId):[];
+              const actionId=others.length?randomId():key;
+              if(others.length)old.profile_ids=others;
+              config.actions[actionId]={...item,id:actionId,profile_ids:[profileId]};
+            }else{
+              config.profiles[key]=item;
+              if(this._profileTemplate)for(const action of Object.values(this.data.config.actions))if(action.profile_ids===null||action.profile_ids===undefined||action.profile_ids.includes(this._profileTemplate)){
+                const actionId=randomId();config.actions[actionId]={...structuredClone(action),id:actionId,profile_ids:[key]};
+              }
+            }
+            this.data=await this._call("config/save",{config,revision:this._dialogRevision});
+            if(type==="profile")this.profile=key;
+            this.shadowRoot.getElementById("editor").close();this._render();this._toast("Gespeichert");return;
+          }
           const knownRooms = new Set(Object.keys(this.data.config.rooms));
           this.data = await this._call("crud", {collection, operation: "save", item, revision: this._dialogRevision});
           if (type === "room" && !id) {

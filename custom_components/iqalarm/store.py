@@ -10,6 +10,9 @@ from .models import Configuration
 class IQAlarmStore:
     def __init__(self, hass: HomeAssistant) -> None:
         self._store = Store(hass, STORAGE_VERSION, f"{DOMAIN}.configuration", private=True)
+        self._migration_backup = Store(
+            hass, STORAGE_VERSION, f"{DOMAIN}.configuration.before_level_rules", private=True
+        )
         self.config = Configuration()
         self.state: dict = {}
         self.outputs: dict = {}
@@ -20,6 +23,10 @@ class IQAlarmStore:
             self.config = Configuration.from_dict(data["config"])
             self.state = data.get("state", {})
             self.outputs = data.get("outputs", {})
+            if self.config.to_dict() != data["config"]:
+                if "rules" not in data["config"]:
+                    await self._migration_backup.async_save(data)
+                await self._store.async_save({**data, "config": self.config.to_dict()})
 
     async def async_save(
         self,

@@ -18,6 +18,7 @@ from iqalarm_core.models import AlarmStage, Configuration, Room, SensorConfig  #
 def config():
     result = Configuration(
         secure_stage_id="0",
+        rules=None,
         stages=[
             AlarmStage("0", "Sicher", "#16816a"),
             AlarmStage("1", "Vorfeld-Erkennung", "#2986bb"),

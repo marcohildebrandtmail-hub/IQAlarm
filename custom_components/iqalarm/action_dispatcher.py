@@ -7,6 +7,7 @@ import re
 import secrets
 import time
 from collections import defaultdict
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -163,7 +164,11 @@ class ActionDispatcher:
             for a in self.runtime.config.actions.values()
             if a.enabled
             and a.level == stage
-            and (profile is None or profile.action_ids is None or a.id in profile.action_ids)
+            and (
+                (a.profile_ids is None or event.profile_id in a.profile_ids)
+                if self.runtime.config.rules is not None
+                else (profile is None or profile.action_ids is None or a.id in profile.action_ids)
+            )
         ]
         if stage != "diagnostic":
             configured_stage = self.runtime.config.stage(stage)
@@ -182,7 +187,8 @@ class ActionDispatcher:
             elif sensor and sensor.entity_id.startswith("camera."):
                 cameras.add(sensor.entity_id)
         if (
-            event.kind != "test"
+            self.runtime.config.rules is None
+            and event.kind != "test"
             and event.chain
             and all(e["role"].startswith("perimeter") for e in event.chain)
         ):
@@ -222,6 +228,12 @@ class ActionDispatcher:
                 if generation != self.runtime.generation:
                     return
                 try:
+                    if action.target == "trigger_camera":
+                        for camera in sorted(cameras):
+                            await self.execute(
+                                replace(action, target=camera), variables, generation
+                            )
+                        return
                     if action.kind in {"siren", "switch", "light", "script"}:
                         async with self.locks[action.target]:
                             if generation == self.runtime.generation and (

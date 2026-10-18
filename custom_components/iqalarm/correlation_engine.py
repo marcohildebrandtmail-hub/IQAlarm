@@ -19,6 +19,7 @@ from .const import (
     Role,
     RunState,
 )
+from .level_rules import RuleMatch, accepts, match_rule, spaces
 from .models import Configuration, EventLog, Evidence, Profile
 
 
@@ -51,6 +52,8 @@ class CorrelationEngine:
         self.held_alarm: dict | None = None
         self.last_profile_id: str | None = None
         self._last_time = 0.0
+        self.rule_pending: dict[str, dict] = {}
+        self.rule_matches: list[RuleMatch] = []
 
     @property
     def profile(self):
@@ -62,6 +65,17 @@ class CorrelationEngine:
                 reactions_enabled=False,
                 action_ids=[],
                 stage_targets=self.config.default_stage_targets(),
+                rule_ids=list(
+                    dict.fromkeys(
+                        rule_id
+                        for profile in self.config.profiles.values()
+                        for rule_id in (
+                            profile.rule_ids
+                            if profile.rule_ids is not None
+                            else (self.config.rules or {})
+                        )
+                    )
+                ),
             )
         return None
 
@@ -82,7 +96,7 @@ class CorrelationEngine:
 
     @property
     def confirmed(self) -> bool:
-        return self.severity == Level.BREACH and self.pending_until is None
+        return self.severity == Level.BREACH
 
     @property
     def level(self) -> int:
@@ -94,9 +108,25 @@ class CorrelationEngine:
 
     @property
     def secure(self) -> bool:
-        return self.severity == Level.SECURE
+        return self.severity == Level.SECURE and self.pending_until is None
+
+    def active_rules(self):
+        profile = self.profile
+        if self.config.rules is None or profile is None:
+            return []
+        return [
+            rule
+            for key, rule in self.config.rules.items()
+            if rule.enabled and (profile.rule_ids is None or key in profile.rule_ids)
+        ]
 
     def target(self, rule: str) -> str:
+        if self.config.rules is not None:
+            return (
+                self.config.rules[rule].stage_id
+                if rule in self.config.rules
+                else self.baseline_stage_id
+            )
         return self.profile.stage_targets[rule] if self.profile else self.config.stages[0].id
 
     def _time(self, now: float) -> float:
@@ -146,6 +176,8 @@ class CorrelationEngine:
         """List contact openings and unavailable inputs under the selected policy."""
         result = []
         included = [sensor for sensor in self.sensors.values() if self._included(sensor)]
+        if self.config.rules is not None and not included:
+            return ["Profil enthält keine verwendbaren Sensoren in seinen aktiven Levelregeln"]
         if (
             self.profile
             and (self.profile.room_ids is not None or self.profile.sensor_ids is not None)
@@ -169,6 +201,15 @@ class CorrelationEngine:
                 state is True
                 and sensor.role in CONTACT_ROLES
                 and self.config.settings.block_open_on_arm
+                and (
+                    self.config.rules is None
+                    or any(
+                        condition.event in ("active", "override")
+                        and accepts(rule, condition, sensor)
+                        for rule in self.active_rules()
+                        for condition in rule.conditions
+                    )
+                )
             ):
                 result.append(f"{sensor.name or sensor.entity_id}: offen")
         return result
@@ -207,6 +248,8 @@ class CorrelationEngine:
         self.pending_chain = []
         self.breach_chain = []
         self.arming_until = None
+        self.rule_pending.clear()
+        self.rule_matches = []
         if profile_id is None:
             self.quarantine.clear()
         elif self.reactions_enabled:
@@ -253,9 +296,13 @@ class CorrelationEngine:
         if self.profile is None or evidence.entity_id in self.quarantine:
             return False
         duration = (
-            self.profile.perimeter_seconds
-            if evidence.role in PERIMETER_ROLES
-            else self.profile.correlation_seconds
+            max((r.window_seconds for r in self.active_rules()), default=0)
+            if self.config.rules is not None
+            else (
+                self.profile.perimeter_seconds
+                if evidence.role in PERIMETER_ROLES
+                else self.profile.correlation_seconds
+            )
         )
         return 0 <= now - evidence.timestamp < duration
 
@@ -266,6 +313,12 @@ class CorrelationEngine:
             return False
         if not sensor.enabled or profile is None:
             return False
+        if self.config.rules is not None:
+            return any(
+                accepts(rule, condition, sensor)
+                for rule in self.active_rules()
+                for condition in rule.conditions
+            )
         if sensor.role in PERIMETER_ROLES and not profile.perimeter_enabled:
             return False
         if sensor.role in CONTACT_ROLES and not profile.contacts_enabled:
@@ -402,7 +455,8 @@ class CorrelationEngine:
         )
         valid = [e for e in self.evidence if self._fresh(e, now)]
         if (
-            sensor.role in INTERIOR_ROLES
+            self.config.rules is None
+            and sensor.role in INTERIOR_ROLES
             and self.profile.motion_mode == "after_contact"
             and not sensor.immediate
         ):
@@ -421,6 +475,16 @@ class CorrelationEngine:
         self.evidence = deque((e for e in valid if e.entity_id != entity_id), maxlen=2000)
         self.evidence.append(current)
         self._log(now, "signal", f"Signal: {current.name}", [current])
+        if self.config.rules is not None:
+            self._recompute(now, current)
+            if not self.confirmed and any(e.source_id != current.source_id for e in valid):
+                self._log(
+                    now,
+                    "correlation_rejected",
+                    "Keine höhere Bestätigung: Quellen, Raumbezug, Reihenfolge oder Zeitfenster der Levelregeln nicht erfüllt",
+                    [valid[-1], current],
+                )
+            return
         if sensor.immediate or sensor.role in (Role.PANIC, Role.SMOKE):
             self._confirm(
                 [current],
@@ -547,13 +611,14 @@ class CorrelationEngine:
         reason: str,
         chain: list[Evidence] | None = None,
         rule: str | None = None,
+        stage_id: str | None = None,
     ) -> None:
         rule = rule or {
             Level.PERIMETER: "perimeter",
             Level.SUSPICION: "single",
             Level.BREACH: "contact_motion",
         }.get(level)
-        stage_id = self.target(rule) if rule else self.baseline_stage_id
+        stage_id = stage_id or (self.target(rule) if rule else self.baseline_stage_id)
         if (self.latched and self.config.stage_rank(stage_id) <= self.level) or (
             self.severity == level and self.stage_id == stage_id
         ):
@@ -570,12 +635,17 @@ class CorrelationEngine:
                     "rule": rule,
                     "chain": [asdict(e) for e in chain or []],
                 }
+        else:
+            self.latched = False
         kind = "level_expired" if self.level < previous_rank else "level_changed"
         if previous_confirmed != self.confirmed:
             kind = "confirmation_changed"
         self._log(now, kind, reason, chain)
 
     def _recompute(self, now: float, current: Evidence | None = None) -> None:
+        if self.config.rules is not None:
+            self._recompute_rules(now)
+            return
         if self.latched or self.pending_until is not None:
             return
         if self.severity == Level.BREACH:
@@ -651,6 +721,125 @@ class CorrelationEngine:
         _, severity, rule, reason, chain = max(choices, key=lambda value: value[0])
         self._set_level(severity, now, reason, chain, rule)
 
+    def _recompute_rules(self, now: float) -> None:
+        rules = self.active_rules() if self.arming_until is None else []
+        active_ids = {rule.id for rule in rules}
+        matches = []
+        pending = []
+        for key in set(self.rule_pending) - active_ids:
+            del self.rule_pending[key]
+        for rule in rules:
+            waiting = self.rule_pending.get(rule.id)
+            if waiting:
+                chain = [Evidence(**value) for value in waiting["chain"]]
+                if any(
+                    e.entity_id in self.quarantine or self.raw.get(e.entity_id) is None
+                    for e in chain
+                ):
+                    del self.rule_pending[rule.id]
+                elif now < waiting["until"]:
+                    pending.append((waiting["until"], rule, chain))
+                    continue
+                else:
+                    matches.append(
+                        RuleMatch(
+                            rule.id,
+                            rule.stage_id,
+                            chain,
+                            self.config.stage(rule.stage_id).requires_confirmation,
+                        )
+                    )
+                    del self.rule_pending[rule.id]
+                    continue
+            match = match_rule(
+                self.config, rule, self.sensors, self.raw, list(self.evidence), self.quarantine, now
+            )
+            if not match:
+                continue
+            delay = (
+                rule.delay_seconds
+                if self.reactions_enabled
+                and (
+                    not rule.entry_only
+                    or any(
+                        self.sensors[e.entity_id].entry_delay and e.role in CONTACT_ROLES
+                        for e in match.chain
+                    )
+                )
+                else 0
+            )
+            # The displayed/held match is already admitted; do not restart its delay.
+            admitted = (
+                self.stage_id == match.stage_id
+                and self.confirmed == match.confirmed
+                and self.confirmation_rule == rule.id
+            )
+            if delay and not admitted:
+                until = now + delay
+                self.rule_pending[rule.id] = {
+                    "until": until,
+                    "chain": [asdict(e) for e in match.chain],
+                }
+                pending.append((until, rule, match.chain))
+                self._log(now, "entry_delay", f"{rule.name}: Verzögerung {delay:g} s", match.chain)
+            else:
+                matches.append(match)
+        if self.held_alarm and self.reactions_enabled:
+            held = self.held_alarm
+            if held["rule"] in active_ids:
+                matches.append(
+                    RuleMatch(
+                        held["rule"], held["stage_id"], [Evidence(**e) for e in held["chain"]], True
+                    )
+                )
+        self.rule_matches = matches
+        baseline_rank = self.config.stage_rank(self.baseline_stage_id)
+        eligible = (
+            [m for m in matches if m.confirmed]
+            if self.held_alarm and self.reactions_enabled
+            else matches
+        )
+        winner = max(eligible, key=lambda m: self.config.stage_rank(m.stage_id), default=None)
+        if winner and self.config.stage_rank(winner.stage_id) > baseline_rank:
+            level = (
+                Level.BREACH
+                if winner.confirmed
+                else Level.PERIMETER
+                if all(e.role in PERIMETER_ROLES for e in winner.chain)
+                else Level.SUSPICION
+            )
+            self.breach_chain = winner.chain if winner.confirmed else []
+            self.pending_until = None
+            self._set_level(
+                level,
+                now,
+                f"{self.config.rules[winner.rule_id].name}: "
+                + " → ".join(e.name for e in winner.chain),
+                winner.chain,
+                winner.rule_id,
+                winner.stage_id,
+            )
+            self.confirmation_rule = winner.rule_id
+        else:
+            self.breach_chain = []
+            self.confirmation_rule = None
+            self.latched = False
+            self.pending_until = None
+            self._set_level(
+                Level.SECURE,
+                now,
+                "Überwachung bereit" if self.profile_id else "Anlage deaktiviert",
+                stage_id=self.baseline_stage_id,
+            )
+        higher = [item for item in pending if self.config.stage_rank(item[1].stage_id) > self.level]
+        if higher:
+            self.pending_until, pending_rule, self.pending_chain = min(
+                higher, key=lambda value: value[0]
+            )
+            self.pending_rule = pending_rule.id
+        else:
+            self.pending_until, self.pending_chain, self.pending_rule = None, [], None
+
     def tick(self, now: float) -> None:
         """Advance timers even when no sensor changes state."""
         now = self._time(now)
@@ -665,7 +854,11 @@ class CorrelationEngine:
                 del self.debouncing[entity_id]
                 if self.raw.get(entity_id) is True:
                     self._activate(entity_id, now)
-        if self.pending_until is not None and now >= self.pending_until:
+        if (
+            self.config.rules is None
+            and self.pending_until is not None
+            and now >= self.pending_until
+        ):
             chain, self.pending_chain = self.pending_chain, []
             self.pending_until = None
             if chain and all(e.entity_id not in self.quarantine for e in chain):
@@ -719,8 +912,27 @@ class CorrelationEngine:
         ):
             if present:
                 ranks.append(self.config.stage_rank(self.target(rule)))
+        if self.config.rules is not None:
+            local = [
+                m
+                for m in self.rule_matches
+                if any(room_id in spaces(self.sensors[e.entity_id]) for e in m.chain)
+            ]
+            breach = any(m.confirmed for m in local)
+            ranks = [self.config.stage_rank(self.baseline_stage_id)] + [
+                self.config.stage_rank(m.stage_id) for m in local
+            ]
+            suspicious = any(
+                not m.confirmed and any(e.role not in PERIMETER_ROLES for e in m.chain)
+                for m in local
+            )
+            perimeter = any(any(e.role in PERIMETER_ROLES for e in m.chain) for m in local)
         return {
-            "level": self.level if breach else max(ranks),
+            "level": max(ranks)
+            if self.config.rules is not None
+            else self.level
+            if breach
+            else max(ranks),
             "confirmed": breach,
             "suspicion": suspicious,
             "perimeter": perimeter,
@@ -789,6 +1001,7 @@ class CorrelationEngine:
             "rooms": {r: self.room_status(r, now) for r in self.config.rooms},
             "events": [e.to_dict() for e in list(self.events)[:50]],
             "breach_chain": [asdict(e) for e in self.breach_chain],
+            "matched_rules": [m.rule_id for m in self.rule_matches],
         }
 
     def persistent_state(self) -> dict:
@@ -811,6 +1024,7 @@ class CorrelationEngine:
             "pending_chain": [asdict(e) for e in self.pending_chain],
             "breach_chain": [asdict(e) for e in self.breach_chain],
             "evidence": [asdict(e) for e in self.evidence],
+            "rule_pending": self.rule_pending,
             "events": [e.to_dict() for e in self.events],
         }
 
@@ -876,6 +1090,10 @@ class CorrelationEngine:
         self.events = deque(
             (EventLog(**e) for e in data.get("events", [])[:MAX_EVENTS]), maxlen=MAX_EVENTS
         )
+        if self.config.rules is not None:
+            self._restore_rules(data, now)
+            self.tick(now)
+            return
         previous_chain = data.get("breach_chain", []) + data.get("pending_chain", [])
         invalid_confirmation = any(
             len(chain) > 1
@@ -906,3 +1124,96 @@ class CorrelationEngine:
                 "chain": [asdict(e) for e in self.breach_chain],
             }
         self.tick(now)
+
+    def _restore_rules(self, data: dict, now: float) -> None:
+        active = {rule.id: rule for rule in self.active_rules()}
+
+        def proof(chain, stage_id=None):
+            if not chain:
+                return None
+            timestamp = max(e.timestamp for e in chain)
+            for rule in active.values():
+                if stage_id is not None and rule.stage_id != stage_id:
+                    continue
+                match = match_rule(
+                    self.config,
+                    rule,
+                    self.sensors,
+                    {},
+                    chain,
+                    self.quarantine,
+                    timestamp,
+                    proof_only=True,
+                )
+                if match and match.confirmed:
+                    return match
+            return None
+
+        previous_held = self.held_alarm
+        held = None
+        if previous_held:
+            try:
+                held = proof(
+                    [
+                        Evidence(**e)
+                        for e in previous_held["chain"]
+                        if e["entity_id"] in self.sensors
+                    ],
+                    previous_held["stage_id"],
+                )
+            except (ValueError, TypeError, KeyError):
+                held = None
+        self.held_alarm = (
+            {
+                "rule": held.rule_id,
+                "stage_id": held.stage_id,
+                "chain": [asdict(e) for e in held.chain],
+            }
+            if held and self.config.stage(held.stage_id).latch
+            else None
+        )
+        matched = proof(self.breach_chain, self.stage_id) if self.confirmed else None
+        if self.confirmed and matched is None:
+            self.severity, self.stage_id = Level.SECURE, self.baseline_stage_id
+            self.latched, self.breach_chain = False, []
+            self.confirmation_rule = None
+        elif matched:
+            self.confirmation_rule = matched.rule_id
+            self.latched = self.latched and self.config.stage(matched.stage_id).latch
+            if self.latched:
+                self.held_alarm = {
+                    "rule": matched.rule_id,
+                    "stage_id": matched.stage_id,
+                    "chain": [asdict(e) for e in matched.chain],
+                }
+        for key, value in data.get("rule_pending", {}).items():
+            if key not in active or not now < value.get("until", 0) <= now + 600:
+                continue
+            try:
+                chain = [Evidence(**e) for e in value["chain"] if e["entity_id"] in self.sensors]
+                candidate = (
+                    match_rule(
+                        self.config,
+                        active[key],
+                        self.sensors,
+                        {},
+                        chain,
+                        self.quarantine,
+                        max(e.timestamp for e in chain),
+                        proof_only=True,
+                    )
+                    if chain
+                    else None
+                )
+            except (ValueError, TypeError, KeyError):
+                candidate = None
+            if candidate:
+                self.rule_pending[key] = value
+        if not self.rule_pending and self.pending_until and self.pending_until > now:
+            matched = proof(self.pending_chain)
+            if matched:
+                self.rule_pending[matched.rule_id] = {
+                    "until": self.pending_until,
+                    "chain": [asdict(e) for e in matched.chain],
+                }
+        self.pending_until, self.pending_rule, self.pending_chain = None, None, []

@@ -40,7 +40,7 @@ def test_new_install_has_requested_names_colors_and_targets():
         "#bc2929",
         "#8000ff",
     ]
-    assert config.profiles["armed_night"].stage_targets == {
+    assert {key: rule.stage_id for key, rule in config.rules.items()} == {
         "perimeter": "2",
         "single": "3",
         "motion": "4",
@@ -48,6 +48,7 @@ def test_new_install_has_requested_names_colors_and_targets():
         "flapping": "3",
         "perimeter_contact": "5",
         "contact_motion": "5",
+        "contact_motion_any_order": "5",
         "multi_contact": "5",
         "multi_motion": "5",
         "immediate": "5",

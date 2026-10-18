@@ -14,6 +14,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from .compat import vol
 from .const import ALLOWED_SENSOR_DOMAINS, DOMAIN, SIGNAL_UPDATE
 from .floorplan_analysis import analyze_image
+from .level_rules import LevelRule
 from .models import Action, FloorPlan, Profile, Room, SensorConfig, WindowConfig, construct
 from .sensor_discovery import discover_sensors, sensor_setup
 from .windows import capture_position, inspect_window
@@ -170,7 +171,7 @@ async def ws_config(hass, connection, msg) -> None:
     {
         "type": "iqalarm/crud",
         vol.Required("collection"): vol.In(
-            ["rooms", "sensors", "actions", "profiles", "floorplans", "windows"]
+            ["rooms", "sensors", "actions", "profiles", "floorplans", "windows", "rules"]
         ),
         vol.Required("operation"): vol.In(["save", "delete"]),
         vol.Required("revision"): int,
@@ -192,6 +193,21 @@ async def ws_crud(hass, connection, msg) -> None:
                 raise ValueError("Eintrag nicht vorhanden")
             if collection == "profiles" and key == data["settings"]["observation_profile_id"]:
                 raise ValueError("Zuerst ein anderes Hintergrund-Beobachtungsprofil auswählen")
+            if collection == "rules":
+                for profile in data["profiles"].values():
+                    if profile.get("rule_ids") is not None:
+                        profile["rule_ids"] = [r for r in profile["rule_ids"] if r != key]
+            if collection == "profiles":
+                for action_id, action in list(data["actions"].items()):
+                    if action.get("profile_ids") is not None:
+                        action["profile_ids"] = [p for p in action["profile_ids"] if p != key]
+                        if not action["profile_ids"]:
+                            del data["actions"][action_id]
+                            for profile in data["profiles"].values():
+                                if profile.get("action_ids") is not None:
+                                    profile["action_ids"] = [
+                                        a for a in profile["action_ids"] if a != action_id
+                                    ]
             if collection == "rooms":
                 if any(
                     s["room_id"] == key or key in s["front_of"] for s in data["sensors"].values()
@@ -242,10 +258,20 @@ async def ws_crud(hass, connection, msg) -> None:
                         profile["sensor_ids"] = [
                             value for value in profile["sensor_ids"] if value not in removed
                         ]
+                prune_rule_sources(data, removed)
+            if collection == "sensors":
+                prune_rule_sources(data, {key})
+            if collection == "rooms":
+                for rule in (data.get("rules") or {}).values():
+                    if rule.get("room_ids") is not None:
+                        rule["room_ids"] = [r for r in rule["room_ids"] if r != key]
+                        if not rule["room_ids"]:
+                            rule["enabled"] = False
+                    rule["paths"] = [path for path in rule["paths"] if key not in path]
             del data[collection][key]
         else:
             item = dict(msg["item"])
-            if collection in ("rooms", "actions", "profiles", "floorplans", "windows"):
+            if collection in ("rooms", "actions", "profiles", "floorplans", "windows", "rules"):
                 item.setdefault("id", uuid4().hex)
             key = item["entity_id" if collection == "sensors" else "id"]
             if collection == "profiles":
@@ -258,6 +284,7 @@ async def ws_crud(hass, connection, msg) -> None:
                     "actions": Action,
                     "floorplans": FloorPlan,
                     "windows": WindowConfig,
+                    "rules": LevelRule,
                 }[collection]
                 construct(cls, item)
             data[collection][key] = item
@@ -265,6 +292,14 @@ async def ws_crud(hass, connection, msg) -> None:
         connection.send_result(msg["id"], instance.snapshot())
     except (ValueError, KeyError, TypeError, HomeAssistantError) as err:
         connection.send_error(msg["id"], "invalid_configuration", str(err))
+
+
+def prune_rule_sources(data, removed):
+    for rule in (data.get("rules") or {}).values():
+        for condition in rule["conditions"]:
+            condition["sensor_ids"] = [s for s in condition["sensor_ids"] if s not in removed]
+            if not condition["roles"] and len(condition["sensor_ids"]) < condition["count"]:
+                rule["enabled"] = False
 
 
 @websocket_api.websocket_command(

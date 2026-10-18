@@ -4,7 +4,7 @@
 
 ## Frei konfigurierbare Alarmstufen
 
-Die folgenden sechs Stufen sind die Startvorgaben ab 2.5.0. Unter **Level-Konfiguration** lassen sich weiterhin 1–32 Stufen mit eigenen Namen und Farben festlegen. Die Reihenfolge bestimmt die Zahl im Kreis; die Bezeichnung steht darüber. Jedes Profil ordnet Ereignisarten seinen Stufen zu. Aktionen verweisen auf feste Stufenkennungen. Bestehende eigene Stufen und Zuordnungen bleiben bei einem Update erhalten.
+Die folgenden sechs Stufen sind die Startvorgaben ab 2.5.0. Unter **Level-Konfiguration** lassen sich weiterhin 1–32 Stufen mit eigenen Namen und Farben festlegen. Die Reihenfolge bestimmt die Zahl im Kreis; die Bezeichnung steht darüber. Jede Stufe enthält ihre frei konfigurierbaren Sensorregeln. Profile wählen die verwendeten Regeln und haben eigene Aktionen je Level. Aktionen verweisen auf feste Stufenkennungen. Bestehende eigene Stufen und Zuordnungen bleiben bei einem Update erhalten.
 
 | Stufe | Bedeutung | Standardlogik |
 | --- | --- | --- |
@@ -18,6 +18,22 @@ Die folgenden sechs Stufen sind die Startvorgaben ab 2.5.0. Unter **Level-Konfig
 Innenbewegung allein erzeugt auch auf Stufe 4 keinen Vollalarm. Im Nachtprofil bleibt sie ohne vorherige passende Öffnung ohne Eskalation. Stufe 5 benötigt eine Bestätigung; erst dort sind standardmäßig Sirenen und kritische Pushs freigegeben. Ein allein prellender Sensor kann diese Stufe nicht erreichen.
 
 Der **Normalzustand bei aktivem Profil** ist separat wählbar (standardmäßig Stufe 1). Beim Rückfall werden eigene Alarmausgänge abgeschaltet. Stufe 0 und der aktive Normalzustand bleiben lautlos. Auslöser auf Stufe 0 sind deaktiviert. Alte Vier-Stufen-Konfigurationen behalten ihren bisherigen Normalzustand und ihre Aktionskennungen.
+
+### Freie Auslöser und Bestätigung ab 2.6.0
+
+Unter **Level-Konfiguration → Stufe → Regel hinzufügen** wählst du konkrete, zuvor zugewiesene Sensoren oder ganze Sensorgruppen. Eine Bedingung legt die Meldungsart und die Mindestzahl unabhängiger Quellen fest. Mehrere Bedingungen gelten gemeinsam; optional müssen sie in der angegebenen Reihenfolge eintreffen. Das Bestätigungsfenster gilt ab der ersten frischen Meldung. Eine zusätzliche Verzögerung nach erfüllter Regel ist separat einstellbar, bei Bedarf nur für Sensoren mit erlaubter Eingangsverzögerung.
+
+Beispiel: Eine Kamera meldet eine Person und hebt auf die Vorfeld-Stufe. Eine weitere Regel verlangt innerhalb von 30 Sekunden zwei unabhängige Quellen aus der Auswahl „Personenkamera Terrasse, Personenkamera Einfahrt, Außenbewegungsmelder“. Beide müssen zu einem gemeinsamen Raum/Vorfeld oder einem ausdrücklich freigegebenen gerichteten Weg gehören. Erst diese erfüllte Regel hebt auf ihre gewählte Zielstufe. Zweimal dieselbe Kamera zählt weiterhin einmal; dauerhaft aktive oder beim Start bereits aktive Zustände erzeugen keine künstliche zweite Bestätigung.
+
+Die höchste erfüllte Regel bestimmt die Stufe. „Sicher“ ergibt sich bei aktivem Profil automatisch, wenn keine höhere Regel erfüllt ist. Ein gehaltener bestätigter Alarm bleibt bis zum Entschärfen aktiv; eine höhere bestätigte Stufe kann ihn überlagern. Informationssignale der Fenstergriffe, ausgefallene und quarantänisierte Quellen bestätigen keinen Einbruch. Ein reines Schlossentriegeln mit Innenbewegung ersetzt keine physische Öffnung. Einzelsignale können eine bestätigungspflichtige Stufe nur über einen ausdrücklich freigegebenen Gefahrensensor erreichen.
+
+### Aktionen je Level und Alarmmodus
+
+Unter **Profile & System** wählst du oben den Alarmmodus und seine Levelregeln. Ganz unten stehen **Aktionen je Alarmstufe** für genau diesen Modus. Dort lassen sich Push, Licht, Sirenen, Kameraaufnahmen, Rollos und weitere Aktionen anlegen, bearbeiten, entfernen und pro Stufe trocken testen. Der zusätzliche Schalter für einen realen Test führt Geräteaktionen aus. Auch der aktive Normalzustand kann eigene lautlose Aktionen erhalten.
+
+Aktionen anderer Modi bleiben getrennt. Beim Duplizieren eines Profils werden seine Aktionen kopiert; spätere Änderungen an der Kopie verändern das Original nicht. Eine aus älteren Versionen gemeinsam verwendete Aktion wird beim Bearbeiten für den gewählten Modus abgetrennt. Für Kameraaktionen verwendet das Ziel `trigger_camera` die tatsächlich zur Auslösekette gehörenden Kameras.
+
+Die alten zusätzlichen Sensorfilter, Kombinationsschalter und Zuordnungstabellen entfallen in der neuen Profiloberfläche. Bestehende Konfigurationen werden einmalig in gleichwertige Regeln und Aktionszuordnungen überführt. Räumliche Wege, ausgewählte Sensoren, Zeitfenster und die Nacht-Freigabe erst nach Öffnung bleiben dabei erhalten. Eine zuvor ausdrücklich leere Sensorauswahl bleibt leer und schaltet keine fremden Regeln frei. Die ursprüngliche Konfiguration wird vor der Speicher-Migration privat unter `.storage/iqalarm.configuration.before_level_rules` gesichert.
 
 ### Sensoren bearbeiten, sortieren und löschen
 
@@ -49,17 +65,11 @@ Das Logbuch erklärt passende Auslöseketten und abgelehnte räumliche Kombinati
 
 Profile haben freie Namen und definieren die gesamte Steuerung. Es gibt **keine Zuordnung zu HA-Modi**. Zuhause, Nacht, Abwesend und Urlaub sind bearbeitbare und löschbare Startvorgaben; selbst ihre Kennungen bestimmen keine Regeln.
 
-Jedes Profil legt unabhängig fest:
+Jedes Profil wählt seine verwendeten Levelregeln, erlaubt oder unterdrückt Geräteaktionen und kann eine eigene Scharfschaltverzögerung sowie Anwesenheitssimulation verwenden. Sensoren, räumliche Bedingungen und Bestätigungsfenster stehen ausschließlich an der Levelregel. Die Aktionen jedes Modus werden im selben Profil ganz unten gepflegt.
 
-- Räume und Sensoren (gemeinsame Schnittmenge), erlaubte Aktionen und eigene Timer.
-- Vorfeld und Kontakte auswerten oder nur live anzeigen.
-- Bewegung immer, erst nach Öffnung oder nur live anzeigen. Bei „erst nach Öffnung“ gilt die Freigabe für den betroffenen Raum und ausdrücklich erlaubte Bestätigungswege.
-- Welche Kombinationen bestätigen und auf welche eigene Alarmstufe sie führen.
-- Ob Reaktionen und Anwesenheitssimulation erlaubt sind.
+Das Nachtprofil verwendet standardmäßig keine eigenständige Innenbewegungsregel. Bewegung ist weiterhin auf dem Grundriss sichtbar. Für einen Alarm müssen etwa zuerst ein Öffnungssignal und anschließend eine neue passende Bewegung auftreten. Bereits aktive Präsenz liefert keine neue Bestätigung. Ein Profil ohne verwendbare Sensoren lässt sich nicht scharfschalten. Schutzprofile müssen vor einem Wechsel mit der optionalen PIN deaktiviert werden.
 
-Bei „erst nach Öffnung“ zählt eine frühere Bewegung nicht rückwirkend. Bereits aktive Präsenz erzeugt keine künstliche Bestätigung; erst eine neue Signalflanke nach dem Kontakt zählt. Eingangstimer gelten nur für dafür freigegebene Kontakte und beginnen nach Bestätigung. Weitere Signale verlängern den Timer nicht. Aktive Schutzprofile müssen vor einem Wechsel mit der optionalen PIN deaktiviert werden.
-
-„Alle“ umfasst auch neue Einträge. Eine explizit leere Auswahl umfasst nichts; ein Schutzprofil mit leerem Sensorumfang lässt sich nicht aktivieren. Eine leere Aktionsauswahl schließt konfigurierte Aktionen aus. Automatische Kamerafunktionen benötigen zusätzlich globale Freigabe und ein Profil mit erlaubten Reaktionen.
+Die Grundrissdarstellung wird unter **Räume & Grundriss → Darstellung im Live-Grundriss** eingestellt. Scharfschaltprüfung und Diagnose stehen unter den erweiterten Systemeinstellungen. Die Anwesenheitssimulation wird pro Profil eingeschaltet und verwendet die darunter ausgewählten Lichter und Abendzeiten.
 
 ### Live-Beobachtung und Grundriss
 
@@ -164,7 +174,7 @@ Nach einem Neustart wird der gewählte Modus einschließlich Quarantäne und bes
 | `iqalarm.trigger_test_level` | Eigene Stufen-ID oder `diagnostic`, `dry_run` standardmäßig `true`, optional `profile_id` |
 | `iqalarm_event` | Strukturierte Ereignisse mit Zeit, Modus, Profil, Entscheidung und Auslösekette |
 
-WebSocket-Befehle: `iqalarm/get`, `iqalarm/subscribe`, `iqalarm/catalog`, `iqalarm/config/save`, `iqalarm/crud`, `iqalarm/import_areas`, `iqalarm/set_mode`, `iqalarm/arm_profile`, `iqalarm/clear_quarantine`, `iqalarm/test_level`, `iqalarm/floorplan/analyze`, `iqalarm/window/preview`, `iqalarm/window/capture`. CRUD unterstützt Räume, Sensoren, Aktionen, Profile und Grundrisse. Stufen werden mit der gesamten Konfiguration gespeichert. Neue Etage mit Bild: POST `/api/iqalarm/floorplans/upload?name=Etagenname`. Die Flächenanalyse ist schreibgeschützt. Geschützte Bild-API: GET/POST `/api/iqalarm/floorplans/{id}/image`; Upload mit aktuellem `X-IQAlarm-Revision`-Header. Alle Befehle verlangen einen Administrator. CRUD und Konfigurationsänderungen verlangen die aktuelle `revision`.
+WebSocket-Befehle: `iqalarm/get`, `iqalarm/subscribe`, `iqalarm/catalog`, `iqalarm/config/save`, `iqalarm/crud`, `iqalarm/import_areas`, `iqalarm/set_mode`, `iqalarm/arm_profile`, `iqalarm/clear_quarantine`, `iqalarm/test_level`, `iqalarm/floorplan/analyze`, `iqalarm/window/preview`, `iqalarm/window/capture`. CRUD unterstützt Räume, Sensoren, Aktionen, Profile, Grundrisse, Fenster und Levelregeln. Stufen werden mit der gesamten Konfiguration gespeichert. Neue Etage mit Bild: POST `/api/iqalarm/floorplans/upload?name=Etagenname`. Die Flächenanalyse ist schreibgeschützt. Geschützte Bild-API: GET/POST `/api/iqalarm/floorplans/{id}/image`; Upload mit aktuellem `X-IQAlarm-Revision`-Header. Alle Befehle verlangen einen Administrator. CRUD und Konfigurationsänderungen verlangen die aktuelle `revision`.
 
 ## Entwicklung und Verifikation
 

@@ -155,6 +155,7 @@ async def verify(hass, target) -> str:
         },
     ]
     data["secure_stage_id"] = "0"
+    data["rules"] = None
     for profile in data["profiles"].values():
         profile["stage_targets"] = {}
     data["rooms"] = {
@@ -343,6 +344,10 @@ async def verify(hass, target) -> str:
     from verify_six_stages import verify_six_stages
 
     await verify_six_stages(hass, entry, calls)
+    from verify_free_rules import verify_free_rules, verify_rule_storage_migration
+
+    await verify_free_rules(hass, entry, calls)
+    await verify_rule_storage_migration(hass, entry)
     runtime = entry.runtime_data
 
     hass.states.async_set("binary_sensor.window", "off")

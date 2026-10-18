@@ -292,11 +292,21 @@ class IQAlarmRuntime:
     async def flush(self) -> None:
         events = self.engine.drain()
         generation = self.generation
+        secure_event = None
         if not events:
             self.publish()
             return
         for event in events:
             self.hass.bus.async_fire(EVENT_TYPE, event.to_dict())
+            if (
+                self.config.rules is not None
+                and event.reactions_enabled
+                and event.stage_id == self.engine.baseline_stage_id
+                and event.kind
+                in {"mode_changed", "level_changed", "level_expired", "confirmation_changed"}
+            ):
+                secure_event = event
+                continue
             if (
                 event.kind in ("level_changed", "confirmation_changed")
                 and event.stage_id != self.engine.baseline_stage_id
@@ -311,19 +321,19 @@ class IQAlarmRuntime:
                     )
                 else:
                     queue.put_nowait((event, generation))
-        if (
-            self.engine.secure
-            and self.dispatcher.outputs
-            and any(
-                event.stage_id == self.engine.baseline_stage_id
-                and event.kind in {"level_expired", "confirmation_changed"}
-                for event in events
+        if self.engine.secure and (
+            secure_event is not None
+            or (
+                self.dispatcher.outputs
+                and any(
+                    event.stage_id == self.engine.baseline_stage_id
+                    and event.kind in {"level_expired", "confirmation_changed"}
+                    for event in events
+                )
             )
         ):
             cleanup = self.hass.async_create_background_task(
-                self.dispatcher.cleanup(
-                    force=True, alarm_only=True, secure_only=True, generation=generation
-                ),
+                self._secure_transition(secure_event, generation),
                 "IQAlarm secure output cleanup",
             )
             self.cleanup_tasks.add(cleanup)
@@ -334,6 +344,19 @@ class IQAlarmRuntime:
                 await self.persist()
         except (HomeAssistantError, OSError, TimeoutError) as err:
             self.report("runtime_error", f"Zustand nicht gespeichert: {err}")
+
+    async def _secure_transition(self, event, generation):
+        await self.dispatcher.cleanup(
+            force=True, alarm_only=True, secure_only=True, generation=generation
+        )
+        if (
+            event is not None
+            and generation == self.generation
+            and self.engine.secure
+            and self.engine.reactions_enabled
+            and self.engine.stage_id == event.stage_id
+        ):
+            await self.dispatcher.dispatch(event, generation)
 
     @callback
     def publish(self) -> None:
