@@ -876,6 +876,37 @@ class Configuration:
                     raise ValueError("Regel verweist auf einen unbekannten Raum")
                 if any(room not in self.rooms for path in rule.paths for room in path):
                     raise ValueError("Regel verweist auf einen unbekannten Bestätigungsweg")
+                if rule.confirmation_target is not None and any(
+                    c.event not in ("active", "override") for c in rule.conditions
+                ):
+                    raise ValueError(
+                        "Störungen und Prellen dürfen keinen Bestätigungsspeicher füllen"
+                    )
+                if rule.prerequisite_rule_id:
+                    parent = self.rules.get(rule.prerequisite_rule_id)
+                    if (
+                        parent is None
+                        or parent.confirmation_target is None
+                        or parent.prerequisite_rule_id is not None
+                        or self.stage_rank(parent.stage_id) >= self.stage_rank(rule.stage_id)
+                    ):
+                        raise ValueError(
+                            "Voraussetzung benötigt eine niedrigere Regel mit Bestätigungsziel"
+                        )
+                    if parent.confirmation_target + sum(c.count for c in rule.conditions) > 8:
+                        raise ValueError(
+                            "Bestätigung und neue Meldungen dürfen zusammen höchstens 8 Quellen benötigen"
+                        )
+                    for profile in self.profiles.values():
+                        if (
+                            rule.enabled
+                            and profile.rule_ids is not None
+                            and rule.id in profile.rule_ids
+                            and parent.id not in profile.rule_ids
+                        ):
+                            raise ValueError(
+                                f"Profil {profile.name}: auch die Bestätigungsregel {parent.name} auswählen"
+                            )
                 for condition in rule.conditions:
                     if set(condition.sensor_ids) - sensors.keys():
                         raise ValueError("Regel verweist auf einen unbekannten Sensor")
@@ -893,8 +924,12 @@ class Configuration:
                         raise ValueError(
                             "Störungen und Prellen dürfen keinen bestätigten Alarm erzeugen"
                         )
-                    if sum(c.count for c in rule.conditions) < 2 and not (
-                        len(rule.conditions) == 1 and rule.conditions[0].event == "override"
+                    if (
+                        not rule.prerequisite_rule_id
+                        and sum(c.count for c in rule.conditions) < 2
+                        and not (
+                            len(rule.conditions) == 1 and rule.conditions[0].event == "override"
+                        )
                     ):
                         raise ValueError(
                             "Bestätigte Alarmstufe benötigt unabhängige Quellen oder einen freigegebenen Gefahrensensor"

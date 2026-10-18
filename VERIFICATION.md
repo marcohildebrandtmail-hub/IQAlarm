@@ -1,8 +1,8 @@
 # IQAlarm · Prüfstand vom 18. Oktober 2026
 
-## Prüfumfang (Version 2.6.1)
+## Prüfumfang (Version 2.7.0)
 
-- **302 pytest-Tests** für Korrelationslogik, Nachtbetrieb, eigene Profile, Konfigurationsgrenzen, Archivierung, Repository-Metadaten und Deployment-Rollback.
+- **315 pytest-Tests** für Korrelationslogik, Nachtbetrieb, eigene Profile, Konfigurationsgrenzen, Archivierung, Repository-Metadaten und Deployment-Rollback.
 - Alle fünf geforderten Pflichtszenarien: MACO-Prellen, einzelnes Fenster, Fenster + Bewegung nach zwölf Sekunden, nächtlicher Toilettengang und Vorfeld + Fenster nach vierzig Sekunden.
 - Neue Sicherheitsregressionen: gerichtete Bestätigungswege, unzugeordnete Kameras, reine Außenbewegung, Schlossentriegelung ohne Öffnung, höherer Alarm trotz gehaltener Stufe und abgelehnte unabhängige Räume. Mehrfachkontakt-/Bewegungsregeln verlangen ausdrückliche Freigabe und räumliche Beziehung.
 - Echter Core: langsamer Lichtdienst blockiert keine andere Sirene; langsames Abschalten blockiert keinen Eingangstimer; eigene Alarm-Ausgänge werden nach Reload bis zum ursprünglichen Ablauf wieder aufgenommen.
@@ -14,11 +14,11 @@
 - Alle neun Aktionsarten gegen ausführbare Testdienste im echten HA-Service-Registry: Push, Sirene, Schalter, Skript, Licht, Rollos, Snapshot, Aufzeichnung und TTS.
 - Kamerafehler unterdrücken den Text-Push nicht. Langsame Verdachts-Pushs blockieren den bestätigten Sirenenalarm nicht. Selbst übernommene Ausgänge werden bei Entschärfung oder Timerende abgeschaltet.
 - Private Kameradateien, Kameraleserechte und PIN-Versuchslimit.
-- **36 Chromium-Browserprüfungen** gegen den echten Test-Core: CRUD über die deutsche Oberfläche, eigene Profile mit Auswahl und Duplizieren, Profilwechsel/PIN, mobile Darstellung und Dark Theme, Formulare, Text-Escaping und sichtbarer Verbindungsverlust mit Schreibsperre.
+- **38 Chromium-Browserprüfungen** gegen den echten Test-Core: CRUD über die deutsche Oberfläche, eigene Profile mit Auswahl und Duplizieren, Profilwechsel/PIN, mobile Darstellung und Dark Theme, Formulare, Text-Escaping und sichtbarer Verbindungsverlust mit Schreibsperre.
 - Beobachtung trotz bestätigter Korrelation ohne Geräte, Push, Kamera und Simulation; eigene Stufen mit echten Aktionszuordnungen; generische HA-An/Aus-Anbindung.
 - Private PNG-/JPG-Grundrisse: Authentifizierung, Adminrechte, ungültige Bilder, Revisionen, Raumgeometrie, Upload und Neustart.
 - Grafische Profilsymbole, freie MDI-Kennung, Speicherung und unveränderte Profilregeln. Direkter Datei-Dialog, ungültiger Upload ohne leere Etage, lokale Flächenvorschläge, korrigierbare Eckpunkte und bewusstes Übernehmen der Raumzuordnung.
-- **45 JavaScript-Tests** für lokale Entwurfssicherung, Rückgängig/Wiederholen, Bild-/Benutzertrennung, beschädigte Daten und Speicherausfälle. Browserregressionen bilden den Ablauf „korrigieren → Speichern ohne Raum → Raum auswählen“ ab und prüfen exakte Erhaltung der Eckpunkte, erneute Analyse, Etagenwechsel und Neuladen.
+- **47 JavaScript-Tests** für lokale Entwurfssicherung, Rückgängig/Wiederholen, Bild-/Benutzertrennung, beschädigte Daten und Speicherausfälle. Browserregressionen bilden den Ablauf „korrigieren → Speichern ohne Raum → Raum auswählen“ ab und prüfen exakte Erhaltung der Eckpunkte, erneute Analyse, Etagenwechsel und Neuladen.
 - Direkte Auswahl vorhandener Home-Assistant-Bereiche im Editor und Speicherdialog: aktuelle Liste, Verknüpfung erst beim Speichern, keine doppelten importierten Bereiche, unveränderte Eckpunkte nach Neuladen und vollständiger Entwurfserhalt bei zwischenzeitlich gelöschten HA-Bereichen.
 - Strukturierte Erkennung trennt generische farbige Wände von Möbeln und Schraffuren. Der persönliche EG-Grundriss wurde ausschließlich lokal im echten Editor geprüft und wird nicht mit dem Repository oder öffentlichen Testartefakten veröffentlicht.
 - Fenster-Assistent: Einlernen der fünf Stellungen, einfache Kontakte, stabile Signale, fehlende Verbindung, explizite unknown-Codes mit separatem Guard, nicht unterscheidbare Kombinationen, ein physisches Fenster als eine Alarmquelle und weiter funktionierender Kontakt bei ausgefallenem Griff. Neue HA-Sensoren werden authentifiziert erzeugt, über Reload geprüft und beim Entfernen der Zuordnung entfernt.
@@ -41,6 +41,8 @@ Zusätzliche Prüfungen ab 2.6.0: freie Levelregeln mit konkreten Sensoren/Senso
 Profilaktionen werden im echten Dispatcher sowie gegen den Service-Registry des Test-Core auf getrennte reale und trockene Ausführung geprüft. Browserfälle bearbeiten Sensorzuordnung, Quellenzahl, Zeitfenster, Profilverwendung, Aktionen und unabhängige Profilkopien. Ein zusätzlicher echter Speicher-/Reload-Test prüft die private Sicherung der ursprünglichen Konfiguration und das persistente Laden der überführten Regeln.
 
 Zusätzliche Prüfungen ab 2.6.1: individuelle Symbole für Sensoren, zusammengeführte Fenster und Räume. Speicherung, ältere Konfigurationen ohne Symbol, Weitergabe an virtuelle Fenster, Eingabevalidierung und unveränderte Sicherheitsrollen werden geprüft. Der Browserfall deckt Auswahl, eigene MDI-Kennung mit Vorschau, vollständigen Sensor-Editor, Sortieren, Neuladen, Live-Status und Rücksetzen auf Mobilgeräten ab.
+
+Zusätzliche Prüfungen ab 2.7.0: größere Quellenauswahl mit konkreten Gruppenmitgliedern, Livezuständen, Raumbegrenzung und Verbindungsverlust. Bestätigungsgrade steigen von 1/3 auf 3/3, speichern ihre ursprüngliche Ablaufzeit und verlangen für den Vollalarm ein späteres, unabhängiges Öffnungssignal im passenden Raum. Zwei Quellen, gleiche Geräte, fremde Kameraräume, vorherige Öffnungen, abgelaufene/ausgefallene/quarantänisierte Quellen sowie ungültige Abhängigkeiten werden abgewiesen. Neustart und bereits gehaltener Vollalarm werden getrennt geprüft. Browserfälle konfigurieren den vollständigen Ablauf über die Oberfläche und prüfen Desktop und Mobilansicht.
 
 ## Veröffentlichungsstatus
 

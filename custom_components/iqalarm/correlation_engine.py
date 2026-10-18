@@ -9,6 +9,7 @@ from collections import defaultdict, deque
 from dataclasses import asdict
 from typing import Any
 
+from .confirmations import grade_match, match_with_memory, memory_signature, valid_memory
 from .const import (
     CONTACT_ROLES,
     INTERIOR_ROLES,
@@ -19,7 +20,7 @@ from .const import (
     Role,
     RunState,
 )
-from .level_rules import RuleMatch, accepts, match_rule, spaces
+from .level_rules import RuleMatch, accepts, spaces
 from .models import Configuration, EventLog, Evidence, Profile
 
 
@@ -54,6 +55,7 @@ class CorrelationEngine:
         self._last_time = 0.0
         self.rule_pending: dict[str, dict] = {}
         self.rule_matches: list[RuleMatch] = []
+        self.rule_confirmations: dict[str, dict] = {}
 
     @property
     def profile(self):
@@ -249,6 +251,7 @@ class CorrelationEngine:
         self.breach_chain = []
         self.arming_until = None
         self.rule_pending.clear()
+        self.rule_confirmations.clear()
         self.rule_matches = []
         if profile_id is None:
             self.quarantine.clear()
@@ -724,6 +727,9 @@ class CorrelationEngine:
     def _recompute_rules(self, now: float) -> None:
         rules = self.active_rules() if self.arming_until is None else []
         active_ids = {rule.id for rule in rules}
+        self.rule_confirmations = {
+            key: value for key, value in self.rule_confirmations.items() if key in active_ids
+        }
         matches = []
         pending = []
         for key in set(self.rule_pending) - active_ids:
@@ -739,7 +745,7 @@ class CorrelationEngine:
                         for e in chain
                     )
                     if alarm
-                    else match_rule(
+                    else match_with_memory(
                         self.config,
                         rule,
                         self.sensors,
@@ -747,6 +753,7 @@ class CorrelationEngine:
                         list(self.evidence),
                         self.quarantine,
                         now,
+                        self.rule_confirmations,
                         debouncing=self.debouncing,
                     )
                     is None
@@ -767,7 +774,7 @@ class CorrelationEngine:
                     )
                     del self.rule_pending[rule.id]
                     continue
-            match = match_rule(
+            match = match_with_memory(
                 self.config,
                 rule,
                 self.sensors,
@@ -775,6 +782,7 @@ class CorrelationEngine:
                 list(self.evidence),
                 self.quarantine,
                 now,
+                self.rule_confirmations,
                 debouncing=self.debouncing,
             )
             if not match:
@@ -807,6 +815,38 @@ class CorrelationEngine:
                 self._log(now, "entry_delay", f"{rule.name}: Verzögerung {delay:g} s", match.chain)
             else:
                 matches.append(match)
+        for match in matches:
+            rule = self.config.rules[match.rule_id]
+            if rule.confirmation_target is None:
+                continue
+            proof = grade_match(
+                self.config,
+                rule,
+                self.sensors,
+                self.raw,
+                list(self.evidence),
+                self.quarantine,
+                now,
+                self.debouncing,
+            )
+            if not proof or len(proof.chain) < rule.confirmation_target:
+                continue
+            at = max(e.timestamp for e in proof.chain)
+            previous = self.rule_confirmations.get(rule.id)
+            if previous and at <= previous.get("confirmed_at", 0):
+                continue
+            self.rule_confirmations[rule.id] = {
+                "confirmed_at": at,
+                "until": at + rule.confirmation_memory_seconds,
+                "chain": [asdict(e) for e in proof.chain],
+                "signature": memory_signature(rule, proof.chain, self.sensors),
+            }
+            self._log(
+                now,
+                "rule_confirmation",
+                f"{rule.name}: {rule.confirmation_target}/{rule.confirmation_target} bestätigt",
+                proof.chain,
+            )
         if self.held_alarm and self.reactions_enabled:
             held = self.held_alarm
             if held["rule"] in active_ids:
@@ -992,6 +1032,38 @@ class CorrelationEngine:
             ],
         }
 
+    def _rule_progress(self, now: float) -> list[dict]:
+        progress = {}
+        for match in self.rule_matches:
+            rule = (self.config.rules or {}).get(match.rule_id)
+            if rule is None or rule.confirmation_target is None:
+                continue
+            record = self.rule_confirmations.get(rule.id)
+            memory = valid_memory(self.config, rule, record, self.sensors, self.quarantine, now)
+            if memory and any(self.raw.get(e.entity_id) is None for e in memory.chain):
+                memory = None
+            proof = memory or grade_match(
+                self.config,
+                rule,
+                self.sensors,
+                self.raw,
+                list(self.evidence),
+                self.quarantine,
+                now,
+                self.debouncing,
+            )
+            progress[rule.id] = {
+                "rule_id": rule.id,
+                "name": rule.name,
+                "stage_id": rule.stage_id,
+                "current": len(proof.chain) if proof else 0,
+                "target": rule.confirmation_target,
+                "complete": memory is not None,
+                "until": record["until"] if memory else None,
+                "sources": [asdict(e) for e in proof.chain] if proof else [],
+            }
+        return list(progress.values())
+
     def snapshot(self, now: float) -> dict:
         return {
             "mode": self.mode.value,
@@ -1025,6 +1097,7 @@ class CorrelationEngine:
             "events": [e.to_dict() for e in list(self.events)[:50]],
             "breach_chain": [asdict(e) for e in self.breach_chain],
             "matched_rules": [m.rule_id for m in self.rule_matches],
+            "rule_progress": self._rule_progress(now),
         }
 
     def persistent_state(self) -> dict:
@@ -1048,6 +1121,7 @@ class CorrelationEngine:
             "breach_chain": [asdict(e) for e in self.breach_chain],
             "evidence": [asdict(e) for e in self.evidence],
             "rule_pending": self.rule_pending,
+            "rule_confirmations": self.rule_confirmations,
             "events": [e.to_dict() for e in self.events],
         }
 
@@ -1114,6 +1188,11 @@ class CorrelationEngine:
             (EventLog(**e) for e in data.get("events", [])[:MAX_EVENTS]), maxlen=MAX_EVENTS
         )
         if self.config.rules is not None:
+            self.rule_confirmations = {
+                key: value
+                for key, value in data.get("rule_confirmations", {}).items()
+                if key in self.config.rules and isinstance(value, dict)
+            }
             self._restore_rules(data, now)
             self.tick(now)
             return
@@ -1158,7 +1237,7 @@ class CorrelationEngine:
             for rule in active.values():
                 if stage_id is not None and rule.stage_id != stage_id:
                     continue
-                match = match_rule(
+                match = match_with_memory(
                     self.config,
                     rule,
                     self.sensors,
@@ -1166,6 +1245,7 @@ class CorrelationEngine:
                     chain,
                     self.quarantine,
                     timestamp,
+                    self.rule_confirmations,
                     proof_only=True,
                 )
                 if match and match.confirmed:
@@ -1215,7 +1295,7 @@ class CorrelationEngine:
             try:
                 chain = [Evidence(**e) for e in value["chain"] if e["entity_id"] in self.sensors]
                 candidate = (
-                    match_rule(
+                    match_with_memory(
                         self.config,
                         active[key],
                         self.sensors,
@@ -1227,6 +1307,7 @@ class CorrelationEngine:
                         max(e.timestamp for e in chain)
                         if self.config.stage(active[key].stage_id).requires_confirmation
                         else now,
+                        self.rule_confirmations,
                         proof_only=self.config.stage(active[key].stage_id).requires_confirmation,
                     )
                     if chain

@@ -31,6 +31,16 @@ Beispiel: Eine Kamera meldet eine Person und hebt auf die Vorfeld-Stufe. Eine we
 
 Die höchste erfüllte Regel bestimmt die Stufe. „Sicher“ ergibt sich bei aktivem Profil automatisch, wenn keine höhere Regel erfüllt ist. Ein gehaltener bestätigter Alarm bleibt bis zum Entschärfen aktiv; eine höhere bestätigte Stufe kann ihn überlagern. Informationssignale der Fenstergriffe, ausgefallene und quarantänisierte Quellen bestätigen keinen Einbruch. Ein reines Schlossentriegeln mit Innenbewegung ersetzt keine physische Öffnung. Einzelsignale können eine bestätigungspflichtige Stufe nur über einen ausdrücklich freigegebenen Gefahrensensor erreichen.
 
+### Bestätigungsgrad und Vorfeldgedächtnis ab 2.7.0
+
+Die größere Quellenauswahl zeigt hinter gewählten Sensorgruppen die konkreten Entitäten mit Anzeigename, Entitäts-ID, Raum und Livezustand. Aktive Quellen sind hervorgehoben; isolierte, nicht erreichbare oder durch die Raumbegrenzung ausgeschlossene Quellen werden erläutert.
+
+**Auslösen ab** legt fest, wie viele unabhängige Quellen eine Stufe starten. Mit **Bestätigungsgrad für diese Regel verwenden** erhält sie ein eigenes **Bestätigungsziel** und die Dauer **Bestätigung merken (Minuten)**. Beispiel: LVL 2 beginnt bei einer Quelle, zeigt danach 1/3, 2/3 und schließlich 3/3. Erst 3/3 speichert die räumlich und zeitlich zusammenhängende Bestätigung. Wiederholungen derselben Kamera und Entitäten desselben Geräts zählen einmal. Drei Außenquellen allein lösen keinen Einbruchsalarm aus.
+
+Für den Vollalarm eine Regel mit den Tür-/Fensterkontakten anlegen und bei **Gespeicherte Bestätigung voraussetzen** die Vorfeldregel wählen. Erst ein **neues Öffnungssignal nach der Bestätigung**, innerhalb ihrer Speicherzeit und im passenden Raum/Vorfeld oder ausdrücklich erlaubten Weg, erreicht die Zielstufe. Die Vorfeldregel wird den gewählten Alarmmodi ebenfalls zugeordnet. Wenn ausschließlich dieser Bestätigungsweg gewünscht ist, im Profil nur die entsprechenden Alarmregeln verwenden: weitere Regeln derselben Zielstufe bleiben alternative Auslösewege.
+
+Das Cockpit zeigt den Bestätigungsgrad und den Ablaufzeitpunkt. Der Speicher verlängert sich nicht durch Timerläufe. Profilwechsel/Entschärfen löschen ihn; Neustarts erhalten nur gültige Beweise mit unverändertem Ablauf und unveränderter räumlicher/physischer Zuordnung. Eine bereits ausgelöste gehaltene Alarmstufe bleibt entsprechend ihrer Halteregel bestehen.
+
 ### Aktionen je Level und Alarmmodus
 
 Unter **Profile & System** wählst du oben den Alarmmodus und seine Levelregeln. Ganz unten stehen **Aktionen je Alarmstufe** für genau diesen Modus. Dort lassen sich Push, Licht, Sirenen, Kameraaufnahmen, Rollos und weitere Aktionen anlegen, bearbeiten, entfernen und pro Stufe trocken testen. Der zusätzliche Schalter für einen realen Test führt Geräteaktionen aus. Auch der aktive Normalzustand kann eigene lautlose Aktionen erhalten.

@@ -58,6 +58,9 @@ class LevelRule:
     room_ids: list[str] | None = None
     paths: list[list[str]] = field(default_factory=list)
     enabled: bool = True
+    confirmation_target: int | None = None
+    confirmation_memory_seconds: float = 180
+    prerequisite_rule_id: str | None = None
 
     def __post_init__(self):
         from .models import construct, number, text
@@ -78,6 +81,21 @@ class LevelRule:
             raise ValueError("Maximal 8 unabhängige Quellen pro Regel")
         number(self.window_seconds, 1, 3600, "Bestätigungsfenster")
         number(self.delay_seconds, 0, 600, "Regelverzögerung")
+        number(self.confirmation_memory_seconds, 1, 3600, "Bestätigungsspeicher")
+        if self.confirmation_target is not None and (
+            type(self.confirmation_target) is not int
+            or not sum(c.count for c in self.conditions) <= self.confirmation_target <= 8
+        ):
+            raise ValueError("Bestätigungsziel muss zwischen Auslöseschwelle und 8 liegen")
+        if self.prerequisite_rule_id is not None:
+            if not isinstance(self.prerequisite_rule_id, str) or not _ID.fullmatch(
+                self.prerequisite_rule_id
+            ):
+                raise ValueError("Ungültige Bestätigungsvoraussetzung")
+            if self.confirmation_target is not None:
+                raise ValueError(
+                    "Eine Regel nutzt ein eigenes Bestätigungsziel oder eine Voraussetzung"
+                )
         for name in ("entry_only", "ordered", "enabled"):
             if type(getattr(self, name)) is not bool:
                 raise ValueError(f"{name} muss boolesch sein")
@@ -128,6 +146,7 @@ def match_rule(
     *,
     proof_only: bool = False,
     debouncing: dict | None = None,
+    search_budget: list[int] | None = None,
 ) -> RuleMatch | None:
     """Match each slot to a distinct physical source with one coherent spatial chain.
 
@@ -219,10 +238,9 @@ def match_rule(
         for index, (condition, candidates) in enumerate(zip(rule.conditions, groups, strict=True))
         for _ in range(condition.count)
     ]
-    budget = 50000
+    budget = search_budget if search_budget is not None else [50000]
 
     def search(index, chain, used, anchors, previous_time):
-        nonlocal budget
         if index == len(slots):
             if confirmed:
                 roles = {e.role for e in chain}
@@ -235,8 +253,8 @@ def match_rule(
         prior_group = slots[index - 1][0] if index else -1
         boundary = previous_time if group_index != prior_group else None
         for candidate in candidates:
-            budget -= 1
-            if budget < 0:
+            budget[0] -= 1
+            if budget[0] < 0:
                 return None
             if candidate.source_id in used:
                 continue
