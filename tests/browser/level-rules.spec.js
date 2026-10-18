@@ -144,7 +144,7 @@ test("confirmation grade remembers three sources and requires a later opening",a
   await dialog.getByLabel("Regelname",{exact:true}).fill("Vorfeldgrad 3");
   await dialog.getByLabel("Sensoren für Bedingung 1",{exact:true}).selectOption([ids.person,ids.person2,ids.outside]);
   await dialog.getByLabel("Bestätigungsgrad für diese Regel verwenden",{exact:true}).check();
-  await dialog.getByLabel("Bestätigungsziel (unabhängige Quellen)",{exact:true}).fill("3");
+  await dialog.getByLabel("Anzahl Bestätigungsgrade",{exact:true}).fill("3");
   await dialog.getByLabel("Bestätigung merken (Minuten)",{exact:true}).fill("3");
   await dialog.getByRole("button",{name:"Speichern",exact:true}).click();
   await expect(dialog).not.toBeVisible();
@@ -250,6 +250,7 @@ test("quiet floorplan labels stay minimal and live colors fade on retained SVG n
     el.data.status.active=false;el.data.status.rooms.living.confirmed=false;
     el.data.config.settings.floorplan_disarmed_motion=true;
     el.data.status.raw["binary_sensor.level_motion"]=true;
+    el.data.status.rooms.living.motion=["binary_sensor.level_motion"];
     el.data.status.last_active["binary_sensor.level_motion"]=Date.now()/1000;
     el._render();
   });
@@ -262,6 +263,7 @@ test("quiet floorplan labels stay minimal and live colors fade on retained SVG n
     el.__fadePolygon=el.shadowRoot.querySelector('g[data-room="living"]:not([data-label-room]) polygon:nth-of-type(2)');
     el.__ringNode=el.shadowRoot.querySelector('[data-level-ring]');
     el.data.status.raw["binary_sensor.level_motion"]=false;
+    el.data.status.rooms.living.motion=[];
     el.data.status.last_active["binary_sensor.level_motion"]=Date.now()/1000-16;
     el._render();
   });

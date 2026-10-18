@@ -101,8 +101,10 @@ test("custom profiles can be created, sorted, scoped, copied, armed and deleted 
   await expect(page.getByRole("heading", {name: "Nacht mit Gästen"})).toBeVisible();
   await expect(page.locator("#rules-form").getByLabel(/^Basis und HA-Modus/)).toHaveCount(0);
   await page.getByRole("button", {name: "Profil nach links verschieben", exact: true}).click();
-  const reordered = await page.evaluate(() => window.iqTest.request({type: "iqalarm/get"}));
-  expect(Object.values(reordered.config.profiles).at(-2).name).toBe("Nacht mit Gästen");
+  await expect.poll(async()=>{
+    const reordered=await page.evaluate(()=>window.iqTest.request({type:"iqalarm/get"}));
+    return Object.values(reordered.config.profiles).at(-2).name;
+  }).toBe("Nacht mit Gästen");
   await page.getByLabel("Alarmreaktionen und Geräteaktionen erlauben",{exact:true}).check();
   await page.getByLabel("Alle Räume einbeziehen", {exact: true}).uncheck();
   await page.getByLabel("Räume auswählen", {exact: false}).selectOption({label: "Wohnzimmer"});

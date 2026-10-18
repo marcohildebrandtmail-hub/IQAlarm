@@ -139,8 +139,8 @@ test("motion label and red room expire together after fifteen seconds without an
   await expect(label).toContainText("Bewegung");
   await expect(shape).toHaveAttribute("fill","#ef4444");
   await page.clock.fastForward(2000);
-  await expect(label).toContainText("Ruhig");
-  await expect(label).not.toContainText("Bewegung",{ignoreCase:false});
+  await expect(label).toHaveCount(0);
+  await expect(page.locator('#floorplan-qa_motion [data-label-room="qa_motion"]')).toContainText("QA Bewegung");
   await expect(shape).toHaveAttribute("fill","#14b8a6");
   const current=await ws(page,"get");
   expect(current.status.rooms.qa_motion.level).toBe(2);
