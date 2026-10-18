@@ -116,7 +116,7 @@ test("simple contact setup works without grip signals and publishes a real HA se
   }).toBe(true);
 });
 
-test("unlocked window handles are hidden when off and informational when on",async({page})=>{
+test("unlocked window handles are shown on rooms but informational banner is armed-only",async({page})=>{
   await signals(page,{"lock.fenstergriff_browser":"unlocked"});
   await page.evaluate(async()=>{
     const data=await window.iqTest.request({type:"iqalarm/get"});
@@ -127,7 +127,7 @@ test("unlocked window handles are hidden when off and informational when on",asy
   });
   await page.reload();
   await expect(page.locator('[data-category="information"]')).toHaveCount(0);
-  await expect(page.getByText("Fenstergriff Browser",{exact:true})).toHaveCount(0);
+  await expect(page.locator('[data-category="information"]').getByText("Fenstergriff Browser",{exact:true})).toHaveCount(0);
   await page.getByRole("button",{name:"Fensterinfo-Test",exact:true}).click();
   await expect(page.locator('[data-category="information"]')).toContainText("Potenziell unsicher");
   const data=await page.evaluate(()=>window.iqTest.request({type:"iqalarm/get"}));

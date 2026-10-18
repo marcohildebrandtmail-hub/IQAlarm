@@ -23,7 +23,7 @@ test("desktop cockpit and real room/sensor/action/profile CRUD", async ({page}) 
   await page.getByRole("button", {name: "binary_sensor.window bearbeiten", exact: true}).click();
   await page.getByLabel("Anzeigename", {exact: true}).fill("Browser Fenster");
   await page.getByRole("button", {name: "Speichern", exact: true}).click();
-  await expect(page.getByText("Browser Fenster", {exact: true})).toBeVisible();
+  await expect(page.getByText("Browser Fenster", {exact: true}).first()).toBeVisible();
   await page.getByRole("tab", {name: "Profile & System"}).click();
   await page.getByLabel("Korrelationsfenster (Sekunden)", {exact: true}).fill("58");
   await page.getByRole("button", {name: "Profil speichern"}).click();
