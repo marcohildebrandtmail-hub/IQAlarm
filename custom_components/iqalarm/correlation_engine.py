@@ -1211,11 +1211,15 @@ class CorrelationEngine:
                         self.config,
                         active[key],
                         self.sensors,
-                        {},
+                        {}
+                        if self.config.stage(active[key].stage_id).requires_confirmation
+                        else self.raw,
                         chain,
                         self.quarantine,
-                        max(e.timestamp for e in chain),
-                        proof_only=True,
+                        max(e.timestamp for e in chain)
+                        if self.config.stage(active[key].stage_id).requires_confirmation
+                        else now,
+                        proof_only=self.config.stage(active[key].stage_id).requires_confirmation,
                     )
                     if chain
                     else None
@@ -1223,7 +1227,10 @@ class CorrelationEngine:
             except (ValueError, TypeError, KeyError):
                 candidate = None
             if candidate:
-                self.rule_pending[key] = value
+                self.rule_pending[key] = {
+                    "until": value["until"],
+                    "chain": [asdict(e) for e in candidate.chain],
+                }
         if not self.rule_pending and self.pending_until and self.pending_until > now:
             matched = proof(self.pending_chain)
             if matched:

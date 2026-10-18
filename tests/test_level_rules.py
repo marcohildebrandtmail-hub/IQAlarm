@@ -188,6 +188,41 @@ def test_confirmed_rule_delay_and_restored_alarm(free):
     assert restored.level == 5 and restored.confirmed and restored.latched
 
 
+def test_pending_restore_rechecks_current_physical_device_identity(free):
+    custom(free, stage_id="5", delay_seconds=10)
+    free.set_profile("armed_away", 100)
+    free.feed("binary_sensor.terrace", True, 101)
+    free.feed("binary_sensor.person2", True, 102)
+    data = free.persistent_state()
+    config = Configuration.from_dict(free.config.to_dict())
+    for key in ("binary_sensor.terrace", "binary_sensor.person2"):
+        config.sensors[key].source_id = "device:merged"
+    restored = CorrelationEngine(config)
+    for key in restored.sensors:
+        restored.seed(key, False)
+    restored.restore(data, 103)
+    restored.tick(113)
+    assert not restored.confirmed
+
+
+def test_diagnostic_delay_keeps_its_deadline_across_restart(free):
+    custom(
+        free,
+        delay_seconds=10,
+        conditions=[RuleCondition(sensor_ids=["binary_sensor.window"], event="unavailable")],
+    )
+    free.set_profile("armed_night", 100)
+    free.feed("binary_sensor.window", None, 101)
+    restored = CorrelationEngine(Configuration.from_dict(free.config.to_dict()))
+    for key in restored.sensors:
+        restored.seed(key, False)
+    restored.seed("binary_sensor.window", None)
+    restored.restore(free.persistent_state(), 105)
+    assert restored.pending_until == 111
+    restored.tick(111)
+    assert restored.level == 3 and not restored.confirmed
+
+
 def test_single_source_cannot_target_confirmed_alarm(free):
     with pytest.raises(ValueError, match="unabhängige"):
         custom(free, stage_id="5", conditions=[RuleCondition(sensor_ids=["binary_sensor.terrace"])])

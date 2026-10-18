@@ -2,7 +2,7 @@
 
 import json
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import TYPE_CHECKING
 
 from .const import CONTACT_ROLES, INTERIOR_ROLES, PERIMETER_ROLES, Role
@@ -149,6 +149,10 @@ def match_rule(
             if not accepts(rule, condition, sensor):
                 continue
             item = latest.get(key)
+            if item is not None:
+                if item.role != sensor.role or item.room_id != sensor.room_id:
+                    continue
+                item = replace(item, source_id=sensor.source_id or key)
             age = min(rule.window_seconds, condition.max_age_seconds or rule.window_seconds)
             if condition.event in ("active", "override"):
                 if key in quarantine:
