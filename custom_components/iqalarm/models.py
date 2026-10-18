@@ -247,7 +247,7 @@ class WindowConfig:
         if self.allow_unknown_inputs and (
             not self.availability_entity_id
             or set(self.allow_unknown_inputs) - set(self.handle_entity_ids)
-            or self.availability_entity_id in self.allow_unknown_inputs
+            or self.availability_entity_id in self.position_inputs
         ):
             raise ValueError("unknown als Griffcode benötigt eine getrennte Verbindungsüberwachung")
         if set(self.availability_states) & {"unknown", "unavailable"}:

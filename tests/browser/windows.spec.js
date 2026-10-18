@@ -33,6 +33,7 @@ async function openWizard(page,prefix,complex=true){
   await wizard.getByText("Weitere Einstellungen",{exact:true}).click();
   await wizard.getByLabel("Stabilisierungszeit (Sekunden)",{exact:true}).fill("0.2");
   await wizard.getByRole("button",{name:"Weiter: Fensterstellungen",exact:true}).click();
+  await expect(wizard.getByRole("heading",{name:"Fenster vollständig schließen und verriegeln.",exact:true})).toBeVisible();
   return {wizard,ids};
 }
 

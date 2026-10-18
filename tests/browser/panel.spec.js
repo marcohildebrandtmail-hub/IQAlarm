@@ -219,23 +219,23 @@ test("floorplan upload, room polygon, live state and keyboard room details", asy
   const svg=page.locator("#floorplan"); const rect=await svg.boundingBox();
   for (const [x,y] of [[.1,.1],[.5,.1],[.5,.8],[.1,.8]]) await svg.click({position:{x:x*rect.width,y:y*rect.height}});
   await page.getByRole("button",{name:"Bereich speichern",exact:true}).click();
-  await expect(page.locator('#floorplan [data-room="living"]')).toHaveCount(1);
+  await expect(page.locator('#floorplan [data-room="living"]:not([data-label-room])')).toHaveCount(1);
   await page.getByRole("tab",{name:"Live-Status"}).click();
-  await expect(page.locator('#floorplan [data-room="living"]')).toBeVisible();
+  await expect(page.locator('#floorplan [data-room="living"]:not([data-label-room])')).toBeVisible();
   // Real HA state endpoint, through the admin test session.
   await page.locator("iqalarm-panel").evaluate(async el => {
     const response=await el.hass.fetchWithAuth("/api/states/binary_sensor.window",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({state:"on"})});
     if (!response.ok) throw new Error("State update failed");
   });
-  await expect(page.locator('#floorplan [data-room="living"]')).toHaveAttribute("aria-label",/Fenster \/ Tür offen/);
-  await page.locator('#floorplan [data-room="living"]').focus();
+  await expect(page.locator('#floorplan [data-room="living"]:not([data-label-room])')).toHaveAttribute("aria-label",/Fenster offen/);
+  await page.locator('#floorplan [data-room="living"]:not([data-label-room])').focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByRole("dialog").getByRole("heading",{name:"Wohnzimmer",exact:true})).toHaveCount(2);
   await page.getByRole("button",{name:"Schließen",exact:true}).click();
   await page.screenshot({path:"test-results/floorplan-live.png",fullPage:true});
   await page.reload();
-  await expect(page.locator('#floorplan [data-room="living"]')).toBeVisible();
+  await expect(page.locator('#floorplan [data-room="living"]:not([data-label-room])')).toBeVisible();
   await page.locator("iqalarm-panel").evaluate(async el => {await el.hass.fetchWithAuth("/api/states/binary_sensor.window",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({state:"off"})});});
   expect(errors).toEqual([]);
 });
@@ -314,7 +314,7 @@ test("direct upload opens file picker and room proposals remain editable until s
   await page.reload();
   await page.getByRole("tab",{name:"Räume & Grundriss"}).click();
   await page.locator("#plan-select").selectOption(plan.id);
-  await expect(page.locator('#floorplan [data-room="living"]')).toBeVisible();
+  await expect(page.locator('#floorplan [data-room="living"]:not([data-label-room])')).toBeVisible();
   await expect(page.getByRole("button",{name:"Bild ersetzen",exact:true})).toBeVisible();
   expect(errors).toEqual([]);
 });

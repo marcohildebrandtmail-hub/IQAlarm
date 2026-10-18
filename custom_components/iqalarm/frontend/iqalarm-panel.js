@@ -199,7 +199,7 @@ class IQAlarmPanel extends HTMLElement {
   _windowTable() {
     return Object.values(this.data.config.windows || {}).map(w=>{
       const reading=this.data.windows?.[w.id]||{},members=[...new Set([w.contact_entity_id,...w.handle_entity_ids,w.lock_entity_id,w.availability_entity_id].filter(Boolean))];
-      return `<article class="window-group" data-window-id="${esc(w.id)}"><div class="row between"><div><h3>${icon("window-closed-variant")} ${esc(w.name)}</h3><p>${esc(this.data.config.rooms[w.room_id]?.name)} · <strong data-window-status="${esc(w.id)}">${esc(reading.label||"Stellung wird ermittelt")}</strong>${w.lock_entity_id?` · Schloss: ${reading.locked===true?"verriegelt":reading.locked===false?"entriegelt":"Keine Verbindung"}`:""}${w.enabled?"":" · Isoliert"}</p></div><div class="row"><button class="small" data-command="window-edit" data-id="${esc(w.id)}" data-config>Bearbeiten</button><button class="small danger" data-command="window-delete" data-id="${esc(w.id)}" data-config>Fenster entfernen</button></div></div><div class="window-inputs">${members.map(id=>`<div class="sensor-line"><div class="sensor-name">${esc(this.data.config.sensors[id]?.name||this.catalog.entities.find(e=>e.entity_id===id)?.name||id)}<code>${esc(id)}</code></div><span class="sensor-state" data-source-state="${esc(id)}" data-source-window="${esc(w.id)}">${esc(reading.inputs?.[id]||"unavailable")}${reading.faults?.includes(id)?" · Keine Verbindung":""}</span></div>`).join("")}</div></article>`;
+      return `<article class="window-group" data-window-id="${esc(w.id)}"><div class="row between"><div><h3>${icon("window-closed-variant")} ${esc(w.name)}</h3><p>${esc(this.data.config.rooms[w.room_id]?.name)} · <strong data-window-status="${esc(w.id)}">${esc(reading.label||"Stellung wird ermittelt")}</strong>${w.lock_entity_id?` · Schloss: ${esc(reading.lock_label||"Keine Verbindung")}`:""}${w.enabled?"":" · Isoliert"}</p></div><div class="row"><button class="small" data-command="window-edit" data-id="${esc(w.id)}" data-config>Bearbeiten</button><button class="small danger" data-command="window-delete" data-id="${esc(w.id)}" data-config>Fenster entfernen</button></div></div><div class="window-inputs">${members.map(id=>`<div class="sensor-line"><div class="sensor-name">${esc(this.data.config.sensors[id]?.name||this.catalog.entities.find(e=>e.entity_id===id)?.name||id)}<code>${esc(id)}</code></div><span class="sensor-state" data-source-state="${esc(id)}" data-source-window="${esc(w.id)}">${esc(reading.inputs?.[id]||"unavailable")}${reading.faults?.includes(id)?" · Keine Verbindung":""}</span></div>`).join("")}</div></article>`;
     }).join("");
   }
   _updateWindowStatuses() {
@@ -210,7 +210,7 @@ class IQAlarmPanel extends HTMLElement {
     this.catalog=await this._call("catalog");
     this._dialog(id?"Fenster bearbeiten":"Fenster einrichten","<iqalarm-window-assistant></iqalarm-window-assistant>","window");
     const dialog=this.shadowRoot.getElementById("editor"),wizard=dialog.querySelector("iqalarm-window-assistant"),revision=this._dialogRevision;
-    dialog.querySelector(".dialog-foot").hidden=true;
+    dialog.querySelector(".dialog-foot")?.setAttribute("hidden","");
     wizard.setup({hass:this._hass,catalog:this.catalog,rooms:this.data.config.rooms,windows:this.data.config.windows||{},initial:this.data.config.windows?.[id],onCancel:()=>dialog.close(),onSave:async window=>{
       const config=structuredClone(this.data.config);config.windows||={};config.windows[window.id]=window;
       this.data=await this._call("config/save",{config,revision});dialog.close();this._render();this._toast("Fenster eingerichtet");
@@ -782,7 +782,7 @@ class IQAlarmPanel extends HTMLElement {
     const base = Math.max(plan.width,plan.height)*scale;
     const ptsAttr = points.map(([x,y]) => `${Math.round(x*plan.width*10)/10},${Math.round(y*plan.height*10)/10}`).join(" ");
     const corners = graphic ? points.map(([x,y]) => `<circle class="room-corner" cx="${Math.round(x*plan.width*10)/10}" cy="${Math.round(y*plan.height*10)/10}" r="${Math.max(2.2,base*.0035)}" fill="${color}" fill-opacity=".85"/>`).join("") : "";
-    return `<g data-room="${esc(room)}" role="button" tabindex="0" aria-label="${esc(roomName)}"><polygon class="room-glow" points="${ptsAttr}" fill="${color}" fill-opacity="${activeAlert ? ".26" : ".14"}" stroke="${color}" stroke-width="${activeAlert ? 8 : 5}" stroke-opacity=".28" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><polygon points="${ptsAttr}" fill="url(#iq-room-fill-${fillId})" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><polygon class="room-inner" points="${ptsAttr}" fill="none" stroke="#e2f1ff" stroke-opacity=".32" stroke-width="1" stroke-dasharray="5 4" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>${corners}</g>`;
+    return `<g data-room="${esc(room)}" role="button" tabindex="0" aria-label="${esc([roomName,info.contactText,info.lockText,info.informationText,info.motionText,info.quarantineText].filter(Boolean).join(": "))}"><polygon class="room-glow" points="${ptsAttr}" fill="${color}" fill-opacity="${activeAlert ? ".26" : ".14"}" stroke="${color}" stroke-width="${activeAlert ? 8 : 5}" stroke-opacity=".28" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><polygon points="${ptsAttr}" fill="url(#iq-room-fill-${fillId})" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><polygon class="room-inner" points="${ptsAttr}" fill="none" stroke="#e2f1ff" stroke-opacity=".32" stroke-width="1" stroke-dasharray="5 4" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>${corners}</g>`;
   }
 
   _zoneLabelSVG(plan,room,points,graphic = false,scale = 1) {
@@ -1088,7 +1088,8 @@ class IQAlarmPanel extends HTMLElement {
     this._dialogRevision = this.data.config.revision;
     const dialog = this.shadowRoot.getElementById("editor");
     dialog.classList.toggle("wide", type === "sensor-assistant");
-    dialog.innerHTML = `<div class="dialog-head"><h2 id="dialog-title">${esc(title)}</h2><button class="icon-button" data-command="close" aria-label="Schließen">${icon("close")}</button></div><form id="editor-form" data-type="${type}" data-id="${esc(id)}"><div class="dialog-body">${body}</div><div class="dialog-foot"><button type="button" data-command="close">Abbrechen</button><button type="submit" class="primary">Speichern</button></div></form>`;
+    const content=type==="window"?`<div class="dialog-body" style="overflow:auto;min-height:0">${body}</div>`:`<form id="editor-form" data-type="${type}" data-id="${esc(id)}"><div class="dialog-body">${body}</div><div class="dialog-foot"><button type="button" data-command="close">Abbrechen</button><button type="submit" class="primary">Speichern</button></div></form>`;
+    dialog.innerHTML = `<div class="dialog-head"><h2 id="dialog-title">${esc(title)}</h2><button class="icon-button" data-command="close" aria-label="Schließen">${icon("close")}</button></div>${content}`;
     dialog.showModal();
   }
 
