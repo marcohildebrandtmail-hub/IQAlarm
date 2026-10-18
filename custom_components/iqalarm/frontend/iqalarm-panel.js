@@ -1,8 +1,8 @@
-import {DraftJournal} from "./floorplan-drafts.js?v=2.4.10";
-import "./window-assistant.js?v=2.4.10";
-import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.4.10";
-/* IQAlarm 2.4.10 · native ES module · no CDN, framework or build required. */
-const WINDOW_CSS = `.window-related{margin:0 0 12px 24px;padding-left:12px;border-left:2px solid var(--divider-color,#dce3ec);font-size:11px}.window-related summary{cursor:pointer;color:var(--secondary-text-color,#64758b)}.window-related .sensor-line{font-size:11px;gap:8px}.window-group{padding:18px 0;border-bottom:1px solid var(--divider-color,#dce3ec)}.window-inputs{margin:14px 0 0 24px;padding-left:18px;border-left:2px solid var(--divider-color,#dce3ec)}.window-inputs code{display:block;font-size:10px;overflow-wrap:anywhere;color:var(--secondary-text-color,#64758b)}.information{border-color:color-mix(in srgb,var(--primary-color,#2986bb) 25%,transparent)}.information summary,details.banner summary{cursor:pointer;font-size:13px}.information ha-icon{color:var(--primary-color,#2986bb)}`;
+import {DraftJournal} from "./floorplan-drafts.js?v=2.4.11";
+import "./window-assistant.js?v=2.4.11";
+import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.4.11";
+/* IQAlarm 2.4.11 · native ES module · no CDN, framework or build required. */
+const WINDOW_CSS = `.window-group{padding:18px 0;border-bottom:1px solid var(--divider-color,#dce3ec)}.window-inputs{margin:14px 0 0 24px;padding-left:18px;border-left:2px solid var(--divider-color,#dce3ec)}.window-inputs code{display:block;font-size:10px;overflow-wrap:anywhere;color:var(--secondary-text-color,#64758b)}.information{border-color:color-mix(in srgb,var(--primary-color,#2986bb) 25%,transparent)}.information summary,details.banner summary{cursor:pointer;font-size:13px}.information ha-icon{color:var(--primary-color,#2986bb)}`;
 const FLOORPLAN_MOTION_HOLD_SECONDS = 15;
 const CATEGORIES={information:"Information",warning:"Warnung",alarm:"Alarm",fault:"Störung",isolated:"Isoliert"};
 const RULES = {perimeter: "Vorfeld-Erkennung", single: "Unbestätigter Einzelsensor", flapping: "Sensor-Prellen", perimeter_contact: "Vorfeld + Öffnung", contact_motion: "Öffnung + Bewegung", multi_contact: "Zwei Öffnungen im selben Raum / freigegebenen Weg", multi_motion: "Zwei unabhängige Bewegungsmelder im selben Raum / freigegebenen Weg", immediate: "Freigegebene Einzelauslösung / Gefahr"};
@@ -305,11 +305,6 @@ class IQAlarmPanel extends HTMLElement {
     const value = reading?.inputs?.[source] ?? detail?.state ?? "unavailable";
     return value === "unavailable" || reading?.faults?.includes(source) ? `${value} · Keine Verbindung` : value;
   }
-  _windowRelatedRows(id) {
-    const items = this.data.window_details?.[id] || [];
-    if (!items.length) return "";
-    return `<details class="window-related" data-window-related="${esc(id)}"><summary>Geräteinformationen (${items.length})</summary>${items.map(item=>`<div class="sensor-line"><span class="sensor-name">${esc(item.name)}</span><span class="sensor-state" data-source-window="${esc(id)}" data-source-state="${esc(item.entity_id)}">${esc(this._windowSourceValue(id,item.entity_id))}</span></div>`).join("")}</details>`;
-  }
   _allSensorRecords() {
     return {...this.data.config.sensors,...Object.fromEntries(Object.values(this.data.config.windows || {}).map(w=>[`binary_sensor.iqalarm_window_${w.id}`,{entity_id:`binary_sensor.iqalarm_window_${w.id}`,name:w.name,room_id:w.room_id,front_of:[],role:"entry_contact",enabled:w.enabled,window_id:w.id,sensor_kind:"generic"}]))};
   }
@@ -464,7 +459,7 @@ class IQAlarmPanel extends HTMLElement {
       const isLock = s.sensor_kind === "door_lock" || s.role === "lock_contact";
       const lastActive = this.data.status.last_active?.[s.entity_id];
       const isRecent = !raw && !isLock && !isHandle && Boolean(lastActive && (now - lastActive <= recentSec));
-      return `<div class="sensor-line two-line"><div class="sensor-line-top"><div class="sensor-line-title">${icon(s.role.startsWith("perimeter") ? "cctv" : s.role.startsWith("interior") ? "motion-sensor" : isLock ? "lock" : "window-closed-variant")}<span class="sensor-name">${esc(s.name || s.entity_id)}</span></div></div><div class="sensor-line-bottom"><span class="sensor-state ${raw === true && !isHandle ? "on" : isRecent ? "recent" : ""}" data-sensor-state-id="${esc(s.entity_id)}">${esc(this._sensorLabel(s,true))}${!this.data.status.monitored_sensors.includes(s.entity_id) ? " · nur Anzeige" : ""}</span></div></div>${s.window_id?this._windowRelatedRows(s.window_id):""}`;
+      return `<div class="sensor-line two-line"><div class="sensor-line-top"><div class="sensor-line-title">${icon(s.role.startsWith("perimeter") ? "cctv" : s.role.startsWith("interior") ? "motion-sensor" : isLock ? "lock" : "window-closed-variant")}<span class="sensor-name">${esc(s.name || s.entity_id)}</span></div></div><div class="sensor-line-bottom"><span class="sensor-state ${raw === true && !isHandle ? "on" : isRecent ? "recent" : ""}" data-sensor-state-id="${esc(s.entity_id)}">${esc(this._sensorLabel(s,true))}${!this.data.status.monitored_sensors.includes(s.entity_id) ? " · nur Anzeige" : ""}</span></div></div>`;
     }).join("") : `<p>Noch keine Sensoren zugeordnet.</p>`}</article>`;
   }
 
@@ -510,7 +505,7 @@ class IQAlarmPanel extends HTMLElement {
         const lastActive = this.data.status.last_active?.[s.entity_id];
         const isRecent = !raw && !isLock && !isHandle && Boolean(lastActive && (now - lastActive <= recentSec));
         const sensorIcon = s.role.startsWith("perimeter") ? "cctv" : s.role.startsWith("interior") ? "motion-sensor" : isLock ? "lock" : "window-closed-variant";
-        return `<div class="sensor-line sensor-moveable two-line" draggable="true" data-command="sensor-move-click" data-id="${esc(s.entity_id)}" data-sensor-id="${esc(s.entity_id)}" data-room-id="${esc(roomId || "")}" title="Klicken oder Ziehen zum Verschieben in einen anderen Raum"><div class="sensor-line-top"><div class="sensor-line-title">${icon(sensorIcon)}<span class="sensor-name">${esc(s.name || s.entity_id)}</span></div><button type="button" class="icon-button sensor-move-btn" aria-label="${esc(s.name || s.entity_id)} in anderen Raum verschieben" data-command="sensor-move-click" data-id="${esc(s.entity_id)}" data-sensor-id="${esc(s.entity_id)}">${icon("cursor-move")}</button></div><div class="sensor-line-bottom"><span class="sensor-state ${raw === true && !isHandle ? "on" : isRecent ? "recent" : ""}" data-sensor-state-id="${esc(s.entity_id)}">${esc(this._sensorLabel(s, true))}${!this.data.status.monitored_sensors.includes(s.entity_id) ? " · nur Anzeige" : ""}</span></div></div>${s.window_id?this._windowRelatedRows(s.window_id):""}`;
+        return `<div class="sensor-line sensor-moveable two-line" draggable="true" data-command="sensor-move-click" data-id="${esc(s.entity_id)}" data-sensor-id="${esc(s.entity_id)}" data-room-id="${esc(roomId || "")}" title="Klicken oder Ziehen zum Verschieben in einen anderen Raum"><div class="sensor-line-top"><div class="sensor-line-title">${icon(sensorIcon)}<span class="sensor-name">${esc(s.name || s.entity_id)}</span></div><button type="button" class="icon-button sensor-move-btn" aria-label="${esc(s.name || s.entity_id)} in anderen Raum verschieben" data-command="sensor-move-click" data-id="${esc(s.entity_id)}" data-sensor-id="${esc(s.entity_id)}">${icon("cursor-move")}</button></div><div class="sensor-line-bottom"><span class="sensor-state ${raw === true && !isHandle ? "on" : isRecent ? "recent" : ""}" data-sensor-state-id="${esc(s.entity_id)}">${esc(this._sensorLabel(s, true))}${!this.data.status.monitored_sensors.includes(s.entity_id) ? " · nur Anzeige" : ""}</span></div></div>`;
       }).join("") : `<p class="drop-hint">${isUnassigned ? "Keine Sensoren ohne Raum." : "Keine Sensoren zugeordnet. Sensoren hierher ziehen oder anklicken."}</p>`}</div></article>`;
     };
 

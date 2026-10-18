@@ -1,6 +1,6 @@
 # IQAlarm · Prüfstand vom 18. Oktober 2026
 
-## Prüfumfang (Version 2.4.10)
+## Prüfumfang (Version 2.4.11)
 
 - **245 pytest-Tests** für Korrelationslogik, Nachtbetrieb, eigene Profile, Konfigurationsgrenzen, Archivierung, Repository-Metadaten und Deployment-Rollback.
 - Alle fünf geforderten Pflichtszenarien: MACO-Prellen, einzelnes Fenster, Fenster + Bewegung nach zwölf Sekunden, nächtlicher Toilettengang und Vorfeld + Fenster nach vierzig Sekunden.

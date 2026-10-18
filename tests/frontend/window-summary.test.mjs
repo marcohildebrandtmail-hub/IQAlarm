@@ -8,7 +8,8 @@ await import("../../custom_components/iqalarm/frontend/iqalarm-panel.js");
 
 function setup(reading, lock = "lock.grip") {
   const panel=Object.create(Panel.prototype);
-  panel.data={config:{windows:{w:{id:"w",name:"Fenster",room_id:"r",handle_entity_ids:[],lock_entity_id:lock,enabled:true}},sensors:{},settings:{}},windows:{w:reading},status:{active:false}};
+  panel.catalog={entities:[]};
+  panel.data={config:{rooms:{r:{id:"r",name:"Raum"}},windows:{w:{id:"w",name:"Fenster",room_id:"r",handle_entity_ids:[],lock_entity_id:lock,enabled:true}},sensors:{},settings:{}},windows:{w:reading},status:{active:false}};
   return panel;
 }
 for(const [position,lock_state,expected] of [
@@ -34,7 +35,7 @@ test("related actor stays under its window and never replaces a required input",
   panel.data.config.sensors["binary_sensor.actor"]={entity_id:"binary_sensor.actor",name:"<Aktor>",sensor_kind:"window_handle",role:"lock_contact"};
   panel.data.window_details={w:[{entity_id:"binary_sensor.actor",name:"<Aktor>",state:"unavailable"}]};
   assert.deepEqual(panel._displaySensors().map(s=>s.entity_id),["binary_sensor.iqalarm_window_w"]);
-  assert.match(panel._windowRelatedRows("w"),/&lt;Aktor&gt;/);
+  assert.match(panel._windowTable(),/&lt;Aktor&gt;/);
   assert.match(panel._windowSourceValue("w","binary_sensor.actor"),/Keine Verbindung/);
   assert.equal(panel._windowLabel("w"),"Geschlossen | Verriegelt");
 });

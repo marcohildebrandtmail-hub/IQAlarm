@@ -174,5 +174,6 @@ test("window and lock states update separately and related actors stay nested",a
   await expect(parent.locator("[data-window-status]")).toHaveText("Geschlossen | Entriegelt");
   await page.getByRole("tab",{name:"Live-Status"}).click();
   await expect(page.locator('[data-sensor-state-id="binary_sensor.iqalarm_window_qa_summary"]')).toContainText("Geschlossen | Entriegelt");
-  await expect(page.locator('[data-window-related="qa_summary"]')).toContainText("QA Aktor");
+  await expect(page.locator("[data-window-related]")).toHaveCount(0);
+  await expect(page.getByText("Geräteinformationen",{exact:false})).toHaveCount(0);
 });
