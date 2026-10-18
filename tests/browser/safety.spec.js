@@ -177,3 +177,37 @@ test("window and lock states update separately and related actors stay nested",a
   await expect(page.locator("[data-window-related]")).toHaveCount(0);
   await expect(page.getByText("Geräteinformationen",{exact:false})).toHaveCount(0);
 });
+
+test("move dialog renames sensors and windows without changing their entity IDs",async({page})=>{
+  const entity="binary_sensor.qa_display_name",contact="binary_sensor.qa_display_frame";
+  await state(page,entity,"off",{friendly_name:"HA Originalname"});await state(page,contact,"off");
+  const data=await ws(page,"get");
+  data.config.sensors[entity]={entity_id:entity,name:"Langer Sensorname",role:"interior_motion",room_id:"living"};
+  data.config.windows.qa_display={id:"qa_display",name:"Langer Fenstername",room_id:"living",contact_entity_id:contact,mappings:[{state:"closed",values:{[contact]:"off"}},{state:"open",values:{[contact]:"on"}}]};
+  await save(page,data.config);
+  await page.getByRole("tab",{name:"Kameras & Sensoren"}).click();
+  await page.locator(`.sensor-moveable[data-sensor-id="${entity}"]`).click();
+  const dialog=page.getByRole("dialog");
+  await dialog.getByLabel("Anzeigename",{exact:true}).fill("Bewegung TV");
+  await dialog.getByRole("button",{name:"Namen speichern",exact:true}).click();
+  await expect(dialog).not.toBeVisible();
+  const renamed=await ws(page,"get");
+  expect(renamed.config.sensors[entity].name).toBe("Bewegung TV");
+  expect(renamed.config.sensors[entity].entity_id).toBe(entity);
+  expect(renamed.config.sensors[entity].room_id).toBe("living");
+  const states=await page.evaluate(()=>window.iqTest.request({type:"get_states"}));
+  expect(states.find(s=>s.entity_id===entity).attributes.friendly_name).toBe("HA Originalname");
+  await page.locator('.sensor-moveable[data-sensor-id="binary_sensor.iqalarm_window_qa_display"]').click();
+  await dialog.getByLabel("Anzeigename",{exact:true}).fill("Fenster links");
+  await dialog.getByRole("button",{name:"Namen speichern",exact:true}).click();
+  await expect(dialog).not.toBeVisible();
+  const window=await ws(page,"get");
+  expect(window.config.windows.qa_display).toEqual({...renamed.config.windows.qa_display,name:"Fenster links"});
+  await page.locator(`.sensor-moveable[data-sensor-id="${entity}"]`).click();
+  await dialog.getByLabel("Anzeigename",{exact:true}).fill("Bewegung Flur");
+  await dialog.locator('[data-command="move-sensor-target"][data-target-room="hall"]').click();
+  await expect(dialog).not.toBeVisible();
+  const moved=await ws(page,"get");
+  expect(moved.config.sensors[entity].name).toBe("Bewegung Flur");
+  expect(moved.config.sensors[entity].room_id).toBe("hall");
+});

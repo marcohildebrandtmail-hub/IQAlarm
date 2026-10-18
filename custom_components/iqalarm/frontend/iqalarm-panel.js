@@ -533,20 +533,30 @@ class IQAlarmPanel extends HTMLElement {
 
     const unassignBtn = `<button type="button" class="room-pick-btn ${!currentRoomId ? "current" : ""}" data-command="move-sensor-target" data-sensor-id="${esc(sensorId)}" data-target-room="">${icon("close-circle-outline")}<span>Kein Raum (Nicht zugeordnet)</span>${!currentRoomId ? ' <small>(Aktuell)</small>' : ""}</button>`;
 
-    const body = `<div class="sensor-move-dialog"><div class="sensor-move-header"><p><strong>${esc(sensor.name || sensorId)}</strong></p><p class="muted" style="font-size:11px"><code>${esc(sensorId)}</code></p><p style="margin-top:8px">Aktueller Raum: <strong>${esc(currentRoomName)}</strong></p></div><h3 style="margin:16px 0 10px">In welchen Raum verschieben?</h3><div class="room-pick-grid">${roomButtons}${unassignBtn}</div></div>`;
+    const body = `<div class="sensor-move-dialog"><div class="sensor-move-header"><label class="field">Anzeigename<input name="display_name" aria-label="Anzeigename" value="${esc(sensor.name || sensorId)}" required maxlength="${sensor.window_id ? 100 : 200}"></label><p class="muted" style="font-size:11px"><code>${esc(sensorId)}</code></p><p style="margin-top:8px">Aktueller Raum: <strong>${esc(currentRoomName)}</strong></p></div><h3 style="margin:16px 0 10px">In welchen Raum verschieben?</h3><div class="room-pick-grid">${roomButtons}${unassignBtn}</div></div>`;
 
-    this._dialog(`Sensor verschieben`, body, "sensor-move");
+    this._dialog(`Sensor verschieben`, body, "sensor-move", sensorId);
     const submitBtn = this.shadowRoot.querySelector('#editor [type="submit"]');
-    if (submitBtn) submitBtn.hidden = true;
+    if (submitBtn) submitBtn.textContent = "Namen speichern";
   }
 
-  async _moveSensor(sensorId, targetRoomId) {
+  _setDisplayName(config, sensorId, name) {
+    const windowId = sensorId.startsWith("binary_sensor.iqalarm_window_") ? sensorId.replace("binary_sensor.iqalarm_window_", "") : null;
+    const record = windowId ? config.windows?.[windowId] : config.sensors?.[sensorId];
+    if (!record) throw new Error("Sensor nicht in der Konfiguration gefunden.");
+    const value = name.trim(), limit = windowId ? 100 : 200;
+    if (!value || value.length > limit) throw new Error(`Bitte einen Anzeigenamen mit 1 bis ${limit} Zeichen eingeben.`);
+    record.name = value;
+    return value;
+  }
+
+  async _moveSensor(sensorId, targetRoomId, name = null, revision = this._viewRevision) {
     if (this.data.status.active) {
       this._toast("Zum Ändern der Raumzuordnung zuerst entschärfen.", true);
       return;
     }
     const config = structuredClone(this.data.config);
-    const revision = this._viewRevision;
+    if (name !== null) this._setDisplayName(config, sensorId, name);
     let movedName = sensorId;
     let found = false;
 
@@ -1950,7 +1960,12 @@ class IQAlarmPanel extends HTMLElement {
       else if (command === "sort-room-step") this._sortRoomStep(button.dataset.roomId, button.dataset.dir);
       else if (command === "sort-rooms-alpha") this._sortRoomsAlpha();
       else if (command === "sensor-move-click") this._sensorMoveDialog(id);
-      else if (command === "move-sensor-target") await this._moveSensor(button.dataset.sensorId, button.dataset.targetRoom);
+      else if (command === "move-sensor-target") {
+        const form = this.shadowRoot.getElementById("editor-form");
+        if (form?.dataset.type === "sensor-move" && form.reportValidity()) {
+          await this._moveSensor(button.dataset.sensorId, button.dataset.targetRoom, form.elements.display_name.value, this._dialogRevision);
+        }
+      }
       else if (command === "room-add-sensor") {
         if (this.data.status.active) { this._toast("Zum Hinzufügen von Sensoren zuerst entschärfen.", true); return; }
         this._sensorDialog("", false, button.dataset.roomId || "");
@@ -2201,7 +2216,11 @@ class IQAlarmPanel extends HTMLElement {
         this.data = await this._call("config/save", {config, revision: this._viewRevision});
       } else if (form.id === "editor-form") {
         const type = form.dataset.type, id = form.dataset.id;
-        if (type === "sensor-assistant") {
+        if (type === "sensor-move") {
+          const config = structuredClone(this.data.config);
+          this._setDisplayName(config, id, get("display_name"));
+          this.data = await this._call("config/save", {config, revision: this._dialogRevision});
+        } else if (type === "sensor-assistant") {
           const checkedBoxes = form.querySelectorAll('[data-candidate-check]:checked');
           if (!checkedBoxes.length) throw new Error("Bitte mindestens einen Sensor auswählen");
           const candidatesMap = new Map((this._discoveredCandidates || []).map(c => [c.entity_id, c]));
