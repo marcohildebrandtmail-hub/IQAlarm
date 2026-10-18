@@ -127,6 +127,7 @@ def match_rule(
     now: float,
     *,
     proof_only: bool = False,
+    debouncing: dict | None = None,
 ) -> RuleMatch | None:
     """Match each slot to a distinct physical source with one coherent spatial chain.
 
@@ -169,6 +170,7 @@ def match_rule(
                     if (
                         confirmed
                         or sum(c.count for c in rule.conditions) > 1
+                        or (debouncing is not None and key in debouncing)
                         or proof_only
                         or condition.event == "override"
                         or raw.get(key) is not True

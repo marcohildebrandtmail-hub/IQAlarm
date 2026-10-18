@@ -60,6 +60,20 @@ def test_night_defaults_allow_bathroom_then_confirm_matching_opening(free):
     assert free.level == 5 and free.confirmed
 
 
+def test_single_source_rule_respects_configured_debounce(free):
+    free.config.sensors["binary_sensor.window"].debounce_ms = 1000
+    free.set_profile("armed_night", 100)
+    free.feed("binary_sensor.window", True, 101)
+    free.tick(101.5)
+    assert free.level == 1
+    free.feed("binary_sensor.window", False, 101.6)
+    free.tick(102.1)
+    assert free.level == 1
+    free.feed("binary_sensor.window", True, 103)
+    free.tick(104.1)
+    assert free.level == 3
+
+
 @pytest.mark.parametrize("second", ["binary_sensor.person2", "binary_sensor.outside_motion"])
 def test_two_selected_outdoor_sources_within_thirty_seconds(free, second):
     custom(free)

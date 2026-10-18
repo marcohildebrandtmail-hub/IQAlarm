@@ -747,6 +747,7 @@ class CorrelationEngine:
                         list(self.evidence),
                         self.quarantine,
                         now,
+                        debouncing=self.debouncing,
                     )
                     is None
                 )
@@ -767,7 +768,14 @@ class CorrelationEngine:
                     del self.rule_pending[rule.id]
                     continue
             match = match_rule(
-                self.config, rule, self.sensors, self.raw, list(self.evidence), self.quarantine, now
+                self.config,
+                rule,
+                self.sensors,
+                self.raw,
+                list(self.evidence),
+                self.quarantine,
+                now,
+                debouncing=self.debouncing,
             )
             if not match:
                 continue
