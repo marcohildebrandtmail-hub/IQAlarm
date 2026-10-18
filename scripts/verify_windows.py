@@ -6,7 +6,7 @@ from copy import deepcopy
 import aiohttp
 
 
-async def verify_windows(hass, entry, admin_token, user_token):
+async def verify_windows(hass, entry, admin_token, user_token, calls):
     runtime = entry.runtime_data
     original = runtime.config.to_dict()
     window = {
@@ -70,6 +70,14 @@ async def verify_windows(hass, entry, admin_token, user_token):
             await asyncio.sleep(0.25)
             data = runtime.config.to_dict()
             data["windows"] = {window["id"]: window}
+            data["profiles"]["armed_night"]["action_ids"] = None
+            data["actions"]["window_push"] = {
+                "id": "window_push",
+                "level": "2",
+                "kind": "notify",
+                "target": "notify.test_phone",
+                "message": "{{sensor}} · {{room}}",
+            }
             for source in [window["contact_entity_id"], *window["handle_entity_ids"]]:
                 data["sensors"][source] = {
                     "entity_id": source,
@@ -121,6 +129,11 @@ async def verify_windows(hass, entry, admin_token, user_token):
             hass.states.async_set(window["contact_entity_id"], "on")
             await asyncio.sleep(0.4)
             assert runtime.engine.level == 2, runtime.snapshot()
+            await asyncio.wait_for(runtime.queue.join(), 5)
+            assert any(
+                domain == "notify" and "Prüffenster" in str(data.get("message", ""))
+                for domain, service, data in calls
+            )
             hass.states.async_set("binary_sensor.motion", "on")
             await asyncio.sleep(0.2)
             assert runtime.engine.level == 3

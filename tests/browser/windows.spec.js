@@ -60,11 +60,17 @@ test("guided window setup learns five positions and nests original entities with
   await expect(parent.locator(".window-inputs .sensor-line")).toHaveCount(4);
   await expect(page.locator("#catalog")).not.toContainText(ids.contact);
   for(const id of Object.values(ids))await expect(page.locator(".table-scroll td code").filter({hasText:id})).toHaveCount(0);
+  let derivedId;
+  await expect.poll(async()=>{
+    const states=await page.evaluate(()=>window.iqTest.request({type:"get_states"}));
+    const derived=states.find(s=>s.attributes?.inputs?.[ids.contact]!==undefined&&s.entity_id.startsWith("sensor."));
+    derivedId=derived?.entity_id;return derived?.state;
+  }).toBe("closed");
   await signals(page,{[ids.lock]:"unavailable"});
   await expect(parent.locator("[data-window-status]")).toHaveText("Keine Verbindung");
   await expect(parent.locator(`[data-source-state="${ids.lock}"]`)).toContainText("Keine Verbindung");
   const states=await page.evaluate(()=>window.iqTest.request({type:"get_states"}));
-  const derived=states.find(s=>s.attributes?.inputs?.[ids.contact]!==undefined&&s.entity_id.startsWith("sensor."));
+  const derived=states.find(s=>s.entity_id===derivedId);
   expect(derived.state).toBe("unavailable");
   await signals(page,{[ids.lock]:"locked"});
   await page.reload();await page.getByRole("tab",{name:"Kameras & Sensoren"}).click();
@@ -104,8 +110,10 @@ test("simple contact setup works without grip signals and publishes a real HA se
   const window=Object.values(data.config.windows).find(w=>w.name==="browser_simple");
   expect(window.handle_entity_ids).toEqual([]);
   await expect(page.locator(`[data-window-id="${window.id}"] .window-inputs .sensor-line`)).toHaveCount(1);
-  const states=await page.evaluate(()=>window.iqTest.request({type:"get_states"}));
-  expect(states.some(s=>s.attributes?.inputs?.[ids.contact]==="on"&&s.state==="open")).toBe(true);
+  await expect.poll(async()=>{
+    const states=await page.evaluate(()=>window.iqTest.request({type:"get_states"}));
+    return states.some(s=>s.attributes?.inputs?.[ids.contact]==="on"&&s.state==="open");
+  }).toBe(true);
 });
 
 test("unlocked window handles are hidden when off and informational when on",async({page})=>{

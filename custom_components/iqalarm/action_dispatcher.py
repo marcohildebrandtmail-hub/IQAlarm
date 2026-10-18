@@ -49,7 +49,7 @@ class ActionDispatcher:
             self._added_media_path = False
 
     def variables(self, event: EventLog) -> dict[str, str]:
-        sensor = self.runtime.config.sensors.get(event.entity_id)
+        sensor = self.runtime.engine.sensors.get(event.entity_id)
         room = self.runtime.config.rooms.get(event.room_id or (sensor.room_id if sensor else None))
         chain = " → ".join(
             f"{e['name']} [{dt_util.as_local(datetime.fromtimestamp(e['timestamp'], UTC)).strftime('%H:%M:%S')}]"
@@ -125,7 +125,7 @@ class ActionDispatcher:
         plan = [{"id": a.id, "kind": a.kind, "target": a.target, "level": a.level} for a in actions]
         cameras = set()
         for evidence in event.chain:
-            sensor = self.runtime.config.sensors.get(evidence["entity_id"])
+            sensor = self.runtime.engine.sensors.get(evidence["entity_id"])
             if sensor and sensor.camera_entity_id:
                 cameras.add(sensor.camera_entity_id)
             elif sensor and sensor.entity_id.startswith("camera."):
