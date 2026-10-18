@@ -506,6 +506,7 @@ class Settings:
     observation_profile_id: str | None = "live"
     quiet_disarmed_floorplan: bool = True
     quiet_disarmed_locks: bool = True
+    recent_seconds: int = 30
 
     def __post_init__(self) -> None:
         for key in (
@@ -523,11 +524,12 @@ class Settings:
         number(self.retention_days, 1, 90, "Aufbewahrung")
         number(self.simulation_start, 0, 23, "Simulationsbeginn")
         number(self.simulation_end, 1, 24, "Simulationsende")
+        number(self.recent_seconds, 5, 300, "Kürzlich-Dauer")
         if any(
             type(getattr(self, key)) is not int
-            for key in ("retention_days", "simulation_start", "simulation_end")
+            for key in ("retention_days", "simulation_start", "simulation_end", "recent_seconds")
         ):
-            raise ValueError("Stunden/Tage müssen ganzzahlig sein")
+            raise ValueError("Stunden/Tage/Sekunden müssen ganzzahlig sein")
         if self.simulation_start >= self.simulation_end:
             raise ValueError("Simulationsende muss nach Beginn liegen")
         if not isinstance(self.simulation_lights, list) or len(self.simulation_lights) > 100:
@@ -924,6 +926,7 @@ def migrate_configuration(data: dict) -> dict:
         settings["observation_profile_id"] = "live"
     settings.setdefault("quiet_disarmed_floorplan", True)
     settings.setdefault("quiet_disarmed_locks", True)
+    settings.setdefault("recent_seconds", 30)
     return result
 
 

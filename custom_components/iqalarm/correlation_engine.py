@@ -34,6 +34,7 @@ class CorrelationEngine:
         self.profile_id: str | None = None
         self.severity = Level.SECURE
         self.raw: dict[str, bool | None] = {}
+        self.last_active: dict[str, float] = {}
         self.edges: dict[str, deque[float]] = defaultdict(lambda: deque(maxlen=101))
         self.debouncing: dict[str, float] = {}
         self.quarantine: dict[str, dict] = {}
@@ -307,6 +308,8 @@ class CorrelationEngine:
             return
         old = self.raw.get(entity_id)
         self.raw[entity_id] = active
+        if active is True or (old is True and active is False):
+            self.last_active[entity_id] = now
         if not sensor.enabled:
             return
         if active is None:
@@ -724,6 +727,9 @@ class CorrelationEngine:
             "pending_until": self.pending_until,
             "quarantine": self.quarantine,
             "raw": self.raw.copy(),
+            "last_active": {
+                eid: round(t, 2) for eid, t in self.last_active.items() if now - t <= 300
+            },
             "rooms": {r: self.room_status(r, now) for r in self.config.rooms},
             "events": [e.to_dict() for e in list(self.events)[:50]],
             "breach_chain": [asdict(e) for e in self.breach_chain],
@@ -743,6 +749,7 @@ class CorrelationEngine:
             "pending_rule": self.pending_rule,
             "last_profile_id": self.last_profile_id,
             "quarantine": self.quarantine,
+            "last_active": self.last_active.copy(),
             "pending_until": self.pending_until,
             "arming_until": self.arming_until,
             "pending_chain": [asdict(e) for e in self.pending_chain],
@@ -774,6 +781,9 @@ class CorrelationEngine:
             if k in self.sensors
             and not self.sensors[k].information_only
             and k not in self.grouped_inputs
+        }
+        self.last_active = {
+            eid: float(t) for eid, t in data.get("last_active", {}).items() if now - float(t) <= 300
         }
         self.arming_until = data.get("arming_until")
         self.pending_until = data.get("pending_until")

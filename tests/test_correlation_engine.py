@@ -334,3 +334,16 @@ def test_smoke_is_explicit_emergency_role(engine):
     engine.set_mode("armed_away", 100)
     engine.feed("binary_sensor.smoke", True, 101)
     assert engine.level == Level.BREACH
+
+
+def test_last_active_tracking_and_snapshot(engine):
+    engine.feed("binary_sensor.motion", True, 100.0)
+    assert engine.last_active["binary_sensor.motion"] == 100.0
+    snap = engine.snapshot(110.0)
+    assert snap["last_active"]["binary_sensor.motion"] == 100.0
+    # Turning off updates last_active to release time
+    engine.feed("binary_sensor.motion", False, 115.0)
+    assert engine.last_active["binary_sensor.motion"] == 115.0
+    # Old events beyond 300s are pruned from snapshot
+    snap2 = engine.snapshot(420.0)
+    assert "binary_sensor.motion" not in snap2["last_active"]
