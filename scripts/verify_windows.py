@@ -4,6 +4,8 @@ import asyncio
 from copy import deepcopy
 
 import aiohttp
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 
 
 async def verify_windows(hass, entry, admin_token, user_token, calls):
@@ -20,6 +22,20 @@ async def verify_windows(hass, entry, admin_token, user_token, calls):
         "settle_seconds": 0.2,
         "mappings": [],
     }
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id, identifiers={("iqalarm", "qa_window_device")}
+    )
+    registry = er.async_get(hass)
+    for index, source in enumerate([window["lock_entity_id"], "binary_sensor.qa_window_actor"]):
+        domain, object_id = source.split(".", 1)
+        record = registry.async_get_or_create(
+            domain, "iqalarm_test", object_id, suggested_object_id=object_id, device_id=device.id
+        )
+        if index == 0:
+            window["lock_entity_id"] = window["availability_entity_id"] = record.entity_id
+        else:
+            actor = record.entity_id
+    hass.states.async_set(actor, "on")
     for source, value in (
         (window["contact_entity_id"], "off"),
         (window["handle_entity_ids"][0], "off"),
@@ -70,6 +86,13 @@ async def verify_windows(hass, entry, admin_token, user_token, calls):
             await asyncio.sleep(0.25)
             data = runtime.config.to_dict()
             data["windows"] = {window["id"]: window}
+            data["sensors"][actor] = {
+                "entity_id": actor,
+                "name": "QA Fenstergriff Aktor",
+                "room_id": "living",
+                "role": "lock_contact",
+                "sensor_kind": "window_handle",
+            }
             data["profiles"]["armed_night"]["action_ids"] = None
             data["actions"]["window_push"] = {
                 "id": "window_push",
@@ -98,6 +121,17 @@ async def verify_windows(hass, entry, admin_token, user_token, calls):
             )
             assert saved["success"], saved
             await hass.async_block_till_done()
+            snapshot = runtime.snapshot()
+            assert snapshot["window_details"][window["id"]] == [
+                {"entity_id": actor, "name": "QA Fenstergriff Aktor", "state": "on"}
+            ]
+            assert actor not in [item["entity_id"] for item in snapshot["information"]]
+            hass.states.async_set(actor, "unavailable")
+            await hass.async_block_till_done()
+            assert runtime.windows[window["id"]].reading["available"], (
+                "Additional informational actor became a required calibration input"
+            )
+            hass.states.async_set(actor, "off")
             position = next(
                 entity_id
                 for entity_id in hass.states.async_entity_ids("sensor")

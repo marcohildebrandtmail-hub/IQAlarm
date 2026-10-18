@@ -24,7 +24,7 @@ from .const import EVENT_TYPE, SIGNAL_UPDATE
 from .correlation_engine import CorrelationEngine
 from .models import Configuration, EventLog
 from .store import IQAlarmStore
-from .windows import WindowTracker
+from .windows import WindowTracker, related_window_information
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -533,16 +533,38 @@ class IQAlarmRuntime:
         return result
 
     def snapshot(self) -> dict:
+        details = self._window_details()
         return {
             "available": True,
             "status": self.engine.snapshot(time.time()),
             "config": self.config.to_dict(),
             "pin_required": bool(self.entry.data.get("pin_hash")),
             "windows": {key: tracker.reading for key, tracker in self.windows.items()},
-            "information": self._lock_information(),
+            "window_details": details,
+            "information": self._lock_information(details),
         }
 
-    def _lock_information(self):
+    def _window_details(self):
+        registry = er.async_get(self.hass)
+        device_ids = {
+            source: record.device_id if (record := registry.async_get(source)) else None
+            for source in self.config.sensors.keys() | self.config.window_members()
+        }
+        return {
+            key: [
+                {
+                    "entity_id": source,
+                    "name": self.config.sensors[source].name or source,
+                    "state": state.state
+                    if (state := self.hass.states.get(source))
+                    else "unavailable",
+                }
+                for source in sources
+            ]
+            for key, sources in related_window_information(self.config, device_ids).items()
+        }
+
+    def _lock_information(self, details=None):
         result = []
         for key, tracker in self.windows.items():
             if tracker.window.enabled and (
@@ -562,6 +584,11 @@ class IQAlarmRuntime:
         registry = er.async_get(self.hass)
         seen = set()
         claimed = self.config.window_members()
+        claimed.update(
+            item["entity_id"]
+            for items in (self._window_details() if details is None else details).values()
+            for item in items
+        )
         candidates = sorted(
             self.config.sensors.values(),
             key=lambda sensor: not sensor.entity_id.startswith("lock."),

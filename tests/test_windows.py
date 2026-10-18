@@ -5,7 +5,50 @@ from copy import deepcopy
 import pytest
 from iqalarm_core.correlation_engine import CorrelationEngine
 from iqalarm_core.models import Configuration, Room, SensorConfig, WindowConfig
-from iqalarm_core.windows import WindowTracker, capture_position, inspect_window
+from iqalarm_core.windows import (
+    WindowTracker,
+    capture_position,
+    inspect_window,
+    related_window_information,
+)
+
+
+@pytest.mark.parametrize(
+    "case", ["same", "other_room", "unrelated", "missing", "ambiguous", "not_information"]
+)
+def test_related_actor_requires_unique_physical_window_owner(case):
+    window = WindowConfig(
+        "w",
+        "Fenster",
+        "living",
+        lock_entity_id="lock.grip",
+        handle_entity_ids=["binary_sensor.grip"],
+    )
+    actor = SensorConfig(
+        "binary_sensor.actor", "lock_contact", "living", sensor_kind="window_handle"
+    )
+    config = Configuration(windows={"w": window}, sensors={actor.entity_id: actor})
+    devices = {
+        "lock.grip": "hardware",
+        "binary_sensor.grip": "hardware",
+        actor.entity_id: "hardware",
+    }
+    if case == "other_room":
+        actor.room_id = "hall"
+    if case == "unrelated":
+        devices[actor.entity_id] = "other"
+    if case == "missing":
+        devices.pop(actor.entity_id)
+    if case == "ambiguous":
+        config.windows["other"] = WindowConfig(
+            "other", "Anderes Fenster", "living", contact_entity_id="binary_sensor.other"
+        )
+        devices["binary_sensor.other"] = "hardware"
+    if case == "not_information":
+        actor.sensor_kind = "door_lock"
+    assert related_window_information(config, devices)["w"] == (
+        [actor.entity_id] if case == "same" else []
+    )
 
 
 @pytest.fixture

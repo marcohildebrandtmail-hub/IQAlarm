@@ -146,3 +146,29 @@ test("motion label and red room expire together after fifteen seconds without an
   expect(current.status.rooms.qa_motion.level).toBe(2);
   expect(current.status.rooms.qa_motion.confirmed).toBe(false);
 });
+
+test("window and lock states update separately and related actors stay nested",async({page})=>{
+  const catalog=await ws(page,"catalog");
+  const actor=catalog.entities.find(e=>e.entity_id.startsWith("binary_sensor.qa_window_actor"));
+  const lock=catalog.entities.find(e=>e.entity_id.startsWith("lock.test_window_handle"));
+  expect(actor).toBeTruthy();expect(lock.source_id).toBe(actor.source_id);
+  await state(page,"binary_sensor.qa_summary_contact","off");
+  await state(page,lock.entity_id,"locked");await state(page,actor.entity_id,"off");
+  const data=await ws(page,"get");
+  data.config.windows.qa_summary={id:"qa_summary",name:"QA Zusammenfassung",room_id:"living",contact_entity_id:"binary_sensor.qa_summary_contact",lock_entity_id:lock.entity_id,settle_seconds:.2,mappings:[{state:"closed",values:{"binary_sensor.qa_summary_contact":"off"}},{state:"open",values:{"binary_sensor.qa_summary_contact":"on"}}]};
+  data.config.sensors[actor.entity_id]={entity_id:actor.entity_id,name:"QA Aktor",role:"lock_contact",sensor_kind:"window_handle",room_id:"living"};
+  await save(page,data.config);
+  await page.getByRole("tab",{name:"Kameras & Sensoren"}).click();
+  const parent=page.locator('[data-window-id="qa_summary"]');
+  await expect(parent.locator("[data-window-status]")).toHaveText("Geschlossen | Verriegelt");
+  await expect(parent.locator(`[data-source-state="${actor.entity_id}"]`)).toHaveCount(1);
+  await expect(page.locator(`[data-sensor-state-id="${actor.entity_id}"]`)).toHaveCount(0);
+  await state(page,lock.entity_id,"unlocked");
+  await expect(parent.locator("[data-window-status]")).toHaveText("Geschlossen | Entriegelt");
+  await state(page,actor.entity_id,"unavailable");
+  await expect(parent.locator(`[data-source-state="${actor.entity_id}"]`)).toContainText("Keine Verbindung");
+  await expect(parent.locator("[data-window-status]")).toHaveText("Geschlossen | Entriegelt");
+  await page.getByRole("tab",{name:"Live-Status"}).click();
+  await expect(page.locator('[data-sensor-state-id="binary_sensor.iqalarm_window_qa_summary"]')).toContainText("Geschlossen | Entriegelt");
+  await expect(page.locator('[data-window-related="qa_summary"]')).toContainText("QA Aktor");
+});

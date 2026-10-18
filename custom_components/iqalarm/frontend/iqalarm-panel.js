@@ -1,8 +1,8 @@
-import {DraftJournal} from "./floorplan-drafts.js?v=2.4.9";
-import "./window-assistant.js?v=2.4.9";
-import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.4.9";
-/* IQAlarm 2.4.9 · native ES module · no CDN, framework or build required. */
-const WINDOW_CSS = `.window-group{padding:18px 0;border-bottom:1px solid var(--divider-color,#dce3ec)}.window-inputs{margin:14px 0 0 24px;padding-left:18px;border-left:2px solid var(--divider-color,#dce3ec)}.window-inputs code{display:block;font-size:10px;overflow-wrap:anywhere;color:var(--secondary-text-color,#64758b)}.information{border-color:color-mix(in srgb,var(--primary-color,#2986bb) 25%,transparent)}.information summary,details.banner summary{cursor:pointer;font-size:13px}.information ha-icon{color:var(--primary-color,#2986bb)}`;
+import {DraftJournal} from "./floorplan-drafts.js?v=2.4.10";
+import "./window-assistant.js?v=2.4.10";
+import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.4.10";
+/* IQAlarm 2.4.10 · native ES module · no CDN, framework or build required. */
+const WINDOW_CSS = `.window-related{margin:0 0 12px 24px;padding-left:12px;border-left:2px solid var(--divider-color,#dce3ec);font-size:11px}.window-related summary{cursor:pointer;color:var(--secondary-text-color,#64758b)}.window-related .sensor-line{font-size:11px;gap:8px}.window-group{padding:18px 0;border-bottom:1px solid var(--divider-color,#dce3ec)}.window-inputs{margin:14px 0 0 24px;padding-left:18px;border-left:2px solid var(--divider-color,#dce3ec)}.window-inputs code{display:block;font-size:10px;overflow-wrap:anywhere;color:var(--secondary-text-color,#64758b)}.information{border-color:color-mix(in srgb,var(--primary-color,#2986bb) 25%,transparent)}.information summary,details.banner summary{cursor:pointer;font-size:13px}.information ha-icon{color:var(--primary-color,#2986bb)}`;
 const FLOORPLAN_MOTION_HOLD_SECONDS = 15;
 const CATEGORIES={information:"Information",warning:"Warnung",alarm:"Alarm",fault:"Störung",isolated:"Isoliert"};
 const RULES = {perimeter: "Vorfeld-Erkennung", single: "Unbestätigter Einzelsensor", flapping: "Sensor-Prellen", perimeter_contact: "Vorfeld + Öffnung", contact_motion: "Öffnung + Bewegung", multi_contact: "Zwei Öffnungen im selben Raum / freigegebenen Weg", multi_motion: "Zwei unabhängige Bewegungsmelder im selben Raum / freigegebenen Weg", immediate: "Freigegebene Einzelauslösung / Gefahr"};
@@ -289,7 +289,27 @@ class IQAlarmPanel extends HTMLElement {
   _connection(ok) { this._connected = ok; this.shadowRoot.querySelector(".dot").classList.toggle("off", !ok); this.shadowRoot.getElementById("connection-text").textContent = ok ? "Live verbunden · lokal" : "Verbindung unterbrochen"; if (this.data) this._updateLock(); }
   _toast(message, error = false) { const toast = this.shadowRoot.getElementById("toast"); toast.textContent = message; toast.classList.toggle("error", error); clearTimeout(this._toastTimer); this._toastTimer = setTimeout(() => {toast.textContent = "";}, error ? 10000 : 5000); }
   _color(level) { return this.data?.config.stages[level]?.color || "var(--iq-green)"; }
-  _windowMembers() { return new Set(Object.values(this.data.config.windows || {}).flatMap(w=>[w.contact_entity_id,...w.handle_entity_ids,w.lock_entity_id,w.availability_entity_id].filter(Boolean))); }
+  _windowMembers() { return new Set([...Object.values(this.data.config.windows || {}).flatMap(w=>[w.contact_entity_id,...w.handle_entity_ids,w.lock_entity_id,w.availability_entity_id].filter(Boolean)),...Object.values(this.data.window_details || {}).flatMap(items=>items.map(item=>item.entity_id))]); }
+  _windowLabel(id) {
+    const window = this.data.config.windows?.[id], reading = this.data.windows?.[id];
+    if (!reading) return "Stellung wird ermittelt";
+    const position = reading.available === false ? "Keine Verbindung" :
+      ({closed:"Geschlossen",open:"Offen",tilted:"Gekippt"}[reading.position] || reading.label || "Stellung nicht eindeutig");
+    const lock = !window?.lock_entity_id ? "Nicht zugeordnet" :
+      ({locked:"Verriegelt",unlocked:"Entriegelt",open:"Entriegelt",locking:"Wird verriegelt",unlocking:"Wird entriegelt",jammed:"Störung: blockiert",unavailable:"Keine Verbindung",unknown:"Unbekannt"}[reading.lock_state] || "Unbekannt");
+    return `${position} | ${lock}`;
+  }
+  _windowSourceValue(windowId, source) {
+    const reading = this.data.windows?.[windowId];
+    const detail = this.data.window_details?.[windowId]?.find(item=>item.entity_id===source);
+    const value = reading?.inputs?.[source] ?? detail?.state ?? "unavailable";
+    return value === "unavailable" || reading?.faults?.includes(source) ? `${value} · Keine Verbindung` : value;
+  }
+  _windowRelatedRows(id) {
+    const items = this.data.window_details?.[id] || [];
+    if (!items.length) return "";
+    return `<details class="window-related" data-window-related="${esc(id)}"><summary>Geräteinformationen (${items.length})</summary>${items.map(item=>`<div class="sensor-line"><span class="sensor-name">${esc(item.name)}</span><span class="sensor-state" data-source-window="${esc(id)}" data-source-state="${esc(item.entity_id)}">${esc(this._windowSourceValue(id,item.entity_id))}</span></div>`).join("")}</details>`;
+  }
   _allSensorRecords() {
     return {...this.data.config.sensors,...Object.fromEntries(Object.values(this.data.config.windows || {}).map(w=>[`binary_sensor.iqalarm_window_${w.id}`,{entity_id:`binary_sensor.iqalarm_window_${w.id}`,name:w.name,room_id:w.room_id,front_of:[],role:"entry_contact",enabled:w.enabled,window_id:w.id,sensor_kind:"generic"}]))};
   }
@@ -297,7 +317,7 @@ class IQAlarmPanel extends HTMLElement {
   _sensorRecord(id) { return this._allSensorRecords()[id]; }
   _sensorLabel(sensor,overview=false) {
     if(!sensor.enabled)return "Isoliert";
-    if(sensor.window_id){const reading=this.data.windows?.[sensor.window_id];return overview&&!this.data.status.active&&["unlatched","tilt_ready"].includes(reading?.state)?"Geschlossen":reading?.label||"Stellung wird ermittelt";}
+    if(sensor.window_id)return this._windowLabel(sensor.window_id);
     if(this.data.status.quarantine[sensor.entity_id])return "Störung · Prell-Quarantäne";
     const raw=this.data.status.raw[sensor.entity_id];
     if(raw==null)return "Störung · Keine Verbindung";
@@ -311,8 +331,8 @@ class IQAlarmPanel extends HTMLElement {
   }
   _windowTable() {
     return Object.values(this.data.config.windows || {}).map(w=>{
-      const reading=this.data.windows?.[w.id]||{},members=[...new Set([w.contact_entity_id,...w.handle_entity_ids,w.lock_entity_id,w.availability_entity_id].filter(Boolean))];
-      return `<article class="window-group" data-window-id="${esc(w.id)}"><div class="row between"><div><h3>${icon("window-closed-variant")} ${esc(w.name)}</h3><p>${esc(this.data.config.rooms[w.room_id]?.name)} · <strong data-window-status="${esc(w.id)}">${esc(reading.label||"Stellung wird ermittelt")}</strong>${w.lock_entity_id?` · Schloss: <span data-window-lock="${esc(w.id)}">${esc(reading.lock_label||"Keine Verbindung")}</span>`:""}${w.enabled?"":" · Isoliert"}</p></div><div class="row"><button class="small" data-command="window-edit" data-id="${esc(w.id)}" data-config>Bearbeiten</button><button class="small danger" data-command="window-delete" data-id="${esc(w.id)}" data-config>Fenster entfernen</button></div></div><div class="window-inputs">${members.map(id=>`<div class="sensor-line"><div class="sensor-name">${esc(this.data.config.sensors[id]?.name||this.catalog.entities.find(e=>e.entity_id===id)?.name||id)}<code>${esc(id)}</code></div><span class="sensor-state" data-source-state="${esc(id)}" data-source-window="${esc(w.id)}">${esc(reading.inputs?.[id]||"unavailable")}${reading.faults?.includes(id)?" · Keine Verbindung":""}</span></div>`).join("")}</div></article>`;
+      const members=[...new Set([w.contact_entity_id,...w.handle_entity_ids,w.lock_entity_id,w.availability_entity_id,...(this.data.window_details?.[w.id]||[]).map(item=>item.entity_id)].filter(Boolean))];
+      return `<article class="window-group" data-window-id="${esc(w.id)}"><div class="row between"><div><h3>${icon("window-closed-variant")} ${esc(w.name)}</h3><p>${esc(this.data.config.rooms[w.room_id]?.name)} · <strong data-window-status="${esc(w.id)}">${esc(this._windowLabel(w.id))}</strong>${w.enabled?"":" · Isoliert"}</p></div><div class="row"><button class="small" data-command="window-edit" data-id="${esc(w.id)}" data-config>Bearbeiten</button><button class="small danger" data-command="window-delete" data-id="${esc(w.id)}" data-config>Fenster entfernen</button></div></div><div class="window-inputs">${members.map(id=>`<div class="sensor-line"><div class="sensor-name">${esc(this.data.config.sensors[id]?.name||this.catalog.entities.find(e=>e.entity_id===id)?.name||id)}<code>${esc(id)}</code></div><span class="sensor-state" data-source-state="${esc(id)}" data-source-window="${esc(w.id)}">${esc(this._windowSourceValue(w.id,id))}</span></div>`).join("")}</div></article>`;
     }).join("");
   }
   _updateSensorStatuses() {
@@ -339,9 +359,9 @@ class IQAlarmPanel extends HTMLElement {
     });
   }
   _updateWindowStatuses() {
-    this.shadowRoot.querySelectorAll("[data-window-status]").forEach(node=>node.textContent=this.data.windows?.[node.dataset.windowStatus]?.label||"Stellung wird ermittelt");
+    this.shadowRoot.querySelectorAll("[data-window-status]").forEach(node=>node.textContent=this._windowLabel(node.dataset.windowStatus));
     this.shadowRoot.querySelectorAll("[data-window-lock]").forEach(node=>node.textContent=this.data.windows?.[node.dataset.windowLock]?.lock_label||"Keine Verbindung");
-    this.shadowRoot.querySelectorAll("[data-source-state]").forEach(node=>{const reading=this.data.windows?.[node.dataset.sourceWindow],id=node.dataset.sourceState;node.textContent=`${reading?.inputs?.[id]||"unavailable"}${reading?.faults?.includes(id)?" · Keine Verbindung":""}`;});
+    this.shadowRoot.querySelectorAll("[data-source-state]").forEach(node=>node.textContent=this._windowSourceValue(node.dataset.sourceWindow,node.dataset.sourceState));
   }
   async _windowDialog(id) {
     this.catalog=await this._call("catalog");
@@ -444,7 +464,7 @@ class IQAlarmPanel extends HTMLElement {
       const isLock = s.sensor_kind === "door_lock" || s.role === "lock_contact";
       const lastActive = this.data.status.last_active?.[s.entity_id];
       const isRecent = !raw && !isLock && !isHandle && Boolean(lastActive && (now - lastActive <= recentSec));
-      return `<div class="sensor-line two-line"><div class="sensor-line-top"><div class="sensor-line-title">${icon(s.role.startsWith("perimeter") ? "cctv" : s.role.startsWith("interior") ? "motion-sensor" : isLock ? "lock" : "window-closed-variant")}<span class="sensor-name">${esc(s.name || s.entity_id)}</span></div></div><div class="sensor-line-bottom"><span class="sensor-state ${raw === true && !isHandle ? "on" : isRecent ? "recent" : ""}" data-sensor-state-id="${esc(s.entity_id)}">${esc(this._sensorLabel(s,true))}${!this.data.status.monitored_sensors.includes(s.entity_id) ? " · nur Anzeige" : ""}</span></div></div>`;
+      return `<div class="sensor-line two-line"><div class="sensor-line-top"><div class="sensor-line-title">${icon(s.role.startsWith("perimeter") ? "cctv" : s.role.startsWith("interior") ? "motion-sensor" : isLock ? "lock" : "window-closed-variant")}<span class="sensor-name">${esc(s.name || s.entity_id)}</span></div></div><div class="sensor-line-bottom"><span class="sensor-state ${raw === true && !isHandle ? "on" : isRecent ? "recent" : ""}" data-sensor-state-id="${esc(s.entity_id)}">${esc(this._sensorLabel(s,true))}${!this.data.status.monitored_sensors.includes(s.entity_id) ? " · nur Anzeige" : ""}</span></div></div>${s.window_id?this._windowRelatedRows(s.window_id):""}`;
     }).join("") : `<p>Noch keine Sensoren zugeordnet.</p>`}</article>`;
   }
 
@@ -490,7 +510,7 @@ class IQAlarmPanel extends HTMLElement {
         const lastActive = this.data.status.last_active?.[s.entity_id];
         const isRecent = !raw && !isLock && !isHandle && Boolean(lastActive && (now - lastActive <= recentSec));
         const sensorIcon = s.role.startsWith("perimeter") ? "cctv" : s.role.startsWith("interior") ? "motion-sensor" : isLock ? "lock" : "window-closed-variant";
-        return `<div class="sensor-line sensor-moveable two-line" draggable="true" data-command="sensor-move-click" data-id="${esc(s.entity_id)}" data-sensor-id="${esc(s.entity_id)}" data-room-id="${esc(roomId || "")}" title="Klicken oder Ziehen zum Verschieben in einen anderen Raum"><div class="sensor-line-top"><div class="sensor-line-title">${icon(sensorIcon)}<span class="sensor-name">${esc(s.name || s.entity_id)}</span></div><button type="button" class="icon-button sensor-move-btn" aria-label="${esc(s.name || s.entity_id)} in anderen Raum verschieben" data-command="sensor-move-click" data-id="${esc(s.entity_id)}" data-sensor-id="${esc(s.entity_id)}">${icon("cursor-move")}</button></div><div class="sensor-line-bottom"><span class="sensor-state ${raw === true && !isHandle ? "on" : isRecent ? "recent" : ""}" data-sensor-state-id="${esc(s.entity_id)}">${esc(this._sensorLabel(s, true))}${!this.data.status.monitored_sensors.includes(s.entity_id) ? " · nur Anzeige" : ""}</span></div></div>`;
+        return `<div class="sensor-line sensor-moveable two-line" draggable="true" data-command="sensor-move-click" data-id="${esc(s.entity_id)}" data-sensor-id="${esc(s.entity_id)}" data-room-id="${esc(roomId || "")}" title="Klicken oder Ziehen zum Verschieben in einen anderen Raum"><div class="sensor-line-top"><div class="sensor-line-title">${icon(sensorIcon)}<span class="sensor-name">${esc(s.name || s.entity_id)}</span></div><button type="button" class="icon-button sensor-move-btn" aria-label="${esc(s.name || s.entity_id)} in anderen Raum verschieben" data-command="sensor-move-click" data-id="${esc(s.entity_id)}" data-sensor-id="${esc(s.entity_id)}">${icon("cursor-move")}</button></div><div class="sensor-line-bottom"><span class="sensor-state ${raw === true && !isHandle ? "on" : isRecent ? "recent" : ""}" data-sensor-state-id="${esc(s.entity_id)}">${esc(this._sensorLabel(s, true))}${!this.data.status.monitored_sensors.includes(s.entity_id) ? " · nur Anzeige" : ""}</span></div></div>${s.window_id?this._windowRelatedRows(s.window_id):""}`;
       }).join("") : `<p class="drop-hint">${isUnassigned ? "Keine Sensoren ohne Raum." : "Keine Sensoren zugeordnet. Sensoren hierher ziehen oder anklicken."}</p>`}</div></article>`;
     };
 
@@ -539,6 +559,9 @@ class IQAlarmPanel extends HTMLElement {
       const winId = sensorId.replace("binary_sensor.iqalarm_window_", "");
       if (config.windows?.[winId]) {
         config.windows[winId].room_id = targetRoomId || "";
+        for (const source of [config.windows[winId].contact_entity_id,...config.windows[winId].handle_entity_ids,config.windows[winId].lock_entity_id,config.windows[winId].availability_entity_id,...(this.data.window_details?.[winId]||[]).map(item=>item.entity_id)].filter(Boolean)) {
+          if (config.sensors[source]) config.sensors[source].room_id = targetRoomId || null;
+        }
         movedName = config.windows[winId].name;
         found = true;
       }

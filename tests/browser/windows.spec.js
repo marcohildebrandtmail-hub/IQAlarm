@@ -67,14 +67,14 @@ test("guided window setup learns five positions and nests original entities with
     derivedId=derived?.entity_id;return derived?.state;
   }).toBe("closed");
   await signals(page,{[ids.lock]:"unavailable"});
-  await expect(parent.locator("[data-window-status]")).toHaveText("Keine Verbindung");
+  await expect(parent.locator("[data-window-status]")).toHaveText("Keine Verbindung | Keine Verbindung");
   await expect(parent.locator(`[data-source-state="${ids.lock}"]`)).toContainText("Keine Verbindung");
   const states=await page.evaluate(()=>window.iqTest.request({type:"get_states"}));
   const derived=states.find(s=>s.entity_id===derivedId);
   expect(derived.state).toBe("unavailable");
   await signals(page,{[ids.lock]:"locked"});
   await page.reload();await page.getByRole("tab",{name:"Kameras & Sensoren"}).click();
-  await expect(page.locator(`[data-window-id="${window.id}"] [data-window-status]`)).toHaveText("Geschlossen");
+  await expect(page.locator(`[data-window-id="${window.id}"] [data-window-status]`)).toHaveText("Geschlossen | Verriegelt");
   await page.setViewportSize({width:390,height:844});
   await page.locator(`[data-window-id="${window.id}"]`).getByRole("button",{name:"Bearbeiten",exact:true}).click();
   await expect(page.locator("iqalarm-window-assistant").getByLabel("Fenstername",{exact:true})).toHaveValue("browser_composite");

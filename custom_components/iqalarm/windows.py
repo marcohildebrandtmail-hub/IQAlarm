@@ -5,6 +5,27 @@ from dataclasses import dataclass, field
 from .models import WINDOW_STATES, WindowConfig
 
 
+def related_window_information(config, device_ids: dict[str, str | None]) -> dict[str, list[str]]:
+    """Associate informational siblings only when one window owns their HA device."""
+    owners: dict[str, set[str]] = {}
+    result = {key: [] for key in config.windows}
+    for key, window in config.windows.items():
+        for source in window.members:
+            if device := device_ids.get(source):
+                owners.setdefault(device, set()).add(key)
+    claimed = config.window_members()
+    for sensor in config.sensors.values():
+        if not sensor.information_only or sensor.entity_id in claimed:
+            continue
+        matches = owners.get(device_ids.get(sensor.entity_id), set())
+        if len(matches) != 1:
+            continue
+        key = next(iter(matches))
+        if sensor.room_id == config.windows[key].room_id:
+            result[key].append(sensor.entity_id)
+    return result
+
+
 def normalize(value) -> str:
     return "unavailable" if value is None else str(value)
 
