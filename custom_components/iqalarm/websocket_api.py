@@ -207,6 +207,10 @@ async def ws_crud(hass, connection, msg) -> None:
                     profile["confirmation_paths"] = [
                         path for path in profile.get("confirmation_paths", []) if key not in path
                     ]
+                if "room_order" in data.get("settings", {}):
+                    data["settings"]["room_order"] = [
+                        r for r in data["settings"]["room_order"] if r != key
+                    ]
             reference = {"rooms": "room_ids", "sensors": "sensor_ids", "actions": "action_ids"}.get(
                 collection
             )

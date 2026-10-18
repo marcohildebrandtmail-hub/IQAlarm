@@ -513,6 +513,7 @@ class Settings:
     floorplan_disarmed_cameras: bool = True
     floorplan_disarmed_animation: bool = False
     floorplan_armed_animation: bool = True
+    room_order: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         for key in (
@@ -557,6 +558,12 @@ class Settings:
                 raise ValueError("Entprellzeit muss ganzzahlig sein")
         if self.observation_profile_id is not None:
             text(self.observation_profile_id, "Beobachtungsprofil", 100)
+        if not isinstance(self.room_order, list):
+            raise ValueError("Raum-Reihenfolge muss eine Liste sein")
+        if not all(isinstance(x, str) for x in self.room_order):
+            raise ValueError("Raum-Reihenfolge darf nur Raum-IDs enthalten")
+        if len(self.room_order) > 250:
+            raise ValueError("Maximal 250 Räume in der Reihenfolge erlaubt")
 
 
 @dataclass
@@ -809,6 +816,8 @@ class Configuration:
             raise ValueError("Ungültige Konfigurationsrevision")
         if self.policy_version != 2:
             raise ValueError("Nicht unterstützte Korrelationsversion")
+        if self.settings.room_order:
+            self.settings.room_order = [r for r in self.settings.room_order if r in self.rooms]
 
     def to_dict(self) -> dict:
         return asdict(self)

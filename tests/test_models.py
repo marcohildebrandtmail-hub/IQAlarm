@@ -152,3 +152,22 @@ def test_settings_quiet_disarmed_defaults_and_validation():
         Settings(recent_seconds=400)
     with pytest.raises(ValueError):
         Settings(recent_seconds=30.5)  # type: ignore[arg-type]
+
+
+def test_settings_room_order_validation():
+    s = Settings()
+    assert s.room_order == []
+    s2 = Settings(room_order=["living", "kitchen"])
+    assert s2.room_order == ["living", "kitchen"]
+    with pytest.raises(ValueError, match="Liste"):
+        Settings(room_order="living")  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="Raum-IDs"):
+        Settings(room_order=[123])  # type: ignore[list-item]
+    with pytest.raises(ValueError, match="Maximal 250"):
+        Settings(room_order=[f"room_{i}" for i in range(251)])
+
+
+def test_configuration_validates_and_prunes_room_order(config):
+    config.settings.room_order = ["bed", "missing_room", "living"]
+    config.validate()
+    assert config.settings.room_order == ["bed", "living"]

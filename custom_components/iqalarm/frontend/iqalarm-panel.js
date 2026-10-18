@@ -1,7 +1,7 @@
-import {DraftJournal} from "./floorplan-drafts.js?v=2.4.2";
-import "./window-assistant.js?v=2.4.2";
-import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.4.2";
-/* IQAlarm 2.4.2 · native ES module · no CDN, framework or build required. */
+import {DraftJournal} from "./floorplan-drafts.js?v=2.4.6";
+import "./window-assistant.js?v=2.4.6";
+import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.4.6";
+/* IQAlarm 2.4.6 · native ES module · no CDN, framework or build required. */
 const WINDOW_CSS = `.window-group{padding:18px 0;border-bottom:1px solid var(--divider-color,#dce3ec)}.window-inputs{margin:14px 0 0 24px;padding-left:18px;border-left:2px solid var(--divider-color,#dce3ec)}.window-inputs code{display:block;font-size:10px;overflow-wrap:anywhere;color:var(--secondary-text-color,#64758b)}.information{border-color:color-mix(in srgb,var(--primary-color,#2986bb) 25%,transparent)}.information summary,details.banner summary{cursor:pointer;font-size:13px}.information ha-icon{color:var(--primary-color,#2986bb)}`;
 const CATEGORIES={information:"Information",warning:"Warnung",alarm:"Alarm",fault:"Störung",isolated:"Isoliert"};
 const RULES = {perimeter: "Vorfeld-Erkennung", single: "Unbestätigter Einzelsensor", flapping: "Sensor-Prellen", perimeter_contact: "Vorfeld + Öffnung", contact_motion: "Öffnung + Bewegung", multi_contact: "Zwei Öffnungen im selben Raum / freigegebenen Weg", multi_motion: "Zwei unabhängige Bewegungsmelder im selben Raum / freigegebenen Weg", immediate: "Freigegebene Einzelauslösung / Gefahr"};
@@ -59,6 +59,23 @@ dialog.wide{width:min(980px,calc(100vw - 28px));max-width:min(980px,calc(100vw -
 .room-pick-btn:hover{background:color-mix(in srgb,var(--iq-accent) 10%,var(--iq-surface));border-color:var(--iq-accent)}
 .room-pick-btn.current{border-color:var(--iq-accent);background:color-mix(in srgb,var(--iq-accent) 14%,var(--iq-surface));color:var(--iq-accent);cursor:default}
 .room-pick-btn small{font-size:11px;font-weight:400;color:var(--iq-muted);margin-left:auto}
+.room-head-actions{display:flex;align-items:center;gap:4px;margin-left:auto}
+.room-nav-btn{padding:2px;min-width:26px;min-height:26px;border-radius:6px;border:1px solid var(--iq-border);background:var(--iq-surface);color:var(--primary-text-color);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;flex-shrink:0}
+.room-nav-btn:hover:not([disabled]){background:color-mix(in srgb,var(--iq-accent) 14%,var(--iq-surface));border-color:var(--iq-accent);color:var(--iq-accent);transform:scale(1.08)}
+.room-nav-btn[disabled]{opacity:.25;cursor:not-allowed}
+.room-nav-btn ha-icon{--mdc-icon-size:16px;color:currentColor}
+.rooms-sort-dialog{display:flex;flex-direction:column}
+.rooms-sort-list{display:flex;flex-direction:column;gap:6px;max-height:55vh;overflow-y:auto;padding-right:4px}
+.rooms-sort-item{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--iq-surface);border:1px solid var(--iq-border);border-radius:10px;transition:background .15s}
+.rooms-sort-item:hover{background:color-mix(in srgb,var(--iq-accent) 4%,var(--iq-surface))}
+.sort-rank{font-size:13px;font-weight:700;color:var(--iq-muted);min-width:24px}
+.sort-room-name{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sort-room-name ha-icon{--mdc-icon-size:18px;color:var(--iq-accent);flex-shrink:0}
+.sort-btns{display:flex;align-items:center;gap:4px}
+.sort-btns .icon-button{padding:4px;min-width:30px;min-height:30px;border-radius:6px;border:1px solid var(--iq-border);background:var(--iq-surface);color:var(--primary-text-color);cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;justify-content:center}
+.sort-btns .icon-button:hover:not([disabled]){border-color:var(--iq-accent);color:var(--iq-accent);background:color-mix(in srgb,var(--iq-accent) 12%,var(--iq-surface))}
+.sort-btns .icon-button[disabled]{opacity:.25;cursor:not-allowed}
+.sort-btns .icon-button ha-icon{--mdc-icon-size:18px;color:currentColor}
 .sensor-move-header{padding:14px 16px;background:var(--primary-background-color,#f3f6fa);border-radius:10px;margin-bottom:12px;border:1px solid var(--iq-border)}
 @keyframes pulse-room-glow{0%,100%{fill-opacity:.34;stroke-opacity:.44}50%{fill-opacity:.10;stroke-opacity:.16}}
 @keyframes pulse-room-badge{0%,100%{stroke-width:2.6px;filter:drop-shadow(0 0 10px currentColor)}50%{stroke-width:1.5px;filter:drop-shadow(0 0 2px currentColor)}}
@@ -331,7 +348,18 @@ class IQAlarmPanel extends HTMLElement {
     }});
     dialog.addEventListener("close",()=>wizard.stop(),{once:true});
   }
-  _roomsOptions(value, blank = "Raum wählen") { return options(Object.fromEntries(Object.values(this.data.config.rooms).map(r => [r.id, r.name])), value, blank); }
+  _orderedRooms() {
+    const rooms = Object.values(this.data?.config?.rooms || {});
+    const order = this.data?.config?.settings?.room_order || [];
+    if (!order.length) return rooms;
+    const orderMap = new Map(order.map((id, idx) => [id, idx]));
+    return rooms.slice().sort((a, b) => {
+      const ia = orderMap.has(a.id) ? orderMap.get(a.id) : 9999;
+      const ib = orderMap.has(b.id) ? orderMap.get(b.id) : 9999;
+      return ia !== ib ? ia - ib : a.name.localeCompare(b.name, "de");
+    });
+  }
+  _roomsOptions(value, blank = "Raum wählen") { return options(Object.fromEntries(this._orderedRooms().map(r => [r.id, r.name])), value, blank); }
   _floorplanRoomsOptions(value = "") {
     return `<option value="">Raum auswählen</option>` + roomGroups(this.data.config.rooms, this.catalog.areas).map(group => `<optgroup label="${esc(group.name)}">${group.items.map(room => `<option value="${esc(room.id)}"${selected(room.id,value)}>${esc(room.name)}</option>`).join("")}</optgroup>`).join("");
   }
@@ -380,7 +408,7 @@ class IQAlarmPanel extends HTMLElement {
   }
 
   _dashboard() {
-    const {status: s, config: c} = this.data, sensors = this._displaySensors().filter(x => x.enabled), rooms = Object.values(c.rooms);
+    const {status: s, config: c} = this.data, sensors = this._displaySensors().filter(x => x.enabled), rooms = this._orderedRooms();
     const quarantineItems=Object.entries(s.quarantine);
     const quarantine=quarantineItems.length?`<details class="banner"><summary>Störung: Prell-Schutz bei ${quarantineItems.length} Sensoren aktiv</summary>${quarantineItems.map(([id])=>`<div class="sensor-line"><span class="sensor-name">${esc(this._sensorRecord(id)?.name||id)} · temporäre Prell-Quarantäne</span><button class="small" data-command="clear-quarantine" data-id="${esc(id)}">Quarantäne aufheben</button></div>`).join("")}</details>`:"";
     const information=s.active&&(this.data.information||[]).length?`<details class="card information" data-category="information" style="margin-bottom:18px"><summary>${icon("information-outline")} Information · ${(this.data.information||[]).length} Fenstergriffe: Potenziell unsicher</summary>${this.data.information.map(item=>`<div class="sensor-line"><span class="sensor-name">${esc(item.name)}</span><span>Entriegelt · Potenziell unsicher</span></div>`).join("")}</details>`:"";
@@ -415,10 +443,12 @@ class IQAlarmPanel extends HTMLElement {
 
   _lockNote() { return `<div class="help armed-note" hidden>Zum Ändern der Konfiguration zuerst entschärfen. Quarantäne und Aktionstests bleiben bedienbar.</div>`; }
   _rooms() {
-    return this._head("Räume & Grundriss", "Verbinde Vorfeld, Außenhaut und Innenraum zu einem räumlichen Schutzkonzept.", `<div class="row"><button data-command="import" data-config>${icon("import")}HA-Bereiche importieren</button><button class="primary" data-command="room-new" data-config>${icon("plus")}Raum anlegen</button></div>`) + this._lockNote() +
-      `<div class="grid">${Object.values(this.data.config.rooms).map(r => {
+    const rooms = this._orderedRooms();
+    return this._head("Räume & Grundriss", "Verbinde Vorfeld, Außenhaut und Innenraum zu einem räumlichen Schutzkonzept.", `<div class="row"><button type="button" data-command="rooms-sort" data-config>${icon("sort")}Räume sortieren</button><button data-command="import" data-config>${icon("import")}HA-Bereiche importieren</button><button class="primary" data-command="room-new" data-config>${icon("plus")}Raum anlegen</button></div>`) + this._lockNote() +
+      `<div class="grid">${rooms.map((r, i) => {
         const sensors = this._displaySensors(), count = prefix => sensors.filter(s => (s.room_id === r.id || s.front_of.includes(r.id)) && prefix.some(p => s.role.startsWith(p))).length;
-        return `<article class="card"><div class="row between"><h2>${esc(r.name)}</h2><div><button class="icon-button" aria-label="${esc(r.name)} bearbeiten" data-command="room-edit" data-id="${r.id}" data-config>${icon("pencil-outline")}</button><button class="icon-button danger" aria-label="${esc(r.name)} löschen" data-command="room-delete" data-id="${r.id}" data-config>${icon("delete-outline")}</button></div></div><div class="topology"><span><strong>${count(["perimeter"])}</strong>${icon("cctv")} Vorfeld</span>${icon("arrow-right")}<span><strong>${count(["entry", "lock", "vibration"])}</strong>Außenhaut</span>${icon("arrow-right")}<span><strong>${count(["interior"])}</strong>Innenraum</span></div><p>Überwachung nach gewähltem IQAlarm-Profil</p><p>Angrenzend: ${r.adjacent.length ? r.adjacent.map(id => esc(this.data.config.rooms[id]?.name)).join(", ") : "Keine Räume verknüpft"}</p><button class="small" style="margin-top:16px" data-tab="2">Sensoren zuweisen ${icon("arrow-right")}</button></article>`;
+        const isFirst = i === 0, isLast = i === rooms.length - 1;
+        return `<article class="card"><div class="row between"><h2>${esc(r.name)}</h2><div class="row" style="gap:4px"><button class="icon-button room-nav-btn" aria-label="${esc(r.name)} nach links" title="Nach links verschieben" data-command="room-move-left" data-room-id="${r.id}" ${isFirst ? "disabled" : ""} data-config>${icon("arrow-left")}</button><button class="icon-button room-nav-btn" aria-label="${esc(r.name)} nach rechts" title="Nach rechts verschieben" data-command="room-move-right" data-room-id="${r.id}" ${isLast ? "disabled" : ""} data-config>${icon("arrow-right")}</button><button class="icon-button" aria-label="${esc(r.name)} bearbeiten" data-command="room-edit" data-id="${r.id}" data-config>${icon("pencil-outline")}</button><button class="icon-button danger" aria-label="${esc(r.name)} löschen" data-command="room-delete" data-id="${r.id}" data-config>${icon("delete-outline")}</button></div></div><div class="topology"><span><strong>${count(["perimeter"])}</strong>${icon("cctv")} Vorfeld</span>${icon("arrow-right")}<span><strong>${count(["entry", "lock", "vibration"])}</strong>Außenhaut</span>${icon("arrow-right")}<span><strong>${count(["interior"])}</strong>Innenraum</span></div><p>Überwachung nach gewähltem IQAlarm-Profil</p><p>Angrenzend: ${r.adjacent.length ? r.adjacent.map(id => esc(this.data.config.rooms[id]?.name)).join(", ") : "Keine Räume verknüpft"}</p><button class="small" style="margin-top:16px" data-tab="2">Sensoren zuweisen ${icon("arrow-right")}</button></article>`;
       }).join("") || this._empty("Deine Räume fehlen noch", "Importiere HA-Bereiche oder lege den ersten Raum an.", "floor-plan")}</div><div class="help">Eine Raumverbindung gilt in beiden Richtungen und genau einen Schritt weit. Vorfeld ohne Raumzuordnung zeigt Erkennungen an und bestätigt keine beliebigen Kontakte. Andere Räume benötigen einen ausdrücklichen Bestätigungsweg im Profil.</div>` + this._floorplan(true);
   }
 
@@ -432,14 +462,21 @@ class IQAlarmPanel extends HTMLElement {
   }
 
   _roomSensorAssignmentGrid() {
-    const rooms = Object.values(this.data.config.rooms || {});
+    const rooms = this._orderedRooms();
     const allSensors = this._displaySensors();
     const recentSec = this.data.config?.settings?.recent_seconds ?? 30;
     const now = Date.now() / 1000;
     const unassigned = allSensors.filter(s => !s.room_id && (!s.front_of || !s.front_of.length));
 
-    const renderCard = (roomId, title, roomSensors, isUnassigned = false) => {
-      return `<article class="card room-drop-target ${isUnassigned ? "unassigned-card" : ""}" data-drop-room-id="${esc(roomId || "")}"><div class="room-head">${icon(isUnassigned ? "help-circle-outline" : "floor-plan")}<h3>${esc(title)}</h3><span class="pill">${roomSensors.length} ${roomSensors.length === 1 ? "Sensor" : "Sensoren"}</span><button type="button" class="icon-button room-add-btn" aria-label="Sensor zu ${esc(title)} hinzufügen" title="Sensor gezielt zu ${esc(title)} hinzufügen" data-command="room-add-sensor" data-room-id="${esc(roomId || "")}" data-config>${icon("plus")}</button></div><div class="sensor-drop-list">${roomSensors.length ? roomSensors.map(s => {
+    const renderCard = (roomId, title, roomSensors, isUnassigned = false, roomIndex = -1, totalRooms = 0) => {
+      const isFirst = roomIndex === 0;
+      const isLast = roomIndex === totalRooms - 1;
+      const navButtons = !isUnassigned ? `
+        <button type="button" class="icon-button room-nav-btn" aria-label="${esc(title)} nach links verschieben" title="Raum nach links verschieben" data-command="room-move-left" data-room-id="${esc(roomId || "")}" ${isFirst ? "disabled" : ""} data-config>${icon("arrow-left")}</button>
+        <button type="button" class="icon-button room-nav-btn" aria-label="${esc(title)} nach rechts verschieben" title="Raum nach rechts verschieben" data-command="room-move-right" data-room-id="${esc(roomId || "")}" ${isLast ? "disabled" : ""} data-config>${icon("arrow-right")}</button>
+      ` : "";
+
+      return `<article class="card room-drop-target ${isUnassigned ? "unassigned-card" : ""}" data-drop-room-id="${esc(roomId || "")}"><div class="room-head">${icon(isUnassigned ? "help-circle-outline" : "floor-plan")}<h3>${esc(title)}</h3><span class="pill">${roomSensors.length} ${roomSensors.length === 1 ? "Sensor" : "Sensoren"}</span><div class="room-head-actions">${navButtons}<button type="button" class="icon-button room-add-btn" aria-label="Sensor zu ${esc(title)} hinzufügen" title="Sensor gezielt zu ${esc(title)} hinzufügen" data-command="room-add-sensor" data-room-id="${esc(roomId || "")}" data-config>${icon("plus")}</button></div></div><div class="sensor-drop-list">${roomSensors.length ? roomSensors.map(s => {
         const raw = this.data.status.raw[s.entity_id];
         const isHandle = s.sensor_kind === "window_handle";
         const isLock = s.sensor_kind === "door_lock" || s.role === "lock_contact";
@@ -450,9 +487,9 @@ class IQAlarmPanel extends HTMLElement {
       }).join("") : `<p class="drop-hint">${isUnassigned ? "Keine Sensoren ohne Raum." : "Keine Sensoren zugeordnet. Sensoren hierher ziehen oder anklicken."}</p>`}</div></article>`;
     };
 
-    return `<section class="room-assignment-section"><div class="row between"><div><h2>${icon("folder-move-outline")} Schnelle Raum-Zuweisung</h2><p>Sensoren anklicken oder per Drag & Drop in einen anderen Raum ziehen, um sie schnell und unkompliziert zuzuweisen.</p></div><button type="button" class="primary small" data-command="room-add-sensor" data-room-id="" data-config>${icon("plus")}Sensor gezielt hinzufügen</button></div><div class="grid" style="margin-top:14px">${rooms.map(r => {
+    return `<section class="room-assignment-section"><div class="row between"><div><h2>${icon("folder-move-outline")} Schnelle Raum-Zuweisung</h2><p>Sensoren anklicken oder per Drag & Drop in einen anderen Raum ziehen, um sie schnell und unkompliziert zuzuweisen.</p></div><div class="row" style="gap:8px"><button type="button" class="small" data-command="rooms-sort" data-config>${icon("sort")} Räume sortieren</button><button type="button" class="primary small" data-command="room-add-sensor" data-room-id="" data-config>${icon("plus")}Sensor gezielt hinzufügen</button></div></div><div class="grid" style="margin-top:14px">${rooms.map((r, i) => {
       const roomSensors = allSensors.filter(s => s.room_id === r.id || s.front_of.includes(r.id));
-      return renderCard(r.id, r.name, roomSensors, false);
+      return renderCard(r.id, r.name, roomSensors, false, i, rooms.length);
     }).join("")}${renderCard("", "Ohne Raumzuordnung", unassigned, true)}</div></section>`;
   }
 
@@ -1750,6 +1787,104 @@ class IQAlarmPanel extends HTMLElement {
     dialog.querySelector("#action-targets").innerHTML = [...new Set(targets)].map(id => `<option value="${esc(id)}"></option>`).join("");
   }
 
+  _roomsSortDialog() {
+    if (this.data.status.active) {
+      this._toast("Zum Ändern der Raum-Reihenfolge zuerst entschärfen.", true);
+      return;
+    }
+    const rooms = this._orderedRooms();
+    const body = `
+      <div class="rooms-sort-dialog">
+        <p class="muted" style="margin-bottom:14px">Passe die Reihenfolge deiner Räume per Klick auf die Pfeile an (z. B. Küche neben Wohnzimmer). Die Reihenfolge gilt für alle Übersichten.</p>
+        <div class="row between" style="margin-bottom:12px">
+          <span class="pill">${rooms.length} Räume</span>
+          <button type="button" class="small" data-command="sort-rooms-alpha">${icon("sort-alphabetical-ascending")} Alphabetisch sortieren</button>
+        </div>
+        <div class="rooms-sort-list" id="rooms-sort-list">
+          ${rooms.map((r, i) => `
+            <div class="rooms-sort-item" data-room-id="${esc(r.id)}" data-room-name="${esc(r.name)}">
+              <span class="sort-rank">${i + 1}.</span>
+              <span class="sort-room-name">${icon("floor-plan")}<span>${esc(r.name)}</span></span>
+              <div class="sort-btns">
+                <button type="button" class="icon-button sort-btn-up" data-command="sort-room-step" data-room-id="${esc(r.id)}" data-dir="up" title="Nach oben" ${i === 0 ? "disabled" : ""}>${icon("chevron-up")}</button>
+                <button type="button" class="icon-button sort-btn-down" data-command="sort-room-step" data-room-id="${esc(r.id)}" data-dir="down" title="Nach unten" ${i === rooms.length - 1 ? "disabled" : ""}>${icon("chevron-down")}</button>
+              </div>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    `;
+    this._dialog("Räume anordnen & sortieren", body, "rooms-sort");
+  }
+
+  _sortRoomStep(roomId, dir) {
+    const list = this.shadowRoot.getElementById("rooms-sort-list");
+    if (!list) return;
+    const items = Array.from(list.querySelectorAll(".rooms-sort-item"));
+    const idx = items.findIndex(el => el.dataset.roomId === roomId);
+    if (idx === -1) return;
+    const targetIdx = dir === "up" ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= items.length) return;
+    if (dir === "up") {
+      list.insertBefore(items[idx], items[targetIdx]);
+    } else {
+      list.insertBefore(items[idx], items[targetIdx].nextSibling);
+    }
+    this._refreshSortDialogNumbers();
+  }
+
+  _sortRoomsAlpha() {
+    const list = this.shadowRoot.getElementById("rooms-sort-list");
+    if (!list) return;
+    const items = Array.from(list.querySelectorAll(".rooms-sort-item"));
+    items.sort((a, b) => {
+      const nameA = a.dataset.roomName || "";
+      const nameB = b.dataset.roomName || "";
+      return nameA.localeCompare(nameB, "de");
+    });
+    items.forEach(el => list.appendChild(el));
+    this._refreshSortDialogNumbers();
+  }
+
+  _refreshSortDialogNumbers() {
+    const list = this.shadowRoot.getElementById("rooms-sort-list");
+    if (!list) return;
+    const items = Array.from(list.querySelectorAll(".rooms-sort-item"));
+    items.forEach((el, i) => {
+      const rank = el.querySelector(".sort-rank");
+      if (rank) rank.textContent = `${i + 1}.`;
+      const upBtn = el.querySelector(".sort-btn-up");
+      const downBtn = el.querySelector(".sort-btn-down");
+      if (upBtn) upBtn.disabled = i === 0;
+      if (downBtn) downBtn.disabled = i === items.length - 1;
+    });
+  }
+
+  async _moveRoomOrder(roomId, direction) {
+    if (this.data.status.active) {
+      this._toast("Zum Ändern der Raum-Reihenfolge zuerst entschärfen.", true);
+      return;
+    }
+    const rooms = this._orderedRooms();
+    const idx = rooms.findIndex(r => r.id === roomId);
+    if (idx === -1) return;
+    const targetIdx = (direction === "left" || direction === "up") ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= rooms.length) return;
+
+    const newRooms = rooms.slice();
+    const temp = newRooms[idx];
+    newRooms[idx] = newRooms[targetIdx];
+    newRooms[targetIdx] = temp;
+
+    const newOrder = newRooms.map(r => r.id);
+    const config = structuredClone(this.data.config);
+    if (!config.settings) config.settings = {};
+    config.settings.room_order = newOrder;
+    this.data = await this._call("config/save", {config, revision: this._viewRevision});
+    this._render();
+    this._toast(`Reihenfolge geändert: ${newRooms[targetIdx].name} neben ${newRooms[idx].name}`);
+  }
+
   async _call(type, args = {}) {
     if (!this._hass) throw new Error("Home Assistant ist nicht verbunden");
     return await this._hass.callWS({type: `iqalarm/${type}`, ...args});
@@ -1765,6 +1900,11 @@ class IQAlarmPanel extends HTMLElement {
     try {
       if (command === "menu") this.dispatchEvent(new CustomEvent("hass-toggle-menu", {bubbles: true, composed: true}));
       else if (command === "close") { this.liveRoom = null; const ed = this.shadowRoot.getElementById("editor"); ed.classList.remove("wide"); ed.close(); }
+      else if (command === "rooms-sort") this._roomsSortDialog();
+      else if (command === "room-move-left") await this._moveRoomOrder(button.dataset.roomId, "left");
+      else if (command === "room-move-right") await this._moveRoomOrder(button.dataset.roomId, "right");
+      else if (command === "sort-room-step") this._sortRoomStep(button.dataset.roomId, button.dataset.dir);
+      else if (command === "sort-rooms-alpha") this._sortRoomsAlpha();
       else if (command === "sensor-move-click") this._sensorMoveDialog(id);
       else if (command === "move-sensor-target") await this._moveSensor(button.dataset.sensorId, button.dataset.targetRoom);
       else if (command === "room-add-sensor") {
@@ -1960,6 +2100,9 @@ class IQAlarmPanel extends HTMLElement {
       for (const rid of Object.keys(fp.zones || {})) if (!config.rooms[rid]) delete fp.zones[rid];
       for (const rid of Object.keys(fp.labels || {})) if (!config.rooms[rid]) delete fp.labels[rid];
     }
+    if (Array.isArray(config.settings?.room_order)) {
+      config.settings.room_order = config.settings.room_order.filter(r => config.rooms[r]);
+    }
   }
 
   async _submit(event) {
@@ -2095,6 +2238,18 @@ class IQAlarmPanel extends HTMLElement {
           await this._sendPlanImage(file, null, get("name").trim(), this._dialogRevision);
         }
         else if (type === "disarm") this.data = await this._call("set_mode", {mode: "disarmed", code: get("code")});
+        else if (type === "rooms-sort") {
+          const list = form.querySelectorAll(".rooms-sort-item");
+          const newOrder = Array.from(list).map(el => el.dataset.roomId);
+          const config = structuredClone(this.data.config);
+          if (!config.settings) config.settings = {};
+          config.settings.room_order = newOrder;
+          this.data = await this._call("config/save", {config, revision: this._dialogRevision});
+          this.shadowRoot.getElementById("editor").close();
+          this._toast("Raum-Reihenfolge erfolgreich gespeichert");
+          this._render();
+          return;
+        }
         else if (type.startsWith("delete-")) {
           const col = type.slice(7);
           const zoneRooms = col === "floorplans" ? (Object.keys(this.data.config.floorplans).length <= 1 ? Object.keys(this.data.config.rooms) : Object.keys(this.data.config.floorplans[id]?.zones || {})) : [];
