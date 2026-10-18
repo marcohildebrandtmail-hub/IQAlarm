@@ -148,9 +148,13 @@ test("motion label and red room expire together after fifteen seconds without an
 });
 
 test("window and lock states update separately and related actors stay nested",async({page})=>{
+  const registry=await page.evaluate(()=>window.iqTest.request({type:"config/entity_registry/list"}));
+  const lockRecord=registry.find(e=>e.platform==="iqalarm_test"&&e.unique_id==="test_window_handle");
+  expect(lockRecord).toBeTruthy();
+  await state(page,lockRecord.entity_id,"locked");
   const catalog=await ws(page,"catalog");
   const actor=catalog.entities.find(e=>e.entity_id.startsWith("binary_sensor.qa_window_actor"));
-  const lock=catalog.entities.find(e=>e.entity_id.startsWith("lock.test_window_handle"));
+  const lock=catalog.entities.find(e=>e.entity_id===lockRecord.entity_id);
   expect(actor).toBeTruthy();expect(lock.source_id).toBe(actor.source_id);
   await state(page,"binary_sensor.qa_summary_contact","off");
   await state(page,lock.entity_id,"locked");await state(page,actor.entity_id,"off");
