@@ -32,3 +32,85 @@ def test_real_and_dry_profile_plans_never_mix_modes(tmp_path):
         assert [c[2]["message"] for c in runtime.hass.services.calls] == ["Nacht"]
 
     asyncio.run(scenario())
+
+
+def test_entry_and_full_confirmation_actions_are_separate_and_profile_scoped(tmp_path):
+    async def scenario():
+        runtime = local_runtime(tmp_path)
+        runtime.config.stages = models.default_stages()
+        runtime.config.secure_stage_id = "1"
+        runtime.config.rules = models.default_rules()
+        runtime.config.actions = {
+            key: models.Action(
+                key,
+                "2",
+                "notify",
+                "notify.phone",
+                message=key,
+                trigger=trigger,
+                profile_ids=[profile],
+            )
+            for key, trigger, profile in (
+                ("entry", "level_entered", "armed_night"),
+                ("full", "rule_confirmed", "armed_night"),
+                ("vacation", "rule_confirmed", "armed_vacation"),
+            )
+        }
+        runtime.engine.profile_id = "armed_night"
+        for kind, profile, expected in (
+            ("level_changed", "armed_night", "entry"),
+            ("rule_confirmation", "armed_night", "full"),
+            ("rule_confirmation", "armed_vacation", "vacation"),
+        ):
+            event = models.EventLog(
+                100,
+                kind,
+                2,
+                "active",
+                "Test",
+                stage_id="2",
+                profile_id=profile,
+                reactions_enabled=True,
+            )
+            plan = await runtime.dispatcher.dispatch(event, runtime.generation)
+            assert [item["id"] for item in plan] == [expected]
+        assert [call[2]["message"] for call in runtime.hass.services.calls] == [
+            "entry",
+            "full",
+            "vacation",
+        ]
+        # Observation can update grades, but never sends a completion notification.
+        event.reactions_enabled = False
+        assert await runtime.dispatcher.dispatch(event, runtime.generation) == []
+        assert len(runtime.hass.services.calls) == 3
+
+    asyncio.run(scenario())
+
+
+def test_rule_completion_is_queued_once_without_replaying_entry_actions(tmp_path):
+    async def scenario():
+        runtime = local_runtime(tmp_path)
+        runtime.config.stages = models.default_stages()
+        runtime.config.secure_stage_id = "1"
+        runtime.config.rules = models.default_rules()
+        runtime.engine.profile_id = "armed_night"
+        runtime.engine.drain()
+        event = models.EventLog(
+            100,
+            "rule_confirmation",
+            2,
+            "active",
+            "Test",
+            stage_id="2",
+            profile_id="armed_night",
+            reactions_enabled=True,
+        )
+        runtime.engine._outbox.append(event)
+        await runtime.flush()
+        queued, generation = runtime.queue.get_nowait()
+        assert queued is event and generation == runtime.generation
+        assert runtime.queue.empty()
+        await runtime.flush()
+        assert runtime.queue.empty()
+
+    asyncio.run(scenario())

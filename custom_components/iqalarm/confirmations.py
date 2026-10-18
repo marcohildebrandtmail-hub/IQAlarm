@@ -8,12 +8,24 @@ from .level_rules import RuleCondition, RuleMatch, match_rule
 
 
 def grade_match(
-    config, rule, sensors, raw, evidence, quarantine, now, debouncing=None, *, proof_only=False
+    config,
+    rule,
+    sensors,
+    raw,
+    evidence,
+    quarantine,
+    now,
+    debouncing=None,
+    *,
+    proof_only=False,
+    maximum_sources=None,
 ):
     """Find the largest coherent proof up to the configured target, without side effects."""
-    target = rule.confirmation_target
+    target = rule.confirmation_sources
     if target is None:
         return None
+    if maximum_sources is not None:
+        target = min(target, maximum_sources)
     candidates = (
         sensors
         if proof_only
@@ -36,6 +48,9 @@ def grade_match(
                 return None
             variant = replace(
                 rule,
+                confirmation_target=None,
+                confirmation_thresholds=None,
+                confirmation_decay_seconds=None,
                 conditions=[
                     replace(c, count=n) for c, n in zip(rule.conditions, counts, strict=True)
                 ],
@@ -92,7 +107,7 @@ def valid_memory(config, rule, record, sensors, quarantine, now):
         if record["signature"] != memory_signature(rule, chain, sensors):
             return None
         found = grade_match(config, rule, sensors, {}, chain, quarantine, at, proof_only=True)
-        if found and len(found.chain) >= rule.confirmation_target:
+        if found and len(found.chain) >= rule.confirmation_sources:
             return found
     except (KeyError, TypeError, ValueError):
         return None

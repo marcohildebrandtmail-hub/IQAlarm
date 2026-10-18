@@ -39,7 +39,9 @@ for (const [now, motion] of [[100, true], [114.999, true], [115, false], [160, f
     const result = display(setup(), now);
     assert.equal(result.color, motion ? "#ef4444" : "#14b8a6");
     assert.equal(result.label.includes("Bewegung"), motion);
-    assert.equal(result.label.includes("Ruhig"), !motion);
+    assert.equal(result.label.includes("Ruhig"), false);
+    assert.match(result.label, /Wohnzimmer TV/);
+    assert.doesNotMatch(result.label, /Sensoren?/);
     assert.equal(result.shape.includes('fill="#ef4444"'), motion);
   });
 }
@@ -65,4 +67,10 @@ test("a confirmed alarm stays red with an explicit label after motion expires", 
   assert.equal(result.color, "#ef4444");
   assert.match(result.label, /Bestätigter Alarm/);
   assert.equal(result.label.includes("Ruhig"), false);
+});
+
+test("observation hides the correlation caption while showing actual activity", () => {
+  const result=display(setup({confirmed:true}),105);
+  assert.doesNotMatch(result.label,/Bestätigte Korrelation/);
+  assert.match(result.label,/Bewegung/);
 });

@@ -151,6 +151,7 @@ test("confirmation grade remembers three sources and requires a later opening",a
   let data=await ws(page,"get");
   const parent=Object.values(data.config.rules).find(r=>r.name==="Vorfeldgrad 3");
   expect(parent.confirmation_target).toBe(3);expect(parent.confirmation_memory_seconds).toBe(180);
+  expect(parent.confirmation_thresholds).toEqual([1,2,3]);expect(parent.confirmation_decay_seconds).toEqual([60,60,60]);
   await page.locator('[data-stage="5"]').click();
   await page.getByRole("button",{name:"Regel hinzufügen",exact:true}).click();
   await dialog.getByLabel("Regelname",{exact:true}).fill("Nur nach bestätigtem Vorfeld");
@@ -180,4 +181,100 @@ test("confirmation grade remembers three sources and requires a later opening",a
   await state(page,ids.frame,"on");
   await expect.poll(async()=>(await ws(page,"get")).status.level).toBe(5);
   expect((await ws(page,"get")).status.confirmed).toBe(true);
+});
+
+
+test("grade thresholds and decay settings survive condition edits and reload",async({page})=>{
+  await page.getByRole("tab",{name:"Level-Konfiguration"}).click();await page.locator('[data-stage="2"]').click();
+  await page.getByRole("button",{name:"Regel hinzufügen",exact:true}).click();
+  const dialog=page.getByRole("dialog");
+  await dialog.getByLabel("Regelname",{exact:true}).fill("Gestufte Bestätigung");
+  await dialog.getByLabel("Sensoren für Bedingung 1",{exact:true}).selectOption([ids.person,ids.person2,ids.outside]);
+  await dialog.getByLabel("Bestätigungsgrad für diese Regel verwenden",{exact:true}).check();
+  await dialog.getByLabel("Anzahl Bestätigungsgrade",{exact:true}).fill("2");
+  await dialog.getByLabel("Unabhängige Meldungen für 2/2",{exact:true}).fill("3");
+  await dialog.getByLabel("Rückstufung von 1/2 nach Ruhe (Sekunden)",{exact:true}).fill("90");
+  await dialog.getByLabel("Rückstufung von 2/2 nach Ruhe (Sekunden)",{exact:true}).fill("45");
+  await dialog.getByRole("button",{name:"Weitere Bedingung",exact:true}).click();
+  await expect(dialog.getByLabel("Unabhängige Meldungen für 2/2",{exact:true})).toHaveValue("3");
+  await dialog.locator('[data-rule-condition="1"]').getByRole("button",{name:"Entfernen",exact:true}).click();
+  await expect(dialog.getByLabel("Rückstufung von 1/2 nach Ruhe (Sekunden)",{exact:true})).toHaveValue("90");
+  await dialog.getByRole("button",{name:"Speichern",exact:true}).click();await expect(dialog).not.toBeVisible();
+  let rule=Object.values((await ws(page,"get")).config.rules).find(r=>r.name==="Gestufte Bestätigung");
+  expect(rule.confirmation_thresholds).toEqual([1,3]);expect(rule.confirmation_decay_seconds).toEqual([90,45]);
+  await page.reload();await page.getByRole("tab",{name:"Level-Konfiguration"}).click();await page.locator('[data-stage="2"]').click();
+  await page.getByRole("button",{name:"Gestufte Bestätigung bearbeiten",exact:true}).click();
+  await expect(dialog.getByLabel("Unabhängige Meldungen für 2/2",{exact:true})).toHaveValue("3");
+  await expect(dialog.getByLabel("Rückstufung von 2/2 nach Ruhe (Sekunden)",{exact:true})).toHaveValue("45");
+  await page.setViewportSize({width:390,height:844});
+  expect(await dialog.evaluate(el=>el.scrollWidth>el.clientWidth+1)).toBe(false);
+  await page.screenshot({path:"test-results/grade-decay-mobile.png"});
+  await dialog.getByRole("button",{name:"Abbrechen",exact:true}).click();
+});
+
+test("level appearance edits retain security properties without the removed controls",async({page})=>{
+  await page.getByRole("tab",{name:"Level-Konfiguration"}).click();await page.locator('[data-stage="5"]').click();
+  const form=page.locator("#stage-single-form");
+  await expect(form.locator('input[type="checkbox"]')).toHaveCount(0);
+  await form.getByLabel("Bezeichnung",{exact:true}).fill("Vollalarm");
+  await form.getByRole("button",{name:"Level speichern",exact:true}).click();
+  const stage=(await ws(page,"get")).config.stages.find(s=>s.id==="5");
+  expect(stage.name).toBe("Vollalarm");expect(stage.requires_confirmation).toBe(true);expect(stage.allow_loud).toBe(true);expect(stage.latch).toBe(true);
+});
+
+test("a profile action can wait for full confirmation independently from level entry",async({page})=>{
+  await page.getByRole("tab",{name:"Profile & System"}).click();
+  await page.getByRole("button",{name:"Regeln Nacht",exact:true}).click();
+  const card=page.locator('[data-profile-action-stage="2"]');
+  await card.getByRole("button",{name:"Aktion hinzufügen",exact:true}).click();
+  const dialog=page.getByRole("dialog");
+  await dialog.getByLabel("Ausführen bei",{exact:true}).selectOption("rule_confirmed");
+  await dialog.getByLabel(/^Ziel \/ Dienst/).fill("notify.test_phone");
+  await dialog.getByLabel(/^Nachricht/).fill("Erst bei voller Bestätigung");
+  await dialog.getByRole("button",{name:"Speichern",exact:true}).click();await expect(dialog).not.toBeVisible();
+  await expect(card.getByText("Bei vollständiger Bestätigung",{exact:true})).toBeVisible();
+  const action=Object.values((await ws(page,"get")).config.actions).find(a=>a.message==="Erst bei voller Bestätigung");
+  expect(action.trigger).toBe("rule_confirmed");expect(action.profile_ids).toEqual(["qa_night"]);
+  await page.getByRole("button",{name:"Regeln Abwesend",exact:true}).click();
+  await expect(card.getByText("Erst bei voller Bestätigung",{exact:true})).toHaveCount(0);
+});
+
+
+test("quiet floorplan labels stay minimal and live colors fade on retained SVG nodes",async({page})=>{
+  const panel=page.locator("iqalarm-panel");
+  // Exercise the real dashboard renderer with a private in-browser snapshot.
+  // No configured sensor, output, clock or HA entity is changed by this display check.
+  await panel.evaluate(el=>{
+    el.__liveOriginal=el.data;el.data=structuredClone(el.data);
+    el.data.config.floorplans={fade:{id:"fade",name:"Anzeigeprüfung",width:1000,height:600,image:null,zones:{living:[[.1,.1],[.9,.1],[.9,.9],[.1,.9]]}}};
+    el.data.status.active=false;el.data.status.rooms.living.confirmed=false;
+    el.data.config.settings.floorplan_disarmed_motion=true;
+    el.data.status.raw["binary_sensor.level_motion"]=true;
+    el.data.status.last_active["binary_sensor.level_motion"]=Date.now()/1000;
+    el._render();
+  });
+  const room=panel.locator('g[data-room="living"]:not([data-label-room])').first();
+  const fill=room.locator('polygon').nth(1);
+  await expect(fill).toHaveAttribute("fill","#ef4444");
+  await expect(panel.locator('g[data-room="living"][data-label-room]').first()).toContainText("Bewegung");
+  await page.waitForTimeout(1700);
+  await panel.evaluate(el=>{
+    el.__fadePolygon=el.shadowRoot.querySelector('g[data-room="living"]:not([data-label-room]) polygon:nth-of-type(2)');
+    el.__ringNode=el.shadowRoot.querySelector('[data-level-ring]');
+    el.data.status.raw["binary_sensor.level_motion"]=false;
+    el.data.status.last_active["binary_sensor.level_motion"]=Date.now()/1000-16;
+    el._render();
+  });
+  await expect(fill).toHaveAttribute("fill","#14b8a6");
+  expect(await panel.evaluate(el=>el.__fadePolygon===el.shadowRoot.querySelector('g[data-room="living"]:not([data-label-room]) polygon:nth-of-type(2)'))).toBe(true);
+  expect(await panel.evaluate(el=>el.__ringNode===el.shadowRoot.querySelector('[data-level-ring]'))).toBe(true);
+  await page.waitForTimeout(300);
+  const intermediate=await fill.evaluate(el=>getComputedStyle(el).fill);
+  expect(intermediate).not.toBe("rgb(20, 184, 166)");expect(intermediate).not.toBe("rgb(239, 68, 68)");
+  const label=panel.locator('g[data-room="living"][data-label-room]').first();
+  await expect(label).not.toContainText("Ruhig");await expect(label).not.toContainText("Sensor");await expect(label).not.toContainText("Bestätigte Korrelation");
+  await expect(label).toContainText("Wohnzimmer");await expect(label).not.toContainText("Bewegung");
+  await expect.poll(()=>fill.evaluate(el=>getComputedStyle(el).fill)).toBe("rgb(20, 184, 166)");
+  await page.screenshot({path:"test-results/quiet-floorplan-two-rings.png",fullPage:true});
+  await panel.evaluate(el=>{el.data=el.__liveOriginal;delete el.__liveOriginal;delete el.__fadePolygon;delete el.__ringNode;el._render();});
 });

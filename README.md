@@ -31,6 +31,16 @@ Beispiel: Eine Kamera meldet eine Person und hebt auf die Vorfeld-Stufe. Eine we
 
 Die höchste erfüllte Regel bestimmt die Stufe. „Sicher“ ergibt sich bei aktivem Profil automatisch, wenn keine höhere Regel erfüllt ist. Ein gehaltener bestätigter Alarm bleibt bis zum Entschärfen aktiv; eine höhere bestätigte Stufe kann ihn überlagern. Informationssignale der Fenstergriffe, ausgefallene und quarantänisierte Quellen bestätigen keinen Einbruch. Ein reines Schlossentriegeln mit Innenbewegung ersetzt keine physische Öffnung. Einzelsignale können eine bestätigungspflichtige Stufe nur über einen ausdrücklich freigegebenen Gefahrensensor erreichen.
 
+### Live-Anzeige und Bestätigungsgrade ab 2.8.0
+
+Das Cockpit zeigt zwei Ringe: außen die Alarmstufe im Verhältnis zur höchsten konfigurierten Stufe, innen den **Bestätigungsgrad** der aktuell angezeigten Stufe. Im Grundriss bleiben ruhige Räume nur mit ihrem Namen sichtbar; „Ruhig“, Sensoranzahl und „Bestätigte Korrelation“ entfallen dort. Aktivitätsfarben blenden innerhalb von 1,5 Sekunden zur Normalfarbe zurück. Bewegungstext und Farbziel nutzen weiterhin dieselbe 15-Sekunden-Nachlaufzeit; bei reduzierter Bewegungseinstellung entfallen Animationen.
+
+In **Level-Konfiguration → Regel bearbeiten → Bestätigungsgrad & Gedächtnis** lassen sich Anzahl der Grade, unabhängige Meldungen je Grad und eine eigene Ruhezeit pro Rückstufung einstellen. Beispiel: drei Grade mit Schwellen 1, 2 und 3 sowie je 60 Sekunden Ruhezeit. Eine zweite unabhängige Quelle erhöht 1/3 auf 2/3; nach 60 Sekunden ohne neue Meldung fällt der Grad auf 1/3, nach weiteren 60 Sekunden auf 0. Verarbeitete alte Meldungen steigen beim nächsten Timerlauf nicht wieder auf. Neue gültige Meldungen starten die Ruhezeit neu; dasselbe physische Gerät zählt weiterhin nur einmal. Das Bestätigungsfenster begrenzt zusätzlich das Alter der Einzelmeldungen. Bereits vorhandene Regeln behalten ihr bisheriges Verhalten, bis die schrittweise Rückstufung eingeschaltet wird.
+
+**Bestätigung merken** ist ein eigener Timer: Eine vollständig erreichte Bestätigung bleibt bis zu ihrem Ablauf für verknüpfte Folgeregeln nutzbar, auch wenn der sichtbare Grad inzwischen sinkt. Ein neuer Tür-/Fensterkontakt muss weiterhin zeitlich nach der Bestätigung und räumlich passend eintreffen.
+
+Unter **Profile & System → Aktionen je Alarmstufe → Aktion hinzufügen/bearbeiten → Ausführen bei** stehen **Beim Erreichen des Levels** und **Bei vollständiger Bestätigung** getrennt zur Auswahl. So kann beispielsweise erst 3/3 eine Nachricht auslösen, ausschließlich im ausgewählten Alarmmodus. Ohne zugeordnete Aktion bleibt die vollständige Bestätigung ohne Geräteaktion. Neustart und normale Timerläufe spielen die Benachrichtigung nicht erneut ab. Die entfernten allgemeinen Checkboxen werden beim Bearbeiten von Namen und Farben nicht versehentlich zurückgesetzt; bestehende Sicherheitsgrenzen bleiben erhalten.
+
 ### Bestätigungsgrad und Vorfeldgedächtnis ab 2.7.0
 
 Die größere Quellenauswahl zeigt hinter gewählten Sensorgruppen die konkreten Entitäten mit Anzeigename, Entitäts-ID, Raum und Livezustand. Aktive Quellen sind hervorgehoben; isolierte, nicht erreichbare oder durch die Raumbegrenzung ausgeschlossene Quellen werden erläutert.

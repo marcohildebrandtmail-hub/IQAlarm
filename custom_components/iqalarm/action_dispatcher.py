@@ -165,6 +165,11 @@ class ActionDispatcher:
             if a.enabled
             and a.level == stage
             and (
+                event.kind == "test"
+                or a.trigger
+                == ("rule_confirmed" if event.kind == "rule_confirmation" else "level_entered")
+            )
+            and (
                 (a.profile_ids is None or event.profile_id in a.profile_ids)
                 if self.runtime.config.rules is not None
                 else (profile is None or profile.action_ids is None or a.id in profile.action_ids)

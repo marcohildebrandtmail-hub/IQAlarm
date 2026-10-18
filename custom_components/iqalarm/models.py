@@ -456,10 +456,15 @@ class Action:
     media_player: str | None = None
     enabled: bool = True
     profile_ids: list[str] | None = None
+    trigger: str = "level_entered"
 
     def __post_init__(self) -> None:
         if not isinstance(self.id, str) or not ID_RE.fullmatch(self.id):
             raise ValueError("Ungültige Aktions-ID")
+        if self.trigger not in ("level_entered", "rule_confirmed"):
+            raise ValueError("Ungültiger Aktionszeitpunkt")
+        if self.level == "diagnostic" and self.trigger == "rule_confirmed":
+            raise ValueError("Diagnose verwendet keinen Bestätigungsgrad")
         if not isinstance(self.level, str) or not ID_RE.fullmatch(self.level):
             raise ValueError("Ungültige Aktionsstufe")
         allowed = {
@@ -897,7 +902,7 @@ class Configuration:
                         raise ValueError(
                             "Voraussetzung benötigt eine niedrigere Regel mit Bestätigungsziel"
                         )
-                    if parent.confirmation_target + sum(c.count for c in rule.conditions) > 8:
+                    if parent.confirmation_sources + sum(c.count for c in rule.conditions) > 8:
                         raise ValueError(
                             "Bestätigung und neue Meldungen dürfen zusammen höchstens 8 Quellen benötigen"
                         )

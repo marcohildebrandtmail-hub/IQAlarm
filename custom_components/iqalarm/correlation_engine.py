@@ -20,6 +20,7 @@ from .const import (
     Role,
     RunState,
 )
+from .grade_decay import advance_grade
 from .level_rules import RuleMatch, accepts, spaces
 from .models import Configuration, EventLog, Evidence, Profile
 
@@ -56,6 +57,7 @@ class CorrelationEngine:
         self.rule_pending: dict[str, dict] = {}
         self.rule_matches: list[RuleMatch] = []
         self.rule_confirmations: dict[str, dict] = {}
+        self.rule_grades: dict[str, dict] = {}
 
     @property
     def profile(self):
@@ -147,12 +149,14 @@ class CorrelationEngine:
         reason: str,
         chain: list[Evidence] | None = None,
         entity_id: str | None = None,
+        stage_id: str | None = None,
+        confirmed: bool | None = None,
     ) -> None:
         chain = sorted(chain or [], key=lambda e: e.timestamp)
         event = EventLog(
             now,
             kind,
-            self.level,
+            self.config.stage_rank(stage_id) if stage_id is not None else self.level,
             self.mode.value,
             reason,
             chain[-1].room_id if chain else None,
@@ -160,9 +164,9 @@ class CorrelationEngine:
             [asdict(e) for e in chain],
             profile_id=self.evaluation_profile_id,
             profile_name=self.profile.name if self.profile else "",
-            stage_id=self.stage_id,
-            stage_name=self.config.stage(self.stage_id).name,
-            confirmed=self.confirmed,
+            stage_id=stage_id or self.stage_id,
+            stage_name=self.config.stage(stage_id or self.stage_id).name,
+            confirmed=self.confirmed if confirmed is None else confirmed,
             reactions_enabled=self.reactions_enabled,
         )
         self.events.appendleft(event)
@@ -252,6 +256,7 @@ class CorrelationEngine:
         self.arming_until = None
         self.rule_pending.clear()
         self.rule_confirmations.clear()
+        self.rule_grades.clear()
         self.rule_matches = []
         if profile_id is None:
             self.quarantine.clear()
@@ -730,6 +735,9 @@ class CorrelationEngine:
         self.rule_confirmations = {
             key: value for key, value in self.rule_confirmations.items() if key in active_ids
         }
+        self.rule_grades = {
+            key: value for key, value in self.rule_grades.items() if key in active_ids
+        }
         matches = []
         pending = []
         for key in set(self.rule_pending) - active_ids:
@@ -819,17 +827,36 @@ class CorrelationEngine:
             rule = self.config.rules[match.rule_id]
             if rule.confirmation_target is None:
                 continue
-            proof = grade_match(
-                self.config,
-                rule,
-                self.sensors,
-                self.raw,
-                list(self.evidence),
-                self.quarantine,
-                now,
-                self.debouncing,
+            previous = self.rule_confirmations.get(rule.id)
+            rising = (
+                valid_memory(self.config, rule, previous, self.sensors, self.quarantine, now)
+                is None
             )
-            if not proof or len(proof.chain) < rule.confirmation_target:
+            if rule.confirmation_decay_seconds is not None:
+                state, proof, rising = advance_grade(
+                    self.config,
+                    rule,
+                    self.sensors,
+                    self.raw,
+                    list(self.evidence),
+                    self.quarantine,
+                    now,
+                    self.rule_grades.get(rule.id),
+                    self.debouncing,
+                )
+                self.rule_grades[rule.id] = state
+            else:
+                proof = grade_match(
+                    self.config,
+                    rule,
+                    self.sensors,
+                    self.raw,
+                    list(self.evidence),
+                    self.quarantine,
+                    now,
+                    self.debouncing,
+                )
+            if not proof or len(proof.chain) < rule.confirmation_sources:
                 continue
             at = max(e.timestamp for e in proof.chain)
             previous = self.rule_confirmations.get(rule.id)
@@ -841,12 +868,15 @@ class CorrelationEngine:
                 "chain": [asdict(e) for e in proof.chain],
                 "signature": memory_signature(rule, proof.chain, self.sensors),
             }
-            self._log(
-                now,
-                "rule_confirmation",
-                f"{rule.name}: {rule.confirmation_target}/{rule.confirmation_target} bestätigt",
-                proof.chain,
-            )
+            if rising:
+                self._log(
+                    now,
+                    "rule_confirmation",
+                    f"{rule.name}: {rule.confirmation_target}/{rule.confirmation_target} bestätigt",
+                    proof.chain,
+                    stage_id=rule.stage_id,
+                    confirmed=proof.confirmed,
+                )
         if self.held_alarm and self.reactions_enabled:
             held = self.held_alarm
             if held["rule"] in active_ids:
@@ -1056,9 +1086,18 @@ class CorrelationEngine:
                 "rule_id": rule.id,
                 "name": rule.name,
                 "stage_id": rule.stage_id,
-                "current": len(proof.chain) if proof else 0,
+                "current": self.rule_grades.get(rule.id, {}).get("grade", 0)
+                if rule.confirmation_decay_seconds is not None
+                else sum(len(proof.chain) >= threshold for threshold in rule.grade_thresholds)
+                if proof
+                else 0,
                 "target": rule.confirmation_target,
-                "complete": memory is not None,
+                "complete": self.rule_grades.get(rule.id, {}).get("grade", 0)
+                == rule.confirmation_target
+                if rule.confirmation_decay_seconds is not None
+                else memory is not None,
+                "remembered": memory is not None,
+                "next_decay": self.rule_grades.get(rule.id, {}).get("next_decay"),
                 "until": record["until"] if memory else None,
                 "sources": [asdict(e) for e in proof.chain] if proof else [],
             }
@@ -1122,6 +1161,7 @@ class CorrelationEngine:
             "evidence": [asdict(e) for e in self.evidence],
             "rule_pending": self.rule_pending,
             "rule_confirmations": self.rule_confirmations,
+            "rule_grades": self.rule_grades,
             "events": [e.to_dict() for e in self.events],
         }
 
@@ -1191,6 +1231,11 @@ class CorrelationEngine:
             self.rule_confirmations = {
                 key: value
                 for key, value in data.get("rule_confirmations", {}).items()
+                if key in self.config.rules and isinstance(value, dict)
+            }
+            self.rule_grades = {
+                key: value
+                for key, value in data.get("rule_grades", {}).items()
                 if key in self.config.rules and isinstance(value, dict)
             }
             self._restore_rules(data, now)

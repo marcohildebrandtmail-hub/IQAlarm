@@ -61,6 +61,16 @@ class LevelRule:
     confirmation_target: int | None = None
     confirmation_memory_seconds: float = 180
     prerequisite_rule_id: str | None = None
+    confirmation_thresholds: list[int] | None = None
+    confirmation_decay_seconds: list[float] | None = None
+
+    @property
+    def grade_thresholds(self) -> list[int]:
+        return self.confirmation_thresholds or list(range(1, (self.confirmation_target or 0) + 1))
+
+    @property
+    def confirmation_sources(self) -> int | None:
+        return self.grade_thresholds[-1] if self.confirmation_target is not None else None
 
     def __post_init__(self):
         from .models import construct, number, text
@@ -83,10 +93,35 @@ class LevelRule:
         number(self.delay_seconds, 0, 600, "Regelverzögerung")
         number(self.confirmation_memory_seconds, 1, 3600, "Bestätigungsspeicher")
         if self.confirmation_target is not None and (
-            type(self.confirmation_target) is not int
-            or not sum(c.count for c in self.conditions) <= self.confirmation_target <= 8
+            type(self.confirmation_target) is not int or not 1 <= self.confirmation_target <= 8
         ):
             raise ValueError("Bestätigungsziel muss zwischen Auslöseschwelle und 8 liegen")
+        if self.confirmation_thresholds is not None:
+            values = self.confirmation_thresholds
+            if (
+                self.confirmation_target is None
+                or not isinstance(values, list)
+                or len(values) != self.confirmation_target
+                or any(type(v) is not int or not 1 <= v <= 8 for v in values)
+                or any(a >= b for a, b in zip(values, values[1:], strict=False))
+            ):
+                raise ValueError(
+                    "Meldeschwellen müssen pro Bestätigungsgrad streng aufsteigend zwischen 1 und 8 liegen"
+                )
+        if self.confirmation_sources is not None and self.confirmation_sources < sum(
+            c.count for c in self.conditions
+        ):
+            raise ValueError("Bestätigungsziel benötigt mindestens die Quellen der Auslöseschwelle")
+        if self.confirmation_decay_seconds is not None:
+            values = self.confirmation_decay_seconds
+            if (
+                self.confirmation_target is None
+                or not isinstance(values, list)
+                or len(values) != self.confirmation_target
+            ):
+                raise ValueError("Jeder Bestätigungsgrad benötigt seine Rückstufungszeit")
+            for value in values:
+                number(value, 1, 3600, "Rückstufungszeit")
         if self.prerequisite_rule_id is not None:
             if not isinstance(self.prerequisite_rule_id, str) or not _ID.fullmatch(
                 self.prerequisite_rule_id

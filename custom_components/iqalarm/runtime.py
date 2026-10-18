@@ -308,7 +308,7 @@ class IQAlarmRuntime:
                 secure_event = event
                 continue
             if (
-                event.kind in ("level_changed", "confirmation_changed")
+                event.kind in ("level_changed", "confirmation_changed", "rule_confirmation")
                 and event.stage_id != self.engine.baseline_stage_id
             ) or event.kind == "quarantined_flapping":
                 if not event.reactions_enabled:

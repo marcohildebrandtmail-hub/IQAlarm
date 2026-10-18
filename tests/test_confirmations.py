@@ -213,3 +213,128 @@ def test_configuration_rejects_missing_self_or_higher_dependencies(graded):
     data["rules"]["outside"]["confirmation_target"] = 0
     with pytest.raises(ValueError, match="Bestätigungsziel"):
         Configuration.from_dict(data)
+
+
+def with_decay(engine, thresholds=None, times=None):
+    rule = engine.config.rules["outside"]
+    rule.window_seconds = 600
+    rule.confirmation_thresholds = thresholds or [1, 2, 3]
+    rule.confirmation_decay_seconds = times or [60, 60, 60]
+    rule.__post_init__()
+    return engine
+
+
+def progress(engine, at):
+    engine.tick(at)
+    return engine.snapshot(at)["rule_progress"][0]
+
+
+def test_inactivity_counts_down_without_replaying_old_evidence(graded):
+    with_decay(graded)
+    graded.feed("binary_sensor.terrace", True, 101)
+    graded.feed("binary_sensor.two", True, 120)
+    assert progress(graded, 179)["current"] == 2
+    assert progress(graded, 180)["current"] == 1
+    assert progress(graded, 200)["current"] == 1
+    assert progress(graded, 240)["current"] == 0
+    assert progress(graded, 245)["current"] == 0
+    graded.feed("binary_sensor.three", True, 246)
+    assert progress(graded, 246)["current"] == 1
+    assert not graded.rule_confirmations
+
+
+def test_each_grade_has_its_own_inactivity_deadline(graded):
+    with_decay(graded, times=[60, 30, 10])
+    complete(graded)
+    assert progress(graded, 112)["current"] == 3
+    assert progress(graded, 113)["current"] == 2
+    assert progress(graded, 142)["current"] == 2
+    assert progress(graded, 143)["current"] == 1
+    assert progress(graded, 203)["current"] == 0
+    assert progress(graded, 210)["remembered"]
+    assert graded.rule_confirmations["outside"]["until"] == 283
+    graded.feed("binary_sensor.window", True, 211)
+    assert graded.level == 5 and graded.confirmed
+
+
+def test_repeated_device_refreshes_time_but_never_counts_as_two_sources(graded):
+    with_decay(graded)
+    graded.feed("binary_sensor.terrace", True, 101)
+    graded.feed("binary_sensor.terrace", False, 110)
+    graded.feed("binary_sensor.terrace", True, 120)
+    assert progress(graded, 161)["current"] == 1
+    assert progress(graded, 180)["current"] == 0
+    graded.feed("binary_sensor.two", True, 181)
+    assert progress(graded, 181)["current"] == 1
+    assert not graded.rule_confirmations
+
+
+def test_nonuniform_source_thresholds_and_restored_deadlines(graded):
+    rule = graded.config.rules["outside"]
+    for name in ("four", "five"):
+        sensor = SensorConfig(f"binary_sensor.{name}", "perimeter_camera", front_of=["living"])
+        graded.config.sensors[sensor.entity_id] = sensor
+        graded.sensors[sensor.entity_id] = sensor
+        graded.seed(sensor.entity_id, False)
+        rule.conditions[0].sensor_ids.append(sensor.entity_id)
+    with_decay(graded, [1, 3, 5])
+    for index, name in enumerate(("terrace", "two", "three", "four", "five")):
+        graded.feed(f"binary_sensor.{name}", True, 101 + index)
+        assert progress(graded, 101 + index)["current"] == [1, 1, 2, 2, 3][index]
+    state = deepcopy(graded.persistent_state())
+    restored = CorrelationEngine(graded.config)
+    for key in restored.sensors:
+        restored.seed(key, False)
+    restored.restore(state, 130)
+    assert progress(restored, 164)["current"] == 3
+    assert progress(restored, 165)["current"] == 2
+    assert progress(restored, 225)["current"] == 1
+    assert restored.rule_confirmations["outside"]["until"] == 285
+    assert len([e for e in restored.events if e.kind == "rule_confirmation"]) == 1
+
+
+@pytest.mark.parametrize("invalid", ["quarantine", "offline", "room"])
+def test_grade_rejects_invalid_sources(graded, invalid):
+    with_decay(graded)
+    complete(graded)
+    if invalid == "quarantine":
+        graded.quarantine["binary_sensor.two"] = {"since": 110, "reason": "test"}
+    elif invalid == "offline":
+        graded.feed("binary_sensor.two", None, 110)
+    else:
+        graded.sensors["binary_sensor.two"].front_of = ["bed"]
+    data = progress(graded, 111)
+    assert data["current"] < 3 and not data["remembered"]
+    graded.feed("binary_sensor.window", True, 112)
+    assert not graded.confirmed
+
+
+def test_completion_event_happens_once_per_rising_full_grade(graded):
+    with_decay(graded, times=[60, 60, 10])
+    complete(graded)
+    graded.tick(110)
+    assert len([e for e in graded.events if e.kind == "rule_confirmation"]) == 1
+    assert progress(graded, 113)["current"] == 2
+    graded.feed("binary_sensor.terrace", False, 114)
+    graded.feed("binary_sensor.terrace", True, 115)
+    assert progress(graded, 115)["current"] == 3
+    events = [e for e in graded.events if e.kind == "rule_confirmation"]
+    assert len(events) == 2
+    assert all(e.stage_id == "2" and not e.confirmed for e in events)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("confirmation_thresholds", [1, 1, 3]),
+        ("confirmation_thresholds", [1, 3]),
+        ("confirmation_thresholds", [1, 2, 9]),
+        ("confirmation_decay_seconds", [60, 60]),
+        ("confirmation_decay_seconds", [60, 0, 60]),
+    ],
+)
+def test_grade_configuration_rejects_invalid_steps(graded, field, value):
+    data = graded.config.to_dict()
+    data["rules"]["outside"][field] = value
+    with pytest.raises(ValueError):
+        Configuration.from_dict(data)
