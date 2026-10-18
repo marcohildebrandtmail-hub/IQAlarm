@@ -71,4 +71,6 @@ MODE_NAMES = {
     Mode.AWAY: "Abwesend",
     Mode.VACATION: "Urlaub",
 }
-ALLOWED_SENSOR_DOMAINS = frozenset(("binary_sensor", "lock", "camera", "image_processing", "sensor", "input_boolean"))
+ALLOWED_SENSOR_DOMAINS = frozenset(
+    ("binary_sensor", "lock", "camera", "image_processing", "sensor", "input_boolean")
+)
