@@ -507,6 +507,12 @@ class Settings:
     quiet_disarmed_floorplan: bool = True
     quiet_disarmed_locks: bool = True
     recent_seconds: int = 30
+    floorplan_disarmed_motion: bool = True
+    floorplan_disarmed_contacts: bool = True
+    floorplan_disarmed_locks: bool = False
+    floorplan_disarmed_cameras: bool = True
+    floorplan_disarmed_animation: bool = False
+    floorplan_armed_animation: bool = True
 
     def __post_init__(self) -> None:
         for key in (
@@ -518,6 +524,12 @@ class Settings:
             "simulation_enabled",
             "quiet_disarmed_floorplan",
             "quiet_disarmed_locks",
+            "floorplan_disarmed_motion",
+            "floorplan_disarmed_contacts",
+            "floorplan_disarmed_locks",
+            "floorplan_disarmed_cameras",
+            "floorplan_disarmed_animation",
+            "floorplan_armed_animation",
         ):
             if type(getattr(self, key)) is not bool:
                 raise ValueError(f"{key} muss boolesch sein")
@@ -927,6 +939,12 @@ def migrate_configuration(data: dict) -> dict:
     settings.setdefault("quiet_disarmed_floorplan", True)
     settings.setdefault("quiet_disarmed_locks", True)
     settings.setdefault("recent_seconds", 30)
+    settings.setdefault("floorplan_disarmed_motion", True)
+    settings.setdefault("floorplan_disarmed_contacts", True)
+    settings.setdefault("floorplan_disarmed_locks", False)
+    settings.setdefault("floorplan_disarmed_cameras", True)
+    settings.setdefault("floorplan_disarmed_animation", False)
+    settings.setdefault("floorplan_armed_animation", True)
     return result
 
 

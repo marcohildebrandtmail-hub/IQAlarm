@@ -1,7 +1,7 @@
-import {DraftJournal} from "./floorplan-drafts.js?v=2.4.1";
-import "./window-assistant.js?v=2.4.1";
-import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.4.1";
-/* IQAlarm 2.4.1 · native ES module · no CDN, framework or build required. */
+import {DraftJournal} from "./floorplan-drafts.js?v=2.4.2";
+import "./window-assistant.js?v=2.4.2";
+import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.4.2";
+/* IQAlarm 2.4.2 · native ES module · no CDN, framework or build required. */
 const WINDOW_CSS = `.window-group{padding:18px 0;border-bottom:1px solid var(--divider-color,#dce3ec)}.window-inputs{margin:14px 0 0 24px;padding-left:18px;border-left:2px solid var(--divider-color,#dce3ec)}.window-inputs code{display:block;font-size:10px;overflow-wrap:anywhere;color:var(--secondary-text-color,#64758b)}.information{border-color:color-mix(in srgb,var(--primary-color,#2986bb) 25%,transparent)}.information summary,details.banner summary{cursor:pointer;font-size:13px}.information ha-icon{color:var(--primary-color,#2986bb)}`;
 const CATEGORIES={information:"Information",warning:"Warnung",alarm:"Alarm",fault:"Störung",isolated:"Isoliert"};
 const RULES = {perimeter: "Vorfeld-Erkennung", single: "Unbestätigter Einzelsensor", flapping: "Sensor-Prellen", perimeter_contact: "Vorfeld + Öffnung", contact_motion: "Öffnung + Bewegung", multi_contact: "Zwei Öffnungen im selben Raum / freigegebenen Weg", multi_motion: "Zwei unabhängige Bewegungsmelder im selben Raum / freigegebenen Weg", immediate: "Freigegebene Einzelauslösung / Gefahr"};
@@ -25,7 +25,7 @@ const date = (epoch) => new Date(epoch * 1000).toLocaleString("de-DE", {day: "2-
 
 const CSS = `
 :host{display:block;height:100%;color:var(--primary-text-color,#182b42);background:var(--primary-background-color,#f3f6fa);font-family:var(--paper-font-body1_-_font-family,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif);--iq-accent:var(--primary-color,#087e9b);--iq-muted:var(--secondary-text-color,#64758b);--iq-border:var(--divider-color,#dce3ec);--iq-surface:var(--card-background-color,#fff);--iq-green:#16816a;--iq-amber:#b87808;--iq-red:#d34454;--iq-blue:#2986bb}
-*{box-sizing:border-box}button,input,select,textarea{font:inherit}button{cursor:pointer;overflow-wrap:anywhere;max-width:100%}button:disabled{cursor:not-allowed;opacity:.5}ha-icon{--mdc-icon-size:21px;vertical-align:middle}button ha-icon{pointer-events:none}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--iq-accent);outline-offset:3px}button{border:1px solid var(--iq-border);background:var(--iq-surface);color:inherit;border-radius:10px;padding:10px 15px;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;transition:background .15s}button:hover{background:color-mix(in srgb,var(--iq-accent) 8%,var(--iq-surface))}button.primary{background:var(--iq-accent);color:var(--text-primary-color,#fff);border-color:var(--iq-accent)}button.danger{color:var(--iq-red)}button.small{padding:6px 10px;min-height:36px;font-size:13px}.icon-button{padding:8px;border:0;background:transparent;min-width:40px}.shell{height:100%;overflow:auto}.top{position:sticky;top:0;z-index:3;background:var(--iq-surface);border-bottom:1px solid var(--iq-border)}.brand-row{max-width:1440px;margin:auto;padding:18px 30px 14px;display:flex;align-items:center;gap:13px}.brandmark{width:43px;height:47px;background:linear-gradient(145deg,#13b8b0,#076c93);clip-path:polygon(50% 0,93% 16%,88% 64%,74% 84%,50% 100%,26% 84%,12% 64%,7% 16%);display:grid;place-items:center;color:white;font-size:18px;font-weight:800;letter-spacing:-1px}.brand-title{font-size:23px;font-weight:760;letter-spacing:-.7px}.eyebrow{color:var(--iq-muted);font-size:11px;font-weight:650;letter-spacing:1.4px;text-transform:uppercase}.brand-copy{display:grid;gap:2px}.connection{margin-left:auto;display:flex;align-items:center;gap:8px;color:var(--iq-muted);font-size:12px}.dot{width:8px;height:8px;background:var(--iq-green);border-radius:50%;display:inline-block}.dot.off{background:var(--iq-red)}nav{display:flex;gap:8px;max-width:1440px;margin:auto;padding:0 30px;overflow:auto}nav button{border:none;border-bottom:3px solid transparent;border-radius:0;padding:15px 13px;background:transparent;white-space:nowrap;color:var(--iq-muted);font-weight:600;font-size:13px}nav button.active{color:var(--iq-accent);border-bottom-color:var(--iq-accent)}main{max-width:1440px;padding:30px;margin:auto}.page-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:22px;flex-wrap:wrap}h1{font-size:25px;font-weight:720;letter-spacing:-.7px;margin:0 0 5px}h2{font-size:17px;margin:0 0 10px;letter-spacing:-.2px}h3{font-size:15px;margin:0}p{margin:6px 0 0;line-height:1.6;color:var(--iq-muted);font-size:13px}.muted{color:var(--iq-muted)}.card{background:var(--iq-surface);border:1px solid var(--iq-border);border-radius:16px;padding:23px;min-width:0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:18px}.grid.two{grid-template-columns:1.2fr 1fr}.hero{display:flex;align-items:center;gap:28px;background:linear-gradient(120deg,color-mix(in srgb,var(--iq-accent) 7%,var(--iq-surface)),var(--iq-surface));padding:29px;margin-bottom:18px}.level-ring{width:110px;height:110px;flex-shrink:0;border:7px solid color-mix(in srgb,var(--level-color) 20%,transparent);border-top-color:var(--level-color);border-radius:50%;display:flex;align-items:center;justify-content:center;flex-direction:column;color:var(--level-color)}.level-ring strong{font-size:36px;line-height:1.1}.level-ring span{font-size:10px;font-weight:700;letter-spacing:1px}.hero-copy{min-width:0;overflow-wrap:anywhere}.hero h2{font-size:29px;margin:0 0 4px}.hero .pill{margin-left:auto;align-self:flex-start}.pill{display:inline-flex;align-items:center;gap:6px;border-radius:7px;padding:5px 8px;font-size:11px;font-weight:650;background:color-mix(in srgb,var(--level-color,var(--iq-accent)) 10%,var(--iq-surface));color:var(--level-color,var(--iq-accent));white-space:nowrap}.mode-buttons{display:flex;flex-wrap:wrap;gap:9px;margin-top:20px}.mode-buttons button.active{background:color-mix(in srgb,var(--iq-accent) 12%,var(--iq-surface));border-color:var(--iq-accent);color:var(--iq-accent)}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:18px 0 28px}.metric{display:flex;align-items:center;gap:13px;padding:19px}.metric>ha-icon{--mdc-icon-size:25px;color:var(--iq-accent);padding:12px;width:49px;height:49px;background:color-mix(in srgb,var(--iq-accent) 8%,var(--iq-surface));border-radius:12px}.metric strong{display:block;font-size:23px;line-height:1.1}.metric span{font-size:11px;color:var(--iq-muted)}.section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:26px 0 14px;flex-wrap:wrap}.room-head{display:flex;align-items:center;gap:10px;margin-bottom:16px}.room-head h3{min-width:0;flex:1;overflow-wrap:anywhere}.room-head .pill{margin-left:auto}.sensor-line{display:flex;align-items:center;gap:9px;padding:9px 0;border-top:1px solid var(--iq-border);font-size:12px}.sensor-line .sensor-name{flex:1;overflow-wrap:anywhere}.sensor-line ha-icon{color:var(--iq-muted);--mdc-icon-size:18px}.sensor-state{font-size:11px;color:var(--iq-muted)}.sensor-state.on{color:var(--iq-amber)}.sensor-state.recent{color:var(--iq-blue,#0284c7);font-weight:650}.banner{border:1px solid color-mix(in srgb,var(--iq-amber) 40%,var(--iq-border));background:color-mix(in srgb,var(--iq-amber) 7%,var(--iq-surface));padding:18px;border-radius:13px;margin:15px 0;display:flex;gap:13px;align-items:center}.banner ha-icon{color:var(--iq-amber)}.banner>div{flex:1;min-width:0}.banner strong{font-size:13px}.banner p{font-size:12px}.event{display:grid;grid-template-columns:110px 30px minmax(0,1fr);gap:12px;border-top:1px solid var(--iq-border);padding:14px 0;font-size:12px;align-items:start}.event>div{min-width:0;overflow-wrap:anywhere}.event time{color:var(--iq-muted);font-variant-numeric:tabular-nums}.event p{font-size:11px;word-break:break-word}.event-level{display:grid;place-items:center;border-radius:6px;width:25px;height:25px;background:color-mix(in srgb,var(--level-color) 12%,var(--iq-surface));color:var(--level-color);font-weight:700}.empty{padding:34px 20px;text-align:center;border:1px dashed var(--iq-border);border-radius:13px;color:var(--iq-muted)}.empty ha-icon{--mdc-icon-size:30px;margin-bottom:12px}.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.row.between{justify-content:space-between}.row.end{justify-content:flex-end}.spacer{flex:1}.topology{display:flex;align-items:center;justify-content:center;gap:6px;margin:17px 0;font-size:11px;color:var(--iq-muted);background:var(--primary-background-color,#f3f6fa);padding:14px 4px;border-radius:10px}.topology span{text-align:center}.topology strong{display:block;color:var(--primary-text-color);font-size:18px;margin-bottom:4px}.chips{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.chips button.active{background:var(--iq-accent);color:var(--text-primary-color,#fff);border-color:var(--iq-accent)}.table-scroll{overflow:auto}table{width:100%;border-collapse:collapse;font-size:12px}th{text-align:left;color:var(--iq-muted);font-size:10px;text-transform:uppercase;letter-spacing:.7px;white-space:nowrap}td,th{padding:13px 9px;border-bottom:1px solid var(--iq-border)}td code{font-size:10px;color:var(--iq-muted);display:block;margin-top:4px}.search{min-width:220px;width:min(100%,390px)}.catalog{max-height:380px;overflow:auto}.catalog-row{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--iq-border);font-size:12px}.catalog-row code{font-size:10px;display:block;margin-top:4px;color:var(--iq-muted);overflow-wrap:anywhere}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.form-grid .wide{grid-column:1/-1}label.field{display:flex;flex-direction:column;gap:7px;font-size:12px;font-weight:600;min-width:0}label small{color:var(--iq-muted);font-size:11px;font-weight:400;line-height:1.5}input:not([type=checkbox]),select,textarea{border:1px solid var(--iq-border);border-radius:8px;background:var(--iq-surface);color:inherit;padding:11px 12px;min-width:0;width:100%;min-height:41px}select[multiple]{height:115px}textarea{min-height:80px;resize:vertical}input[type=checkbox]{accent-color:var(--iq-accent);width:17px;height:17px;flex-shrink:0}.check{display:flex;align-items:flex-start;gap:9px;font-size:12px;line-height:1.6;cursor:pointer}.checks{display:grid;gap:13px}.help{border-left:3px solid var(--iq-accent);padding:10px 14px;background:color-mix(in srgb,var(--iq-accent) 5%,var(--iq-surface));font-size:12px;line-height:1.6;margin:16px 0;color:var(--iq-muted)}fieldset{border:0;padding:0;margin:0;min-width:0}fieldset:disabled{opacity:.6}.save-row{display:flex;gap:12px;align-items:center;margin-top:23px}.action-card{display:flex;align-items:center;gap:14px;margin:12px 0;padding:18px;border:1px solid var(--iq-border);border-radius:12px}.action-card>ha-icon{color:var(--iq-accent)}.action-card .description{flex:1;min-width:0;overflow-wrap:anywhere}.action-card p{font-size:11px}dialog{background:var(--iq-surface);color:inherit;border:1px solid var(--iq-border);border-radius:17px;padding:0;max-width:min(740px,calc(100vw - 28px));width:740px;max-height:90vh;box-shadow:0 20px 80px #0005}dialog::backdrop{background:#101c3080;backdrop-filter:blur(3px)}.dialog-head{padding:22px 25px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--iq-border);position:sticky;top:0;background:var(--iq-surface);z-index:2}.dialog-body{padding:23px 25px}.dialog-foot{padding:17px 25px;border-top:1px solid var(--iq-border);display:flex;justify-content:flex-end;gap:10px;position:sticky;bottom:0;background:var(--iq-surface)}dialog[open]{display:flex;flex-direction:column}dialog form{overflow:auto}#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:14px 22px;background:var(--primary-text-color,#182b42);color:var(--iq-surface);border-radius:10px;box-shadow:0 4px 24px #0003;z-index:20;max-width:90vw;font-size:13px}#toast.error{background:var(--iq-red);color:white}#toast:empty{display:none}.loading{padding:70px;text-align:center;color:var(--iq-muted)}pre{white-space:pre-wrap;word-break:break-word;font-size:12px;padding:16px;background:var(--primary-background-color);border-radius:10px}.armed-note{margin-bottom:18px}.footer-note{margin-top:30px;color:var(--iq-muted);font-size:11px;text-align:center}[hidden]{display:none!important}.countdown{font-size:13px;font-weight:650;color:var(--iq-amber);margin-top:10px}
+*{box-sizing:border-box}button,input,select,textarea{font:inherit}button{cursor:pointer;overflow-wrap:anywhere;max-width:100%}button:disabled{cursor:not-allowed;opacity:.5}ha-icon{--mdc-icon-size:21px;vertical-align:middle}button ha-icon{pointer-events:none}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--iq-accent);outline-offset:3px}button{border:1px solid var(--iq-border);background:var(--iq-surface);color:inherit;border-radius:10px;padding:10px 15px;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;transition:background .15s}button:hover{background:color-mix(in srgb,var(--iq-accent) 8%,var(--iq-surface))}button.primary{background:var(--iq-accent);color:var(--text-primary-color,#fff);border-color:var(--iq-accent)}button.danger{color:var(--iq-red)}button.small{padding:6px 10px;min-height:36px;font-size:13px}.icon-button{padding:8px;border:0;background:transparent;min-width:40px}.shell{height:100%;overflow:auto}.top{position:sticky;top:0;z-index:3;background:var(--iq-surface);border-bottom:1px solid var(--iq-border)}.brand-row{max-width:1440px;margin:auto;padding:18px 30px 14px;display:flex;align-items:center;gap:13px}.brandmark{width:43px;height:47px;background:linear-gradient(145deg,#13b8b0,#076c93);clip-path:polygon(50% 0,93% 16%,88% 64%,74% 84%,50% 100%,26% 84%,12% 64%,7% 16%);display:grid;place-items:center;color:white;font-size:18px;font-weight:800;letter-spacing:-1px}.brand-title{font-size:23px;font-weight:760;letter-spacing:-.7px}.eyebrow{color:var(--iq-muted);font-size:11px;font-weight:650;letter-spacing:1.4px;text-transform:uppercase}.brand-copy{display:grid;gap:2px}.connection{margin-left:auto;display:flex;align-items:center;gap:8px;color:var(--iq-muted);font-size:12px}.dot{width:8px;height:8px;background:var(--iq-green);border-radius:50%;display:inline-block}.dot.off{background:var(--iq-red)}nav{display:flex;gap:8px;max-width:1440px;margin:auto;padding:0 30px;overflow:auto}nav button{border:none;border-bottom:3px solid transparent;border-radius:0;padding:15px 13px;background:transparent;white-space:nowrap;color:var(--iq-muted);font-weight:600;font-size:13px}nav button.active{color:var(--iq-accent);border-bottom-color:var(--iq-accent)}main{max-width:1440px;padding:30px;margin:auto}.page-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:22px;flex-wrap:wrap}h1{font-size:25px;font-weight:720;letter-spacing:-.7px;margin:0 0 5px}h2{font-size:17px;margin:0 0 10px;letter-spacing:-.2px}h3{font-size:15px;margin:0}p{margin:6px 0 0;line-height:1.6;color:var(--iq-muted);font-size:13px}.muted{color:var(--iq-muted)}.card{background:var(--iq-surface);border:1px solid var(--iq-border);border-radius:16px;padding:23px;min-width:0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:18px}.grid.two{grid-template-columns:1.2fr 1fr}.hero{display:flex;align-items:center;gap:28px;background:linear-gradient(120deg,color-mix(in srgb,var(--iq-accent) 7%,var(--iq-surface)),var(--iq-surface));padding:29px;margin-bottom:18px}.level-ring{width:110px;height:110px;flex-shrink:0;border:7px solid color-mix(in srgb,var(--level-color) 20%,transparent);border-top-color:var(--level-color);border-radius:50%;display:flex;align-items:center;justify-content:center;flex-direction:column;color:var(--level-color)}.level-ring strong{font-size:36px;line-height:1.1}.level-ring span{font-size:10px;font-weight:700;letter-spacing:1px}.hero-copy{min-width:0;overflow-wrap:anywhere}.hero h2{font-size:29px;margin:0 0 4px}.hero .pill{margin-left:auto;align-self:flex-start}.pill{display:inline-flex;align-items:center;gap:6px;border-radius:7px;padding:5px 8px;font-size:11px;font-weight:650;background:color-mix(in srgb,var(--level-color,var(--iq-accent)) 10%,var(--iq-surface));color:var(--level-color,var(--iq-accent));white-space:nowrap}.mode-buttons{display:flex;flex-wrap:wrap;gap:9px;margin-top:20px}.mode-buttons button.active{background:color-mix(in srgb,var(--iq-accent) 12%,var(--iq-surface));border-color:var(--iq-accent);color:var(--iq-accent)}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:18px 0 28px}.metric{display:flex;align-items:center;gap:13px;padding:19px}.metric>ha-icon{--mdc-icon-size:25px;color:var(--iq-accent);padding:12px;width:49px;height:49px;background:color-mix(in srgb,var(--iq-accent) 8%,var(--iq-surface));border-radius:12px}.metric strong{display:block;font-size:23px;line-height:1.1}.metric span{font-size:11px;color:var(--iq-muted)}.section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:26px 0 14px;flex-wrap:wrap}.room-head{display:flex;align-items:center;gap:10px;margin-bottom:16px}.room-head h3{min-width:0;flex:1;overflow-wrap:anywhere}.room-head .pill{margin-left:auto}.sensor-line{display:flex;align-items:center;gap:9px;padding:9px 0;border-top:1px solid var(--iq-border);font-size:12px}.sensor-line .sensor-name{flex:1;overflow-wrap:anywhere}.sensor-line ha-icon{color:var(--iq-muted);--mdc-icon-size:18px}.sensor-state{font-size:11px;color:var(--iq-muted);font-weight:400}.sensor-state.on{color:var(--iq-amber);font-weight:700}.sensor-state.recent{color:var(--iq-blue,#0284c7);font-weight:650}.banner{border:1px solid color-mix(in srgb,var(--iq-amber) 40%,var(--iq-border));background:color-mix(in srgb,var(--iq-amber) 7%,var(--iq-surface));padding:18px;border-radius:13px;margin:15px 0;display:flex;gap:13px;align-items:center}.banner ha-icon{color:var(--iq-amber)}.banner>div{flex:1;min-width:0}.banner strong{font-size:13px}.banner p{font-size:12px}.event{display:grid;grid-template-columns:110px 30px minmax(0,1fr);gap:12px;border-top:1px solid var(--iq-border);padding:14px 0;font-size:12px;align-items:start}.event>div{min-width:0;overflow-wrap:anywhere}.event time{color:var(--iq-muted);font-variant-numeric:tabular-nums}.event p{font-size:11px;word-break:break-word}.event-level{display:grid;place-items:center;border-radius:6px;width:25px;height:25px;background:color-mix(in srgb,var(--level-color) 12%,var(--iq-surface));color:var(--level-color);font-weight:700}.empty{padding:34px 20px;text-align:center;border:1px dashed var(--iq-border);border-radius:13px;color:var(--iq-muted)}.empty ha-icon{--mdc-icon-size:30px;margin-bottom:12px}.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.row.between{justify-content:space-between}.row.end{justify-content:flex-end}.spacer{flex:1}.topology{display:flex;align-items:center;justify-content:center;gap:6px;margin:17px 0;font-size:11px;color:var(--iq-muted);background:var(--primary-background-color,#f3f6fa);padding:14px 4px;border-radius:10px}.topology span{text-align:center}.topology strong{display:block;color:var(--primary-text-color);font-size:18px;margin-bottom:4px}.chips{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.chips button.active{background:var(--iq-accent);color:var(--text-primary-color,#fff);border-color:var(--iq-accent)}.table-scroll{overflow:auto}table{width:100%;border-collapse:collapse;font-size:12px}th{text-align:left;color:var(--iq-muted);font-size:10px;text-transform:uppercase;letter-spacing:.7px;white-space:nowrap}td,th{padding:13px 9px;border-bottom:1px solid var(--iq-border)}td code{font-size:10px;color:var(--iq-muted);display:block;margin-top:4px}.search{min-width:220px;width:min(100%,390px)}.catalog{max-height:380px;overflow:auto}.catalog-row{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--iq-border);font-size:12px}.catalog-row code{font-size:10px;display:block;margin-top:4px;color:var(--iq-muted);overflow-wrap:anywhere}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.form-grid .wide{grid-column:1/-1}label.field{display:flex;flex-direction:column;gap:7px;font-size:12px;font-weight:600;min-width:0}label small{color:var(--iq-muted);font-size:11px;font-weight:400;line-height:1.5}input:not([type=checkbox]),select,textarea{border:1px solid var(--iq-border);border-radius:8px;background:var(--iq-surface);color:inherit;padding:11px 12px;min-width:0;width:100%;min-height:41px}select[multiple]{height:115px}textarea{min-height:80px;resize:vertical}input[type=checkbox]{accent-color:var(--iq-accent);width:17px;height:17px;flex-shrink:0}.check{display:flex;align-items:flex-start;gap:9px;font-size:12px;line-height:1.6;cursor:pointer}.checks{display:grid;gap:13px}.help{border-left:3px solid var(--iq-accent);padding:10px 14px;background:color-mix(in srgb,var(--iq-accent) 5%,var(--iq-surface));font-size:12px;line-height:1.6;margin:16px 0;color:var(--iq-muted)}fieldset{border:0;padding:0;margin:0;min-width:0}fieldset:disabled{opacity:.6}.save-row{display:flex;gap:12px;align-items:center;margin-top:23px}.action-card{display:flex;align-items:center;gap:14px;margin:12px 0;padding:18px;border:1px solid var(--iq-border);border-radius:12px}.action-card>ha-icon{color:var(--iq-accent)}.action-card .description{flex:1;min-width:0;overflow-wrap:anywhere}.action-card p{font-size:11px}dialog{background:var(--iq-surface);color:inherit;border:1px solid var(--iq-border);border-radius:17px;padding:0;max-width:min(740px,calc(100vw - 28px));width:740px;max-height:90vh;box-shadow:0 20px 80px #0005}dialog::backdrop{background:#101c3080;backdrop-filter:blur(3px)}.dialog-head{padding:22px 25px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--iq-border);position:sticky;top:0;background:var(--iq-surface);z-index:2}.dialog-body{padding:23px 25px}.dialog-foot{padding:17px 25px;border-top:1px solid var(--iq-border);display:flex;justify-content:flex-end;gap:10px;position:sticky;bottom:0;background:var(--iq-surface)}dialog[open]{display:flex;flex-direction:column}dialog form{overflow:auto}#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:14px 22px;background:var(--primary-text-color,#182b42);color:var(--iq-surface);border-radius:10px;box-shadow:0 4px 24px #0003;z-index:20;max-width:90vw;font-size:13px}#toast.error{background:var(--iq-red);color:white}#toast:empty{display:none}.loading{padding:70px;text-align:center;color:var(--iq-muted)}pre{white-space:pre-wrap;word-break:break-word;font-size:12px;padding:16px;background:var(--primary-background-color);border-radius:10px}.armed-note{margin-bottom:18px}.footer-note{margin-top:30px;color:var(--iq-muted);font-size:11px;text-align:center}[hidden]{display:none!important}.countdown{font-size:13px;font-weight:650;color:var(--iq-amber);margin-top:10px}
 @media(max-width:1000px){.grid.two{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}nav{gap:0;padding:0 12px}nav button{padding:14px 11px}nav button ha-icon{display:none}}
 @media(max-width:600px){main{padding:18px 14px}.brand-row{padding:12px 14px;gap:9px}.brand-title{font-size:21px}.connection span:not(.dot){display:none}.eyebrow{font-size:9px;letter-spacing:1px}.hero{padding:22px 18px;gap:17px;flex-wrap:wrap}.hero-copy{min-width:0;overflow-wrap:anywhere}.hero h2{font-size:23px}.level-ring{width:80px;height:80px;border-width:5px}.level-ring strong{font-size:28px}.hero .pill{display:none}.hero-copy{flex:1;min-width:150px}.mode-buttons{width:100%;gap:7px}.mode-buttons button{flex:1;min-width:90px;padding:9px;font-size:12px}.card{padding:18px}.metrics{gap:10px}.metric{padding:14px 11px;gap:8px}.metric>ha-icon{display:none}.metric strong{font-size:21px}.form-grid{grid-template-columns:1fr}.event{grid-template-columns:76px 24px minmax(0,1fr);gap:8px}.event>div{min-width:0;overflow-wrap:anywhere}.event time{font-size:10px}.banner{flex-wrap:wrap}.banner button{margin-left:33px}.dialog-body{padding:18px}.dialog-head,.dialog-foot{padding:16px 18px}h1{font-size:22px}.page-head>button{width:100%}}
 .level-display{display:flex;flex-direction:column;align-items:center;gap:10px;max-width:170px;text-align:center}.level-caption{font-weight:700;font-size:13px;color:var(--level-color);overflow-wrap:anywhere}.plan-wrap{position:relative;width:100%;background:var(--primary-background-color,#f3f6fa);border-radius:14px;overflow:hidden;margin-top:16px}.plan-wrap.graphic-mode{background:radial-gradient(circle at 50% 30%,#132846 0%,#08111f 100%);border:1px solid #1e3a5f;box-shadow:inset 0 0 42px #0009}.plan-wrap.template-mode{background:#0b1526;border:1px solid #1e3a5f}.plan-wrap.template-mode image{opacity:.38;filter:grayscale(.35) contrast(1.08)}.plan-wrap svg{display:block;width:100%;height:100%}.plan-wrap polygon{cursor:pointer;stroke-width:2}.plan-wrap .draft{pointer-events:none;fill:#2986bb40;stroke:#38bdf8;stroke-dasharray:6 4}.plan-wrap text{pointer-events:none;paint-order:stroke;stroke:var(--iq-surface);stroke-width:3px;stroke-linejoin:round;fill:var(--primary-text-color,#122);font-weight:650}.plan-wrap g[data-room]{cursor:pointer}.plan-wrap g[data-room]:focus-visible{outline:none}.plan-wrap g[data-room]:focus-visible .room-badge{stroke:#38bdf8;stroke-width:2.6}.plan-wrap g[data-room] text{stroke:#07101d;stroke-width:3.5px;fill:#f8fafc;font-weight:720;letter-spacing:.2px}.plan-wrap g[data-room] .room-sub{fill:#cbd5e1;font-weight:600}.plan-wrap g[data-room] .room-sub.info{fill:#7dd3fc;font-weight:650}.plan-wrap g[data-room] .room-sub.warn{fill:#fbbf24;font-weight:650}.plan-wrap g[data-room] .room-sub.alert{fill:#f87171;font-weight:700}.plan-wrap .room-corner,.plan-wrap .room-glow,.plan-wrap .room-inner,.plan-wrap .room-link{pointer-events:none}.plan-wrap .room-label-group{cursor:grab;touch-action:none;user-select:none}.plan-wrap .room-label-group .room-badge{pointer-events:all;cursor:grab}.plan-wrap .room-label-group text{pointer-events:none}.plan-wrap .room-label-group:hover .room-badge{stroke:#38bdf8;stroke-width:2.4;filter:drop-shadow(0 0 8px #38bdf8aa)}.plan-wrap .room-label-group.dragging{cursor:grabbing;opacity:.88}.plan-wrap .room-label-group.dragging .room-badge{cursor:grabbing}.plan-wrap .room-label-group:focus-visible{outline:none}.plan-wrap .room-label-group:focus-visible .room-badge{stroke:#38bdf8;stroke-width:2.6}.plan-wrap .room-label-group.active-positioning .room-badge{stroke:#38bdf8;stroke-width:3.2;filter:drop-shadow(0 0 14px #38bdf8);animation:pulse-badge 1.4s infinite}.stage-row{padding:16px 0;border-bottom:1px solid var(--iq-border)}.stage-row .form-grid{grid-template-columns:80px minmax(0,1fr)}.rule-box{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border:1px solid var(--iq-border);border-radius:10px;background:var(--primary-background-color,#f3f6fa)}@keyframes pulse-badge{0%,100%{stroke-opacity:1}50%{stroke-opacity:.35}}
@@ -40,8 +40,31 @@ dialog.wide{width:min(980px,calc(100vw - 28px));max-width:min(980px,calc(100vw -
 .candidate-meta{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--iq-muted);margin-top:3px;flex-wrap:wrap}
 .candidate-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
 .candidate-controls select{min-width:140px;width:auto;height:36px;min-height:36px;padding:4px 8px;font-size:12px}
-@media(max-width:800px){.assistant-candidate-row{flex-direction:column;align-items:stretch}.candidate-controls{width:100%;margin-left:0;justify-content:flex-start}.candidate-controls select{flex:1}}
-@media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+.room-assignment-section{margin-bottom:24px}
+.room-drop-target{transition:border-color .15s,background .15s,box-shadow .15s;min-width:0}
+.room-drop-target.drag-over{border-color:var(--iq-accent)!important;background:color-mix(in srgb,var(--iq-accent) 12%,var(--iq-surface))!important;box-shadow:0 0 16px color-mix(in srgb,var(--iq-accent) 35%,transparent)}
+.room-drop-target.unassigned-card{border-style:dashed}
+.sensor-drop-list{display:flex;flex-direction:column;gap:4px;min-height:36px}
+.sensor-moveable{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;transition:background .12s;user-select:none;border-top:1px solid var(--iq-border)}
+.sensor-moveable:hover{background:color-mix(in srgb,var(--iq-accent) 8%,var(--iq-surface))}
+.sensor-moveable.dragging{opacity:.35;background:color-mix(in srgb,var(--iq-accent) 20%,var(--iq-surface))}
+.sensor-line-left{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
+.sensor-line-left .sensor-name{font-size:12px;overflow-wrap:anywhere}
+.sensor-line-right{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.sensor-move-btn{padding:4px;min-width:28px;min-height:28px;border:none;background:transparent;color:var(--iq-muted);opacity:.6;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.sensor-moveable:hover .sensor-move-btn{opacity:1;color:var(--iq-accent)}
+.drop-hint{font-size:11px;color:var(--iq-muted);font-style:italic;margin:8px 0}
+.room-pick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-top:12px}
+.room-pick-btn{display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px solid var(--iq-border);background:var(--iq-surface);border-radius:10px;font-size:13px;font-weight:600;text-align:left;cursor:pointer;transition:background .15s,border-color .15s}
+.room-pick-btn:hover{background:color-mix(in srgb,var(--iq-accent) 10%,var(--iq-surface));border-color:var(--iq-accent)}
+.room-pick-btn.current{border-color:var(--iq-accent);background:color-mix(in srgb,var(--iq-accent) 14%,var(--iq-surface));color:var(--iq-accent);cursor:default}
+.room-pick-btn small{font-size:11px;font-weight:400;color:var(--iq-muted);margin-left:auto}
+.sensor-move-header{padding:14px 16px;background:var(--primary-background-color,#f3f6fa);border-radius:10px;margin-bottom:12px;border:1px solid var(--iq-border)}
+@keyframes pulse-room-glow{0%,100%{fill-opacity:.34;stroke-opacity:.44}50%{fill-opacity:.10;stroke-opacity:.16}}
+@keyframes pulse-room-badge{0%,100%{stroke-width:2.6px;filter:drop-shadow(0 0 10px currentColor)}50%{stroke-width:1.5px;filter:drop-shadow(0 0 2px currentColor)}}
+.plan-wrap .room-glow.anim-pulse{animation:pulse-room-glow 1.5s ease-in-out infinite}
+.plan-wrap .room-label-group.anim-pulse .room-badge{animation:pulse-room-badge 1.5s ease-in-out infinite}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important;animation:none!important}}
 `;
 
 class IQAlarmPanel extends HTMLElement {
@@ -60,6 +83,43 @@ class IQAlarmPanel extends HTMLElement {
     this.shadowRoot.addEventListener("click", e => this._click(e));
     this.shadowRoot.addEventListener("click", e => this._planClick(e));
     this.shadowRoot.addEventListener("keydown", e => { const zone=e.target.closest("[data-room]"); if (zone && ["Enter"," "].includes(e.key)) {e.preventDefault(); this._liveDialog(zone.dataset.room);} });
+    this.shadowRoot.addEventListener("dragstart", e => {
+      const item = e.target.closest(".sensor-moveable");
+      if (item && item.dataset.sensorId) {
+        e.dataTransfer.setData("text/plain", item.dataset.sensorId);
+        e.dataTransfer.effectAllowed = "move";
+        item.classList.add("dragging");
+      }
+    });
+    this.shadowRoot.addEventListener("dragend", e => {
+      const item = e.target.closest(".sensor-moveable");
+      if (item) item.classList.remove("dragging");
+      this.shadowRoot.querySelectorAll(".room-drop-target").forEach(el => el.classList.remove("drag-over"));
+    });
+    this.shadowRoot.addEventListener("dragover", e => {
+      const dropTarget = e.target.closest(".room-drop-target");
+      if (dropTarget) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        dropTarget.classList.add("drag-over");
+      }
+    });
+    this.shadowRoot.addEventListener("dragleave", e => {
+      const dropTarget = e.target.closest(".room-drop-target");
+      if (dropTarget && !dropTarget.contains(e.relatedTarget)) {
+        dropTarget.classList.remove("drag-over");
+      }
+    });
+    this.shadowRoot.addEventListener("drop", async e => {
+      const dropTarget = e.target.closest(".room-drop-target");
+      if (dropTarget) {
+        e.preventDefault();
+        dropTarget.classList.remove("drag-over");
+        const sensorId = e.dataTransfer.getData("text/plain");
+        const targetRoomId = dropTarget.dataset.dropRoomId || "";
+        if (sensorId) await this._moveSensor(sensorId, targetRoomId);
+      }
+    });
     this.shadowRoot.addEventListener("pointerdown", e => this._vertexDown(e));
     this.shadowRoot.addEventListener("pointermove", e => this._vertexMove(e));
     this.shadowRoot.addEventListener("pointerup", e => this._vertexEnd(e));
@@ -324,7 +384,7 @@ class IQAlarmPanel extends HTMLElement {
     const quarantineItems=Object.entries(s.quarantine);
     const quarantine=quarantineItems.length?`<details class="banner"><summary>Störung: Prell-Schutz bei ${quarantineItems.length} Sensoren aktiv</summary>${quarantineItems.map(([id])=>`<div class="sensor-line"><span class="sensor-name">${esc(this._sensorRecord(id)?.name||id)} · temporäre Prell-Quarantäne</span><button class="small" data-command="clear-quarantine" data-id="${esc(id)}">Quarantäne aufheben</button></div>`).join("")}</details>`:"";
     const information=s.active&&(this.data.information||[]).length?`<details class="card information" data-category="information" style="margin-bottom:18px"><summary>${icon("information-outline")} Information · ${(this.data.information||[]).length} Fenstergriffe: Potenziell unsicher</summary>${this.data.information.map(item=>`<div class="sensor-line"><span class="sensor-name">${esc(item.name)}</span><span>Entriegelt · Potenziell unsicher</span></div>`).join("")}</details>`:"";
-    const open = sensors.filter(x => ["entry_contact", "lock_contact", "vibration_glass"].includes(x.role) && s.raw[x.entity_id] === true).length;
+    const open = sensors.filter(x => ["entry_contact", "vibration_glass"].includes(x.role) && x.sensor_kind !== "door_lock" && x.sensor_kind !== "window_handle" && s.raw[x.entity_id] === true).length;
     const offline = sensors.filter(x => s.raw[x.entity_id] == null).length;
     const profileButtons = `<button data-command="mode" data-mode="inactive" class="${!s.profile_id ? "active" : ""}">${icon("power")}Aus</button>` + Object.entries(c.profiles).map(([id, p]) => `<button data-command="profile-arm" data-id="${esc(id)}" class="${s.profile_id === id ? "active" : ""}">${this._profileSymbol(p)}${esc(p.name)}</button>`).join("");
     return this._head("Dein Haus im Überblick") + quarantine + information +
@@ -340,7 +400,7 @@ class IQAlarmPanel extends HTMLElement {
   }
 
   _roomLive(room) {
-    const state = this.data.status.rooms[room.id] || {level: 0}, sensors = this._displaySensors().filter(s => (s.room_id === room.id || s.front_of.includes(room.id)) && (s.sensor_kind!=="window_handle" || this.data.status.active));
+    const state = this.data.status.rooms[room.id] || {level: 0}, sensors = this._displaySensors().filter(s => (s.room_id === room.id || s.front_of.includes(room.id)));
     const recentSec = this.data.config?.settings?.recent_seconds ?? 30;
     const now = Date.now() / 1000;
     return `<article class="card" style="--level-color:${this._color(state.level)}"><div class="room-head">${icon("floor-plan")}<h3>${esc(room.name)}</h3><span class="pill">${esc(this.data.config.stages[state.level]?.name || "Sicher")}</span></div>${sensors.length ? sensors.map(s => {
@@ -349,7 +409,7 @@ class IQAlarmPanel extends HTMLElement {
       const isLock = s.sensor_kind === "door_lock" || s.role === "lock_contact";
       const lastActive = this.data.status.last_active?.[s.entity_id];
       const isRecent = !raw && !isLock && !isHandle && Boolean(lastActive && (now - lastActive <= recentSec));
-      return `<div class="sensor-line">${icon(s.role.startsWith("perimeter") ? "cctv" : s.role.startsWith("interior") ? "motion-sensor" : "window-closed-variant")}<span class="sensor-name">${esc(s.name || s.entity_id)}</span><span class="sensor-state ${raw === true && !isHandle ? "on" : isRecent ? "recent" : ""}" data-sensor-state-id="${esc(s.entity_id)}">${esc(this._sensorLabel(s,true))}${!this.data.status.monitored_sensors.includes(s.entity_id) ? " · nur Anzeige" : ""}</span></div>`;
+      return `<div class="sensor-line">${icon(s.role.startsWith("perimeter") ? "cctv" : s.role.startsWith("interior") ? "motion-sensor" : isLock ? "lock" : "window-closed-variant")}<span class="sensor-name">${esc(s.name || s.entity_id)}</span><span class="sensor-state ${raw === true && !isHandle ? "on" : isRecent ? "recent" : ""}" data-sensor-state-id="${esc(s.entity_id)}">${esc(this._sensorLabel(s,true))}${!this.data.status.monitored_sensors.includes(s.entity_id) ? " · nur Anzeige" : ""}</span></div>`;
     }).join("") : `<p>Noch keine Sensoren zugeordnet.</p>`}</article>`;
   }
 
@@ -371,13 +431,108 @@ class IQAlarmPanel extends HTMLElement {
     }).join("")}</tbody></table></div>`;
   }
 
+  _roomSensorAssignmentGrid() {
+    const rooms = Object.values(this.data.config.rooms || {});
+    const allSensors = this._displaySensors();
+    const recentSec = this.data.config?.settings?.recent_seconds ?? 30;
+    const now = Date.now() / 1000;
+    const unassigned = allSensors.filter(s => !s.room_id && (!s.front_of || !s.front_of.length));
+
+    const renderCard = (roomId, title, roomSensors, isUnassigned = false) => {
+      return `<article class="card room-drop-target ${isUnassigned ? "unassigned-card" : ""}" data-drop-room-id="${esc(roomId || "")}"><div class="room-head">${icon(isUnassigned ? "help-circle-outline" : "floor-plan")}<h3>${esc(title)}</h3><span class="pill">${roomSensors.length} ${roomSensors.length === 1 ? "Sensor" : "Sensoren"}</span></div><div class="sensor-drop-list">${roomSensors.length ? roomSensors.map(s => {
+        const raw = this.data.status.raw[s.entity_id];
+        const isHandle = s.sensor_kind === "window_handle";
+        const isLock = s.sensor_kind === "door_lock" || s.role === "lock_contact";
+        const lastActive = this.data.status.last_active?.[s.entity_id];
+        const isRecent = !raw && !isLock && !isHandle && Boolean(lastActive && (now - lastActive <= recentSec));
+        const sensorIcon = s.role.startsWith("perimeter") ? "cctv" : s.role.startsWith("interior") ? "motion-sensor" : isLock ? "lock" : "window-closed-variant";
+        return `<div class="sensor-line sensor-moveable" draggable="true" data-command="sensor-move-click" data-id="${esc(s.entity_id)}" data-sensor-id="${esc(s.entity_id)}" data-room-id="${esc(roomId || "")}" title="Klicken oder Ziehen zum Verschieben in einen anderen Raum"><div class="sensor-line-left">${icon(sensorIcon)}<span class="sensor-name">${esc(s.name || s.entity_id)}</span></div><div class="sensor-line-right"><span class="sensor-state ${raw === true && !isHandle ? "on" : isRecent ? "recent" : ""}" data-sensor-state-id="${esc(s.entity_id)}">${esc(this._sensorLabel(s, true))}</span><button type="button" class="icon-button sensor-move-btn" aria-label="${esc(s.name || s.entity_id)} in anderen Raum verschieben" data-command="sensor-move-click" data-id="${esc(s.entity_id)}" data-sensor-id="${esc(s.entity_id)}">${icon("cursor-move")}</button></div></div>`;
+      }).join("") : `<p class="drop-hint">${isUnassigned ? "Keine Sensoren ohne Raum." : "Keine Sensoren zugeordnet. Sensoren hierher ziehen oder anklicken."}</p>`}</div></article>`;
+    };
+
+    return `<section class="room-assignment-section"><div class="row between"><div><h2>${icon("folder-move-outline")} Schnelle Raum-Zuweisung</h2><p>Sensoren anklicken oder per Drag & Drop in einen anderen Raum ziehen, um sie schnell und unkompliziert zuzuweisen.</p></div></div><div class="grid" style="margin-top:14px">${rooms.map(r => {
+      const roomSensors = allSensors.filter(s => s.room_id === r.id || s.front_of.includes(r.id));
+      return renderCard(r.id, r.name, roomSensors, false);
+    }).join("")}${renderCard("", "Ohne Raumzuordnung", unassigned, true)}</div></section>`;
+  }
+
+  _sensorMoveDialog(sensorId) {
+    if (this.data.status.active) {
+      this._toast("Zum Ändern der Raumzuordnung zuerst entschärfen.", true);
+      return;
+    }
+    const sensor = this._sensorRecord(sensorId);
+    if (!sensor) return;
+    const currentRoomId = sensor.room_id || (sensor.front_of?.length ? sensor.front_of[0] : null);
+    const currentRoomName = currentRoomId ? (this.data.config.rooms[currentRoomId]?.name || currentRoomId) : "Kein Raum zugeordnet";
+    const rooms = Object.values(this.data.config.rooms || {});
+
+    const roomButtons = rooms.map(r => {
+      const isCurrent = r.id === currentRoomId;
+      return `<button type="button" class="room-pick-btn ${isCurrent ? "current" : ""}" data-command="move-sensor-target" data-sensor-id="${esc(sensorId)}" data-target-room="${esc(r.id)}" ${isCurrent ? 'title="Bereits in diesem Raum"' : ""}>${icon("floor-plan")}<span>${esc(r.name)}</span>${isCurrent ? ' <small>(Aktuell)</small>' : ""}</button>`;
+    }).join("");
+
+    const unassignBtn = `<button type="button" class="room-pick-btn ${!currentRoomId ? "current" : ""}" data-command="move-sensor-target" data-sensor-id="${esc(sensorId)}" data-target-room="">${icon("close-circle-outline")}<span>Kein Raum (Nicht zugeordnet)</span>${!currentRoomId ? ' <small>(Aktuell)</small>' : ""}</button>`;
+
+    const body = `<div class="sensor-move-dialog"><div class="sensor-move-header"><p><strong>${esc(sensor.name || sensorId)}</strong></p><p class="muted" style="font-size:11px"><code>${esc(sensorId)}</code></p><p style="margin-top:8px">Aktueller Raum: <strong>${esc(currentRoomName)}</strong></p></div><h3 style="margin:16px 0 10px">In welchen Raum verschieben?</h3><div class="room-pick-grid">${roomButtons}${unassignBtn}</div></div>`;
+
+    this._dialog(`Sensor verschieben`, body, "sensor-move");
+    const submitBtn = this.shadowRoot.querySelector('#editor [type="submit"]');
+    if (submitBtn) submitBtn.hidden = true;
+  }
+
+  async _moveSensor(sensorId, targetRoomId) {
+    if (this.data.status.active) {
+      this._toast("Zum Ändern der Raumzuordnung zuerst entschärfen.", true);
+      return;
+    }
+    const config = structuredClone(this.data.config);
+    const revision = this._viewRevision;
+    let movedName = sensorId;
+    let found = false;
+
+    if (sensorId.startsWith("binary_sensor.iqalarm_window_")) {
+      const winId = sensorId.replace("binary_sensor.iqalarm_window_", "");
+      if (config.windows?.[winId]) {
+        config.windows[winId].room_id = targetRoomId || "";
+        movedName = config.windows[winId].name;
+        found = true;
+      }
+    } else if (config.sensors?.[sensorId]) {
+      const s = config.sensors[sensorId];
+      s.room_id = targetRoomId || null;
+      if (s.role.startsWith("perimeter")) {
+        s.front_of = targetRoomId ? [targetRoomId] : [];
+      }
+      movedName = s.name || sensorId;
+      found = true;
+    }
+
+    if (!found) {
+      this._toast("Sensor nicht in der Konfiguration gefunden.", true);
+      return;
+    }
+
+    try {
+      this.data = await this._call("config/save", {config, revision});
+      this.shadowRoot.getElementById("editor")?.close();
+      const targetName = targetRoomId ? (this.data.config.rooms[targetRoomId]?.name || targetRoomId) : "Ohne Raum";
+      this._toast(`„${movedName}“ nach „${targetName}“ verschoben.`);
+      this._render();
+    } catch (err) {
+      this._toast(`Fehler beim Verschieben: ${err.message || String(err)}`, true);
+    }
+  }
+
   _sensors() {
     const claimed=this._windowMembers(),sensors = Object.values(this.data.config.sensors).filter(sensor=>!claimed.has(sensor.entity_id));
     const perimeter = sensors.filter(s => s.role.startsWith("perimeter"));
     const contacts = sensors.filter(s => ["entry_contact", "lock_contact", "vibration_glass"].includes(s.role));
     const interior = sensors.filter(s => ["interior_motion", "interior_mmwave", "panic", "smoke"].includes(s.role));
     const emptyBanner = sensors.length === 0 ? `<section class="card hero" style="margin-bottom:18px;background:linear-gradient(135deg,color-mix(in srgb,var(--iq-accent) 10%,var(--iq-surface)),var(--iq-surface));border:1px solid color-mix(in srgb,var(--iq-accent) 30%,var(--iq-border))"><div class="row between" style="gap:16px;width:100%"><div><h2 style="display:flex;align-items:center;gap:10px">${icon("auto-fix")} Sensor-Erkennungs-Assistent</h2><p style="margin-top:6px">IQAlarm kann deine Home-Assistant-Entitäten automatisch durchsuchen, passende Türen, Fenster, Kameras und Melder finden und den richtigen Räumen zuordnen.</p></div><button class="primary" data-command="sensor-assistant" data-config>${icon("auto-fix")}Sensoren jetzt automatisch erkennen</button></div></section>` : "";
-    return this._head("Kameras & Sensoren", "Umfeldüberwachung (Kameras & Außensensoren), Tür-/Fensterkontakte und Innenraummelder klar getrennt verwalten.", `<div class="row"><button class="primary small" data-command="sensor-assistant" data-config>${icon("auto-fix")}Sensoren automatisch erkennen</button><button data-command="filter-perimeter" class="small">${icon("cctv")}Kameras & Außensensoren wählen</button><button data-command="refresh" class="small">${icon("refresh")}Entitäten aktualisieren</button></div>`) + this._lockNote() + emptyBanner +
+    const roomAssignmentGrid = this._roomSensorAssignmentGrid();
+    return this._head("Kameras & Sensoren", "Umfeldüberwachung (Kameras & Außensensoren), Tür-/Fensterkontakte und Innenraummelder verwalten und Räumen zuweisen.", `<div class="row"><button class="primary small" data-command="sensor-assistant" data-config>${icon("auto-fix")}Sensoren automatisch erkennen</button><button data-command="filter-perimeter" class="small">${icon("cctv")}Kameras & Außensensoren wählen</button><button data-command="refresh" class="small">${icon("refresh")}Entitäten aktualisieren</button></div>`) + this._lockNote() + emptyBanner +
+      roomAssignmentGrid +
       `<section class="card" style="margin-bottom:18px"><div class="row between"><div><h2>${icon("cctv")} Kameras & Außensensoren (Umfeldüberwachung) <span class="muted">· ${perimeter.length}</span></h2><p>Kameras mit Personen-/Objekterkennung und Bewegungsmelder im Außenbereich für die Vorfeld-Überwachung.</p></div></div><div style="margin-top:14px">${this._sensorTable(perimeter, "Noch keine Kameras oder Außensensoren", "Wähle oben „Sensoren automatisch erkennen“ oder unten im Katalog eine Kamera aus.", "cctv")}</div></section>` +
       `<section class="card" style="margin-bottom:18px"><div class="row between"><h2>${icon("window-closed-variant")} Türen, Fenster & Schlösser (Außenhaut) <span class="muted">· ${contacts.length+Object.keys(this.data.config.windows||{}).length}</span></h2><button class="primary" data-command="window-new" data-config>${icon("window-open-variant")}Fenster einrichten</button></div>${this._windowTable()}<div style="margin-top:14px">${this._sensorTable(contacts, "Noch keine Tür-/Fensterkontakte", "Weise Öffnungs-, Riegel- oder Glasbruchsensoren automatisch oder manuell zu.", "window-closed-variant")}</div></section>` +
       `<section class="card" style="margin-bottom:18px"><h2>${icon("motion-sensor")} Innenraum- & Gefahrenmelder <span class="muted">· ${interior.length}</span></h2><div style="margin-top:14px">${this._sensorTable(interior, "Noch keine Innenraummelder", "Weise Bewegungsmelder, Präsenzmelder oder Rauch-/Panikmelder zu.", "motion-sensor")}</div></section>` +
@@ -429,7 +584,7 @@ class IQAlarmPanel extends HTMLElement {
     const names = collection => Object.fromEntries(Object.entries(collection).map(([id, item]) => [id, item.name || item.entity_id || `${KINDS[item.kind]} · ${item.target} · ${item.level}`]));
     return this._head("Profile & System", "Profile bestimmen die gesamte Steuerung. Namen, Reihenfolge und Regeln sind frei wählbar.", `<button class="primary" data-command="profile-new" data-config>${icon("plus")}Profil anlegen</button>`) + this._lockNote() +
       `<div class="row between" style="margin-bottom:20px"><div class="chips">${Object.entries(c.profiles).map(([id,item]) => `<button data-profile="${esc(id)}" class="${id === this.profile ? "active" : ""}">${this._profileSymbol(item)}${esc(item.name)}</button>`).join("")}</div><div class="row"><button type="button" class="small" data-command="profile-move" data-dir="-1" aria-label="Profil nach links verschieben" ${idx <= 0 ? "disabled" : ""} data-config>${icon("arrow-left")}Nach links</button><button type="button" class="small" data-command="profile-move" data-dir="1" aria-label="Profil nach rechts verschieben" ${idx < 0 || idx >= keys.length - 1 ? "disabled" : ""} data-config>Nach rechts${icon("arrow-right")}</button></div></div><div class="grid two"><form id="rules-form" class="card"><fieldset data-config><div class="row between"><h2>${esc(p.name)}</h2><div class="row"><button type="button" class="small" data-command="profile-copy">Duplizieren</button><button type="button" class="small danger" data-command="profile-delete" data-id="${esc(this.profile)}">Löschen</button></div></div><div class="form-grid" style="margin-top:20px"><label class="field wide">Profilname<input name="profile_name" value="${esc(p.name)}" required maxlength="100"></label>${this._profileIconField(p.icon)}<div class="wide checks">${this._checkbox("reactions_enabled", "Alarmreaktionen und Geräteaktionen erlauben", p.reactions_enabled)}${this._checkbox("perimeter_enabled", "Vorfeld auswerten", p.perimeter_enabled)}${this._checkbox("contacts_enabled", "Öffnungs- und Schlosssensoren auswerten", p.contacts_enabled)}${this._checkbox("simulation_enabled", "Anwesenheitssimulation in diesem Profil erlauben", p.simulation_enabled)}</div><label class="field">Bewegung auswerten<select name="motion_mode">${options({always:"Immer",after_contact:"Erst nach einem Öffnungssignal",ignore:"Nur live anzeigen"},p.motion_mode)}</select></label><div class="help wide">Öffnung und Bewegung bestätigen nur im selben Raum oder über einen unten ausdrücklich freigegebenen Weg. Eine Kamera benötigt eine konkrete Raumzuordnung. Zwei Quellen allein bestätigen keinen Einbruch.</div>${this._profileScope("room_ids", "Räume", p.room_ids, names(c.rooms))}${this._profileScope("sensor_ids", "Sensoren", p.sensor_ids, names(this._allSensorRecords()))}${this._profileScope("action_ids", "Aktionen", p.action_ids, names(c.actions))}${this._number("perimeter_seconds","Vorfeld-Gedächtnis (Sekunden)",p.perimeter_seconds,1,3600)}${this._number("correlation_seconds","Korrelationsfenster (Sekunden)",p.correlation_seconds,1,3600)}${this._number("entry_seconds","Eingangsverzögerung (Sekunden)",p.entry_seconds,0,600)}${this._number("exit_seconds","Ausgangsverzögerung (Sekunden)",p.exit_seconds,0,600)}</div><div class="checks" style="margin-top:24px">${["perimeter_contact","contact_motion","multi_contact","multi_motion"].map(key => this._checkbox(key,RULES[key],p[key])).join("")}${this._confirmationPaths(p)}</div><h3 style="margin-top:24px">Ereignis → Alarmstufe</h3><div class="form-grid" style="margin-top:16px">${Object.entries(RULES).map(([key,name]) => `<label class="field">${esc(name)}<select name="target_${key}">${options(Object.fromEntries(c.stages.filter(stage => !["perimeter","single","flapping"].includes(key) || !stage.requires_confirmation).map(stage => [stage.id,`${c.stages.indexOf(stage)} · ${stage.name}`])),p.stage_targets[key])}</select></label>`).join("")}</div><div class="save-row"><button class="primary" type="submit">Profil speichern</button></div></fieldset></form>` +
-      `<form id="settings-form" class="card"><fieldset data-config><h2>System & Anwesenheitssimulation</h2><div class="checks" style="margin:20px 0">${this._checkbox("live_evaluation", "Live-Status-Auswertung auch im ausgeschalteten Zustand mitlaufen lassen", s.observation_profile_id != null)}${this._checkbox("quiet_disarmed_floorplan", "Grundriss bei unscharfer Anlage ruhig halten (Offene Kontakte nur auf dem Schild anzeigen, Raumflächen nicht gelb färben)", s.quiet_disarmed_floorplan ?? true)}${this._checkbox("quiet_disarmed_locks", "Schlösser & Fenstergriffe bei unscharfer Anlage grundsätzlich nicht als Raumwarnung werten", s.quiet_disarmed_locks ?? true)}${this._checkbox("diagnose_disarmed", "Prell-Diagnose auch im unscharfen Zustand", s.diagnose_disarmed)}${this._checkbox("block_open_on_arm", "Scharfschalten bei geöffneten Kontakten verhindern", s.block_open_on_arm)}${this._checkbox("block_unavailable_on_arm", "Scharfschalten bei nicht verfügbaren Sensoren verhindern", s.block_unavailable_on_arm)}${this._checkbox("auto_camera_snapshot", "Bei Vorfeld automatisch verknüpfte Kamera fotografieren", s.auto_camera_snapshot)}${this._checkbox("auto_camera_record", "Bei Vorfeld zusätzlich 30 Sekunden Kamera aufnehmen", s.auto_camera_record)}${this._checkbox("simulation_enabled", "Anwesenheitssimulation global freigeben (zusätzlich pro Profil)", s.simulation_enabled)}</div><div class="form-grid">${this._number("recent_seconds", "Nachlaufzeit für Status „Kürzlich“ (Sekunden)", s.recent_seconds ?? 30, 5, 300, "Sensoren werden nach dem Auslösen so viele Sekunden als „Kürzlich“ angezeigt.")}${this._number("simulation_start", "Lichtsimulation ab (Stunde)", s.simulation_start, 0, 23)}${this._number("simulation_end", "Lichtsimulation bis (Stunde)", s.simulation_end, 1, 24)}<label class="field wide">Simulationslichter<select name="simulation_lights" multiple>${this._entities(["light"]).map(e => `<option value="${esc(e.entity_id)}"${s.simulation_lights.includes(e.entity_id) ? " selected" : ""}>${esc(e.name)}</option>`).join("")}</select><small>Mehrfachauswahl mit Strg / ⌘. Bereits eingeschaltete Lichter werden nicht übernommen.</small></label>${this._number("retention_days", "Kameradateien aufbewahren (Tage)", s.retention_days, 1, 90)}</div><details style="margin-top:20px"><summary>Standard-Entprellzeiten nach Rolle</summary><div class="form-grid" style="margin-top:14px">${Object.entries(ROLES).map(([key, name]) => this._number(`debounce_${key}`, `${name} (ms)`, s.debounce_by_role[key] || 0, 0, 60000)).join("")}</div></details><div class="help">Kameradateien bleiben im geschützten IQAlarm-Verzeichnis. Aufzeichnungen benötigen eine Kamera mit stream-Unterstützung. Die Alarmkonfiguration erfolgt vollständig hier.</div><div class="save-row"><button type="submit" class="primary">${icon("content-save-outline")}System speichern</button></div></fieldset></form></div>`;
+      `<form id="settings-form" class="card"><fieldset data-config><h2>System & Anwesenheitssimulation</h2><div class="checks" style="margin:20px 0">${this._checkbox("live_evaluation", "Live-Status-Auswertung auch im ausgeschalteten Zustand mitlaufen lassen", s.observation_profile_id != null)}${this._checkbox("diagnose_disarmed", "Prell-Diagnose auch im unscharfen Zustand", s.diagnose_disarmed)}${this._checkbox("block_open_on_arm", "Scharfschalten bei geöffneten Kontakten verhindern", s.block_open_on_arm)}${this._checkbox("block_unavailable_on_arm", "Scharfschalten bei nicht verfügbaren Sensoren verhindern", s.block_unavailable_on_arm)}${this._checkbox("auto_camera_snapshot", "Bei Vorfeld automatisch verknüpfte Kamera fotografieren", s.auto_camera_snapshot)}${this._checkbox("auto_camera_record", "Bei Vorfeld zusätzlich 30 Sekunden Kamera aufnehmen", s.auto_camera_record)}${this._checkbox("simulation_enabled", "Anwesenheitssimulation global freigeben (zusätzlich pro Profil)", s.simulation_enabled)}</div><h3 style="margin-top:22px">${icon("floor-plan")} Grundriss-Darstellung & Animation nach Status</h3><p>Lege fest, was im jeweiligen Status der Alarmanlage auf dem Grundriss angezeigt und animiert werden soll.</p><div class="checks" style="margin:14px 0"><p style="font-weight:600;margin-top:8px">Bei unscharfer Alarmanlage (Aus / Standby):</p>${this._checkbox("floorplan_disarmed_motion", "Bewegung auf Grundriss anzeigen", s.floorplan_disarmed_motion ?? true)}${this._checkbox("floorplan_disarmed_contacts", "Offene Fenster & Türen auf Grundriss anzeigen", s.floorplan_disarmed_contacts ?? true)}${this._checkbox("floorplan_disarmed_locks", "Entriegelte Schlösser als Raumwarnung werten (Standard: Aus, verhindert dauergelbe Räume)", s.floorplan_disarmed_locks ?? false)}${this._checkbox("floorplan_disarmed_cameras", "Kamera- / Vorfeld-Erkennung auf Grundriss anzeigen", s.floorplan_disarmed_cameras ?? true)}${this._checkbox("floorplan_disarmed_animation", "Pulsierende Animation bei Aktivität auch im unscharfen Zustand", s.floorplan_disarmed_animation ?? false)}<p style="font-weight:600;margin-top:14px">Bei scharfer Alarmanlage (Scharf / Profile):</p>${this._checkbox("floorplan_armed_animation", "Pulsierende Animation bei Warnung & Alarm im Scharf-Zustand", s.floorplan_armed_animation ?? true)}</div><div class="form-grid" style="margin-top:20px">${this._number("recent_seconds", "Nachlaufzeit für Status „Kürzlich“ (Sekunden)", s.recent_seconds ?? 30, 5, 300, "Sensoren werden nach dem Auslösen so viele Sekunden als „Kürzlich“ angezeigt.")}${this._number("simulation_start", "Lichtsimulation ab (Stunde)", s.simulation_start, 0, 23)}${this._number("simulation_end", "Lichtsimulation bis (Stunde)", s.simulation_end, 1, 24)}<label class="field wide">Simulationslichter<select name="simulation_lights" multiple>${this._entities(["light"]).map(e => `<option value="${esc(e.entity_id)}"${s.simulation_lights.includes(e.entity_id) ? " selected" : ""}>${esc(e.name)}</option>`).join("")}</select><small>Mehrfachauswahl mit Strg / ⌘. Bereits eingeschaltete Lichter werden nicht übernommen.</small></label>${this._number("retention_days", "Kameradateien aufbewahren (Tage)", s.retention_days, 1, 90)}</div><details style="margin-top:20px"><summary>Standard-Entprellzeiten nach Rolle</summary><div class="form-grid" style="margin-top:14px">${Object.entries(ROLES).map(([key, name]) => this._number(`debounce_${key}`, `${name} (ms)`, s.debounce_by_role[key] || 0, 0, 60000)).join("")}</div></details><div class="help">Kameradateien bleiben im geschützten IQAlarm-Verzeichnis. Aufzeichnungen benötigen eine Kamera mit stream-Unterstützung. Die Alarmkonfiguration erfolgt vollständig hier.</div><div class="save-row"><button type="submit" class="primary">${icon("content-save-outline")}System speichern</button></div></fieldset></form></div>`;
   }
 
   _stagesEditor() {
@@ -832,24 +987,28 @@ class IQAlarmPanel extends HTMLElement {
     const status = this.data.status?.rooms?.[room] || {}, roomName = this.data.config.rooms[room]?.name || room;
     const isArmed = Boolean(this.data.status?.active);
     const settings = this.data.config?.settings || {};
-    const quietFloorplan = settings.quiet_disarmed_floorplan ?? true;
-    const quietLocks = settings.quiet_disarmed_locks ?? true;
+    const showMotion = isArmed || (settings.floorplan_disarmed_motion ?? true);
+    const showContact = isArmed || (settings.floorplan_disarmed_contacts ?? true);
+    const showLock = isArmed || (settings.floorplan_disarmed_locks ?? false);
+    const showCamera = isArmed || (settings.floorplan_disarmed_cameras ?? true);
 
     const hasBreach = Boolean(status.confirmed || (status.level || 0) > 0);
     let hasWarning = false;
     if (isArmed) {
       hasWarning = info.hasActive;
-    } else if (!hasBreach && !quietFloorplan) {
-      hasWarning = quietLocks ? Boolean(info.cameraText || info.contactText || info.motionText || info.quarantineText) : info.hasActive;
+    } else if (!hasBreach) {
+      hasWarning = Boolean((showCamera && info.cameraText) || (showContact && info.contactText) || (showLock && info.lockText) || (showMotion && info.motionText) || info.quarantineText);
     }
 
     const activeAlert = hasBreach || hasWarning;
+    const shouldAnimate = activeAlert && (isArmed ? (settings.floorplan_armed_animation ?? true) : (settings.floorplan_disarmed_animation ?? false));
+    const animClass = shouldAnimate ? " anim-pulse" : "";
     const color = hasBreach ? "#ef4444" : (hasWarning ? "#f59e0b" : "#14b8a6");
     const fillId = hasBreach ? "alert" : (hasWarning ? "warn" : "ok");
     const base = Math.max(plan.width,plan.height)*scale;
     const ptsAttr = points.map(([x,y]) => `${Math.round(x*plan.width*10)/10},${Math.round(y*plan.height*10)/10}`).join(" ");
     const corners = graphic ? points.map(([x,y]) => `<circle class="room-corner" cx="${Math.round(x*plan.width*10)/10}" cy="${Math.round(y*plan.height*10)/10}" r="${Math.max(2.2,base*.0035)}" fill="${color}" fill-opacity=".85"/>`).join("") : "";
-    return `<g data-room="${esc(room)}" role="button" tabindex="0" aria-label="${esc([roomName,info.contactText,info.lockText,info.informationText,info.motionText,info.quarantineText].filter(Boolean).join(": "))}"><polygon class="room-glow" points="${ptsAttr}" fill="${color}" fill-opacity="${activeAlert ? ".26" : ".14"}" stroke="${color}" stroke-width="${activeAlert ? 8 : 5}" stroke-opacity=".28" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><polygon points="${ptsAttr}" fill="url(#iq-room-fill-${fillId})" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><polygon class="room-inner" points="${ptsAttr}" fill="none" stroke="#e2f1ff" stroke-opacity=".32" stroke-width="1" stroke-dasharray="5 4" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>${corners}</g>`;
+    return `<g data-room="${esc(room)}" role="button" tabindex="0" aria-label="${esc([roomName,info.contactText,info.lockText,info.informationText,info.motionText,info.quarantineText].filter(Boolean).join(": "))}"><polygon class="room-glow${animClass}" points="${ptsAttr}" fill="${color}" fill-opacity="${activeAlert ? ".26" : ".14"}" stroke="${color}" stroke-width="${activeAlert ? 8 : 5}" stroke-opacity=".28" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><polygon points="${ptsAttr}" fill="url(#iq-room-fill-${fillId})" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><polygon class="room-inner" points="${ptsAttr}" fill="none" stroke="#e2f1ff" stroke-opacity=".32" stroke-width="1" stroke-dasharray="5 4" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>${corners}</g>`;
   }
 
   _zoneLabelSVG(plan,room,points,graphic = false,scale = 1) {
@@ -861,25 +1020,30 @@ class IQAlarmPanel extends HTMLElement {
     const isPositioning = this.positioningRoom === room;
     const isArmed = Boolean(this.data.status?.active);
     const settings = this.data.config?.settings || {};
-    const quietFloorplan = settings.quiet_disarmed_floorplan ?? true;
-    const quietLocks = settings.quiet_disarmed_locks ?? true;
+    const showMotion = isArmed || (settings.floorplan_disarmed_motion ?? true);
+    const showContact = isArmed || (settings.floorplan_disarmed_contacts ?? true);
+    const showLock = isArmed || (settings.floorplan_disarmed_locks ?? false);
+    const showCamera = isArmed || (settings.floorplan_disarmed_cameras ?? true);
 
     const hasBreach = Boolean(status.confirmed || (status.level || 0) > 0);
     let hasWarning = false;
     if (isArmed) {
       hasWarning = info.hasActive;
-    } else if (!hasBreach && !quietFloorplan) {
-      hasWarning = quietLocks ? Boolean(info.cameraText || info.contactText || info.motionText || info.quarantineText) : info.hasActive;
+    } else if (!hasBreach) {
+      hasWarning = Boolean((showCamera && info.cameraText) || (showContact && info.contactText) || (showLock && info.lockText) || (showMotion && info.motionText) || info.quarantineText);
     }
 
+    const activeAlert = hasBreach || hasWarning;
+    const shouldAnimate = activeAlert && (isArmed ? (settings.floorplan_armed_animation ?? true) : (settings.floorplan_disarmed_animation ?? false));
+    const animClass = shouldAnimate ? " anim-pulse" : "";
     const color = isPositioning ? "#38bdf8" : (hasBreach ? "#ef4444" : (hasWarning ? "#f59e0b" : "#14b8a6"));
 
     const subLines = [];
-    if (info.cameraText) subLines.push({text: info.cameraText, kind: "camera"});
-    if (info.contactText) subLines.push({text: info.contactText, kind: "contact"});
-    if (info.lockText) subLines.push({text: info.lockText, kind: "lock"});
+    if (info.cameraText && showCamera) subLines.push({text: info.cameraText, kind: "camera"});
+    if (info.contactText && showContact) subLines.push({text: info.contactText, kind: "contact"});
+    if (info.lockText && showLock) subLines.push({text: info.lockText, kind: "lock"});
     if (info.informationText) subLines.push({text:info.informationText,kind:"information"});
-    if (info.motionText) subLines.push({text: info.motionText, kind: "motion"});
+    if (info.motionText && showMotion) subLines.push({text: info.motionText, kind: "motion"});
     if (info.quarantineText) subLines.push({text: info.quarantineText, kind: "quarantine"});
 
     if (!subLines.length) {
@@ -910,7 +1074,7 @@ class IQAlarmPanel extends HTMLElement {
       return `<tspan x="${cx}" dy="${Math.round(lineSpacing*10)/10}" font-size="${Math.round(subSize*10)/10}" class="${fillClass}">${esc(l.text)}</tspan>`;
     }).join("");
 
-    return `<g class="room-label-group${isPositioning ? " active-positioning" : ""}" data-label-room="${esc(room)}" data-room="${esc(room)}" data-cx="${cx}" data-cy="${cy}" tabindex="0" role="button" aria-label="Beschriftung ${esc(roomName)} verschieben"><rect class="room-badge" x="${Math.round((cx-badgeW/2)*10)/10}" y="${Math.round((cy-badgeH/2)*10)/10}" width="${Math.round(badgeW)}" height="${Math.round(badgeH)}" rx="${Math.round(rx*10)/10}" fill="#091322e8" stroke="${color}" stroke-width="${isPositioning ? "3" : "1.5"}" vector-effect="non-scaling-stroke"/><text x="${cx}" y="${firstLineY}" text-anchor="middle" font-size="${Math.round(fontSize*10)/10}">${esc(roomName)}${tspans}</text></g>`;
+    return `<g class="room-label-group${isPositioning ? " active-positioning" : ""}${animClass}" data-label-room="${esc(room)}" data-room="${esc(room)}" data-cx="${cx}" data-cy="${cy}" tabindex="0" role="button" aria-label="Beschriftung ${esc(roomName)} verschieben"><rect class="room-badge" x="${Math.round((cx-badgeW/2)*10)/10}" y="${Math.round((cy-badgeH/2)*10)/10}" width="${Math.round(badgeW)}" height="${Math.round(badgeH)}" rx="${Math.round(rx*10)/10}" fill="#091322e8" stroke="${color}" stroke-width="${isPositioning ? "3" : "1.5"}" vector-effect="non-scaling-stroke"/><text x="${cx}" y="${firstLineY}" text-anchor="middle" font-size="${Math.round(fontSize*10)/10}">${esc(roomName)}${tspans}</text></g>`;
   }
   async _loadPlan(plan) {
     const key = `${plan.id}/${plan.image}`; if (this.imageLoading.has(key)) return;
@@ -1499,15 +1663,17 @@ class IQAlarmPanel extends HTMLElement {
   }
 
   async _click(event) {
-    const button = event.target.closest("button"); if (!button || button.disabled) return;
+    const button = event.target.closest("button, [data-command='sensor-move-click']"); if (!button || button.disabled) return;
     if (button.dataset.tab != null) { this.tab = Number(button.dataset.tab); this._render(); return; }
     if (button.dataset.profile) { this.profile = button.dataset.profile; this._render(); return; }
     if (button.dataset.stage) { this.stage = button.dataset.stage; this._render(); return; }
     if (button.dataset.catalogFilter) { this.catalogFilter = button.dataset.catalogFilter; this._render(); return; }
-    const command = button.dataset.command, id = button.dataset.id;
+    const command = button.dataset.command, id = button.dataset.id || button.dataset.sensorId;
     try {
       if (command === "menu") this.dispatchEvent(new CustomEvent("hass-toggle-menu", {bubbles: true, composed: true}));
       else if (command === "close") { this.liveRoom = null; const ed = this.shadowRoot.getElementById("editor"); ed.classList.remove("wide"); ed.close(); }
+      else if (command === "sensor-move-click") this._sensorMoveDialog(id);
+      else if (command === "move-sensor-target") await this._moveSensor(button.dataset.sensorId, button.dataset.targetRoom);
       else if (command === "room-new" || command === "room-edit") this._roomDialog(id);
       else if(command==="window-new"||command==="window-edit")await this._windowDialog(id);
       else if(command==="window-delete")this._dialog("Fenster entfernen","<p>Die Zusammenführung wird entfernt. Die ursprünglichen Home-Assistant-Entitäten bleiben erhalten.</p>","delete-windows",id);
@@ -1743,7 +1909,7 @@ class IQAlarmPanel extends HTMLElement {
         } else {
           const s = config.settings;
           s.observation_profile_id = bool("live_evaluation") ? "live" : null;
-          ["quiet_disarmed_floorplan", "quiet_disarmed_locks", "diagnose_disarmed", "block_open_on_arm", "block_unavailable_on_arm", "auto_camera_snapshot", "auto_camera_record", "simulation_enabled"].forEach(k => s[k] = bool(k));
+          ["quiet_disarmed_floorplan", "quiet_disarmed_locks", "diagnose_disarmed", "block_open_on_arm", "block_unavailable_on_arm", "auto_camera_snapshot", "auto_camera_record", "simulation_enabled", "floorplan_disarmed_motion", "floorplan_disarmed_contacts", "floorplan_disarmed_locks", "floorplan_disarmed_cameras", "floorplan_disarmed_animation", "floorplan_armed_animation"].forEach(k => s[k] = bool(k));
           ["retention_days", "simulation_start", "simulation_end", "recent_seconds"].forEach(k => s[k] = num(k));
           s.simulation_lights = fields.getAll("simulation_lights");
           s.debounce_by_role = Object.fromEntries(Object.keys(ROLES).map(k => [k, num(`debounce_${k}`)]));

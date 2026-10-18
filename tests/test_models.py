@@ -110,10 +110,22 @@ def test_settings_quiet_disarmed_defaults_and_validation():
     assert s.quiet_disarmed_floorplan is True
     assert s.quiet_disarmed_locks is True
     assert s.recent_seconds == 30
+    assert s.floorplan_disarmed_motion is True
+    assert s.floorplan_disarmed_contacts is True
+    assert s.floorplan_disarmed_locks is False
+    assert s.floorplan_disarmed_cameras is True
+    assert s.floorplan_disarmed_animation is False
+    assert s.floorplan_armed_animation is True
     with pytest.raises(ValueError):
         Settings(quiet_disarmed_floorplan="yes")  # type: ignore[arg-type]
     with pytest.raises(ValueError):
         Settings(quiet_disarmed_locks="no")  # type: ignore[arg-type]
+    with pytest.raises(ValueError):
+        Settings(floorplan_disarmed_motion="invalid")  # type: ignore[arg-type]
+    with pytest.raises(ValueError):
+        Settings(floorplan_disarmed_locks="invalid")  # type: ignore[arg-type]
+    with pytest.raises(ValueError):
+        Settings(floorplan_armed_animation="invalid")  # type: ignore[arg-type]
     with pytest.raises(ValueError):
         Settings(recent_seconds=3)
     with pytest.raises(ValueError):
