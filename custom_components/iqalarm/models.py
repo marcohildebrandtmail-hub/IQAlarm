@@ -100,10 +100,23 @@ class SensorConfig:
     attribute: str | None = None
     active_states: list[str] = field(default_factory=lambda: ["on"])
     camera_entity_id: str | None = None
+    sensor_kind: str | None = None
 
     def __post_init__(self) -> None:
         entity(self.entity_id, ALLOWED_SENSOR_DOMAINS)
         self.role = Role(self.role).value
+        if self.sensor_kind is None:
+            self.sensor_kind = (
+                "window_handle"
+                if re.search(r"fenstergriff|window.?handle", f"{self.entity_id} {self.name}", re.I)
+                else "door_lock"
+                if self.role == Role.LOCK
+                else "generic"
+            )
+        if self.sensor_kind not in ("generic", "window_handle", "door_lock"):
+            raise ValueError("Unbekannte Sensorart")
+        if self.sensor_kind != "generic" and self.role not in CONTACT_ROLES:
+            raise ValueError("Fenstergriff/Türschloss benötigt eine Außenhaut-Rolle")
         if (
             self.entity_id.startswith("lock.")
             and self.active_states == ["on"]
@@ -150,6 +163,121 @@ class SensorConfig:
             raise ValueError("Innenraumsensor benötigt einen Raum")
         if self.camera_entity_id is not None:
             entity(self.camera_entity_id, {"camera"})
+
+    @property
+    def information_only(self) -> bool:
+        return self.sensor_kind == "window_handle"
+
+
+WINDOW_STATES = {
+    "closed": ("Geschlossen", "closed", "closed"),
+    "unlatched": ("Geschlossen · entriegelt", "closed", "turn"),
+    "open": ("Offen", "open", "turn"),
+    "tilt_ready": ("Geschlossen · Griff in Kippstellung", "closed", "tilt"),
+    "tilted": ("Gekippt geöffnet", "tilted", "tilt"),
+}
+
+
+@dataclass
+class WindowConfig:
+    """One physical window; raw inputs never confirm one another."""
+
+    id: str
+    name: str
+    room_id: str
+    contact_entity_id: str | None = None
+    handle_entity_ids: list[str] = field(default_factory=list)
+    lock_entity_id: str | None = None
+    availability_entity_id: str | None = None
+    availability_states: list[str] = field(default_factory=list)
+    allow_unknown_inputs: list[str] = field(default_factory=list)
+    mappings: list[dict] = field(default_factory=list)
+    settle_seconds: float = 1
+    enabled: bool = True
+    entry_delay: bool = False
+    contact_open_states: list[str] = field(default_factory=lambda: ["on"])
+
+    @property
+    def sensor_id(self) -> str:
+        return f"binary_sensor.iqalarm_window_{self.id}"
+
+    @property
+    def position_inputs(self) -> list[str]:
+        return ([self.contact_entity_id] if self.contact_entity_id else []) + self.handle_entity_ids
+
+    @property
+    def members(self) -> list[str]:
+        return list(
+            dict.fromkeys(
+                self.position_inputs
+                + [e for e in (self.lock_entity_id, self.availability_entity_id) if e]
+            )
+        )
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.id, str) or not ID_RE.fullmatch(self.id):
+            raise ValueError("Ungültige Fenster-ID")
+        text(self.name, "Fenstername", 100)
+        text(self.room_id, "Raum-ID", 100)
+        if not isinstance(self.handle_entity_ids, list) or len(self.handle_entity_ids) > 2:
+            raise ValueError("Maximal zwei Griffsignale erlaubt")
+        for value in self.members:
+            entity(value, {"binary_sensor", "sensor", "lock"})
+        for value in self.position_inputs:
+            entity(value, {"binary_sensor", "sensor"})
+        if self.lock_entity_id:
+            entity(self.lock_entity_id, {"lock"})
+        if not self.position_inputs or len(set(self.position_inputs)) != len(self.position_inputs):
+            raise ValueError("Mindestens ein eindeutiger Stellungssensor erforderlich")
+        for key in ("enabled", "entry_delay"):
+            if type(getattr(self, key)) is not bool:
+                raise ValueError(f"{key} muss boolesch sein")
+        number(self.settle_seconds, 0.2, 10, "Stabilisierungszeit")
+        for key in ("availability_states", "allow_unknown_inputs", "contact_open_states"):
+            values = getattr(self, key)
+            if not isinstance(values, list) or len(values) > 20 or len(set(values)) != len(values):
+                raise ValueError(f"Ungültige Liste: {key}")
+            for value in values:
+                text(value, key, 100)
+        if not self.contact_open_states or set(self.contact_open_states) & {
+            "unknown",
+            "unavailable",
+        }:
+            raise ValueError("Ungültige Kontakt-Offenwerte")
+        if self.allow_unknown_inputs and (
+            not self.availability_entity_id
+            or set(self.allow_unknown_inputs) - set(self.handle_entity_ids)
+            or self.availability_entity_id in self.allow_unknown_inputs
+        ):
+            raise ValueError("unknown als Griffcode benötigt eine getrennte Verbindungsüberwachung")
+        if set(self.availability_states) & {"unknown", "unavailable"}:
+            raise ValueError("Fehlzustände dürfen keine Verbindung bestätigen")
+        if not isinstance(self.mappings, list) or len(self.mappings) > len(WINDOW_STATES):
+            raise ValueError("Ungültige Fensterstellungen")
+        seen_states, signatures = set(), {}
+        for mapping in self.mappings:
+            if not isinstance(mapping, dict) or set(mapping) != {"state", "values"}:
+                raise ValueError("Ungültige Stellungszuordnung")
+            state, values = mapping["state"], mapping["values"]
+            if state not in WINDOW_STATES or state in seen_states:
+                raise ValueError("Fensterstellungen müssen eindeutig sein")
+            seen_states.add(state)
+            if not isinstance(values, dict) or set(values) != set(self.position_inputs):
+                raise ValueError("Stellungszuordnung muss alle Eingangssignale enthalten")
+            for source, value in values.items():
+                text(value, "Signalzustand", 100)
+                if value == "unavailable" or (
+                    value == "unknown" and source not in self.allow_unknown_inputs
+                ):
+                    raise ValueError(
+                        "Keine Verbindung darf nicht als Fensterstellung eingelernt werden"
+                    )
+            signature = tuple(sorted(values.items()))
+            if signature in signatures:
+                raise ValueError(
+                    "Diese Stellungen sind mit den ausgewählten Sensoren nicht unterscheidbar"
+                )
+            signatures[signature] = state
 
 
 def profile_icon(name: str, key: str = "", reactions_enabled: bool = True) -> str:
@@ -467,6 +595,26 @@ class Configuration:
     revision: int = 0
     stages: list[AlarmStage] = field(default_factory=default_stages)
     floorplans: dict[str, FloorPlan] = field(default_factory=dict)
+    windows: dict[str, WindowConfig] = field(default_factory=dict)
+
+    def all_sensors(self) -> dict[str, SensorConfig]:
+        return self.sensors | {
+            window.sensor_id: SensorConfig(
+                window.sensor_id,
+                Role.ENTRY,
+                window.room_id,
+                name=window.name,
+                source_id=f"window:{window.id}",
+                enabled=window.enabled,
+                entry_delay=window.entry_delay,
+                flap_enabled=True,
+                sensor_kind="generic",
+            )
+            for window in self.windows.values()
+        }
+
+    def window_members(self) -> set[str]:
+        return {source for window in self.windows.values() for source in window.members}
 
     def stage(self, stage_id: str) -> AlarmStage:
         result = next((stage for stage in self.stages if stage.id == stage_id), None)
@@ -501,6 +649,21 @@ class Configuration:
                 raise ValueError("Sensor verweist auf unbekannten Raum")
             if set(sensor.front_of) - self.rooms.keys():
                 raise ValueError("Vorfeld verweist auf unbekannten Raum")
+        if len(self.windows) > 250:
+            raise ValueError("Maximal 250 Fenster erlaubt")
+        used = set()
+        for key, window in self.windows.items():
+            if key != window.id or window.room_id not in self.rooms:
+                raise ValueError("Fenster verweist auf einen unbekannten Raum")
+            if not window.mappings:
+                raise ValueError("Fenster benötigt mindestens eine eingelernte Stellung")
+            if used.intersection(window.position_inputs):
+                raise ValueError("Ein Stellungssensor darf nur zu einem Fenster gehören")
+            used.update(window.position_inputs)
+            if window.sensor_id in self.sensors or set(window.members).intersection(
+                w.sensor_id for w in self.windows.values()
+            ):
+                raise ValueError("Zusammengeführte Fenster dürfen keine Schleifen bilden")
         if not 1 <= len(self.profiles) <= 50:
             raise ValueError("1 bis 50 Profile erforderlich")
         if not 1 <= len(self.stages) <= 32 or len({stage.id for stage in self.stages}) != len(
@@ -530,7 +693,7 @@ class Configuration:
                     )
             for field_name, known in (
                 ("room_ids", self.rooms),
-                ("sensor_ids", self.sensors),
+                ("sensor_ids", self.all_sensors()),
                 ("action_ids", self.actions),
             ):
                 values = getattr(profile, field_name)
@@ -572,7 +735,7 @@ class Configuration:
         data = migrate_configuration(data)
         if not isinstance(data, dict) or set(data) - {f.name for f in fields(cls)}:
             raise ValueError("Ungültige Konfiguration")
-        for key in ("rooms", "sensors", "profiles", "actions", "settings", "floorplans"):
+        for key in ("rooms", "sensors", "profiles", "actions", "settings", "floorplans", "windows"):
             if key in data and not isinstance(data[key], dict):
                 raise ValueError(f"{key} muss ein Objekt sein")
         result = cls(
@@ -594,6 +757,10 @@ class Configuration:
             floorplans={
                 key: construct(FloorPlan, value)
                 for key, value in data.get("floorplans", {}).items()
+            },
+            windows={
+                key: construct(WindowConfig, value)
+                for key, value in data.get("windows", {}).items()
             },
         )
         result.validate()
@@ -679,6 +846,21 @@ class EventLog:
     stage_name: str = ""
     confirmed: bool = False
     reactions_enabled: bool = False
+    category: str | None = None
+
+    def __post_init__(self):
+        if self.category is None:
+            self.category = (
+                "fault"
+                if self.kind
+                in {"quarantined_flapping", "sensor_unavailable", "runtime_error", "action_failed"}
+                else "alarm"
+                if self.confirmed and self.reactions_enabled and self.level > 0
+                else "warning"
+                if self.level > 0
+                and self.kind in {"level_changed", "confirmation_changed", "signal"}
+                else "information"
+            )
 
     def to_dict(self) -> dict:
         return asdict(self)

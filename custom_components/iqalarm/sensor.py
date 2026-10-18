@@ -1,9 +1,14 @@
 """Alarm level, quarantined inputs and last significant event."""
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.const import EntityCategory
+from homeassistant.core import callback
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
+from .const import SIGNAL_UPDATE
 from .entity import IQAlarmEntity
+from .models import WINDOW_STATES
 
 PARALLEL_UPDATES = 0
 
@@ -15,6 +20,59 @@ async def async_setup_entry(hass, entry, async_add_entities) -> None:
             for key in ("level", "flapping", "last_event", "profile")
         ]
     )
+    known = {}
+    runtime = entry.runtime_data
+
+    @callback
+    def add_windows():
+        registry = er.async_get(hass)
+        for removed in set(known) - runtime.config.windows.keys():
+            entity = known.pop(removed)
+            if entity.entity_id and registry.async_get(entity.entity_id):
+                registry.async_remove(entity.entity_id)
+        additions = []
+        for window in runtime.config.windows.values():
+            if window.id not in known:
+                known[window.id] = IQAlarmWindowSensor(runtime, window.id)
+                additions.append(known[window.id])
+        if additions:
+            async_add_entities(additions)
+
+    entry.async_on_unload(async_dispatcher_connect(hass, SIGNAL_UPDATE, add_windows))
+    add_windows()
+
+
+class IQAlarmWindowSensor(IQAlarmEntity, SensorEntity):
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_translation_key = "window_position"
+    _attr_options = list(WINDOW_STATES) + ["unknown_position", "settling"]
+    _attr_icon = "mdi:window-closed-variant"
+
+    def __init__(self, runtime, window_id):
+        super().__init__(runtime, f"window_{window_id}_position")
+        self.window_id = window_id
+
+    @property
+    def name(self):
+        window = self.runtime.config.windows.get(self.window_id)
+        return f"{window.name if window else self.window_id} Fensterstellung"
+
+    @property
+    def available(self):
+        return bool(
+            self.window_id in self.runtime.config.windows
+            and self.runtime.config.windows[self.window_id].enabled
+            and self.runtime.windows[self.window_id].reading.get("available")
+        )
+
+    @property
+    def native_value(self):
+        return self.runtime.windows[self.window_id].reading["state"] if self.available else None
+
+    @property
+    def extra_state_attributes(self):
+        tracker = self.runtime.windows.get(self.window_id)
+        return {**tracker.reading, "room_id": tracker.window.room_id} if tracker else {}
 
 
 class IQAlarmSensor(IQAlarmEntity, SensorEntity):

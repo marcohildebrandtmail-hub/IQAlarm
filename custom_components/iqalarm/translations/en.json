@@ -30,6 +30,18 @@
       },
       "profile": {
         "name": "Current profile"
+      },
+      "window_position": {
+        "name": "Window position",
+        "state": {
+          "closed": "Closed",
+          "unlatched": "Closed · unlocked",
+          "open": "Open",
+          "tilt_ready": "Handle in tilt position",
+          "tilted": "Tilted open",
+          "unknown_position": "Position unclear",
+          "settling": "Reading position"
+        }
       }
     },
     "switch": {

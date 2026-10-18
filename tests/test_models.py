@@ -113,4 +113,3 @@ def test_settings_quiet_disarmed_defaults_and_validation():
         Settings(quiet_disarmed_floorplan="yes")  # type: ignore[arg-type]
     with pytest.raises(ValueError):
         Settings(quiet_disarmed_locks="no")  # type: ignore[arg-type]
-

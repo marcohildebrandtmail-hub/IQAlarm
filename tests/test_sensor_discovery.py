@@ -13,45 +13,94 @@ from iqalarm_core.sensor_discovery import (
 
 def test_classify_entity_roles():
     # Doors and windows
-    assert classify_entity("binary_sensor.fenster_wohnzimmer", "Fenster Wohnzimmer", "window") == Role.ENTRY.value
-    assert classify_entity("binary_sensor.tur_haustur", "Haustür Kontakt", "door") == Role.ENTRY.value
-    assert classify_entity("binary_sensor.garagentor", "Garagentor", "garage_door") == Role.ENTRY.value
-    assert classify_entity("binary_sensor.balkon_kontakt", "Balkon Öffnung", None) == Role.ENTRY.value
+    assert (
+        classify_entity("binary_sensor.fenster_wohnzimmer", "Fenster Wohnzimmer", "window")
+        == Role.ENTRY.value
+    )
+    assert (
+        classify_entity("binary_sensor.tur_haustur", "Haustür Kontakt", "door") == Role.ENTRY.value
+    )
+    assert (
+        classify_entity("binary_sensor.garagentor", "Garagentor", "garage_door") == Role.ENTRY.value
+    )
+    assert (
+        classify_entity("binary_sensor.balkon_kontakt", "Balkon Öffnung", None) == Role.ENTRY.value
+    )
 
     # Locks
     assert classify_entity("lock.haustur_schloss", "Haustürschloss", "lock") == Role.LOCK.value
     assert classify_entity("binary_sensor.riegel_kontakt", "Riegelkontakt", None) == Role.LOCK.value
 
     # Motion & Presence
-    assert classify_entity("binary_sensor.motionsensor_wohnzimmer", "Bewegungsmelder", "motion") == Role.MOTION.value
-    assert classify_entity("binary_sensor.radar_schlafzimmer", "Aqara FP2 Präsenz", "presence") == Role.MMWAVE.value
+    assert (
+        classify_entity("binary_sensor.motionsensor_wohnzimmer", "Bewegungsmelder", "motion")
+        == Role.MOTION.value
+    )
+    assert (
+        classify_entity("binary_sensor.radar_schlafzimmer", "Aqara FP2 Präsenz", "presence")
+        == Role.MMWAVE.value
+    )
     assert classify_entity("binary_sensor.mmwave_flur", "LD2410 mmWave", None) == Role.MMWAVE.value
 
     # Outdoor / Perimeter
-    assert classify_entity("camera.cctv_garagenhof", "CCTV Garagenhof", None) == Role.PERIMETER_CAMERA.value
-    assert classify_entity("binary_sensor.cctv_person_vorne", "Personenerkennung Vorne", None) == Role.PERIMETER_CAMERA.value
-    assert classify_entity("binary_sensor.motionsensor_garten", "Garten Bewegung", "motion") == Role.PERIMETER_SENSOR.value
-    assert classify_entity("binary_sensor.terrasse_bwm", "Terrasse Bewegung", None) == Role.PERIMETER_SENSOR.value
+    assert (
+        classify_entity("camera.cctv_garagenhof", "CCTV Garagenhof", None)
+        == Role.PERIMETER_CAMERA.value
+    )
+    assert (
+        classify_entity("binary_sensor.cctv_person_vorne", "Personenerkennung Vorne", None)
+        == Role.PERIMETER_CAMERA.value
+    )
+    assert (
+        classify_entity("binary_sensor.motionsensor_garten", "Garten Bewegung", "motion")
+        == Role.PERIMETER_SENSOR.value
+    )
+    assert (
+        classify_entity("binary_sensor.terrasse_bwm", "Terrasse Bewegung", None)
+        == Role.PERIMETER_SENSOR.value
+    )
 
     # Glass / Vibration
-    assert classify_entity("binary_sensor.glasbruch_kuche", "Glasbruchsensor", "vibration") == Role.GLASS.value
-    assert classify_entity("binary_sensor.vibration_schaufenster", "Erschütterung", None) == Role.GLASS.value
+    assert (
+        classify_entity("binary_sensor.glasbruch_kuche", "Glasbruchsensor", "vibration")
+        == Role.GLASS.value
+    )
+    assert (
+        classify_entity("binary_sensor.vibration_schaufenster", "Erschütterung", None)
+        == Role.GLASS.value
+    )
 
     # Smoke & Panic
-    assert classify_entity("binary_sensor.rauchmelder_flur", "Rauchmelder Flur", "smoke") == Role.SMOKE.value
-    assert classify_entity("binary_sensor.notruf_taster", "Panikschalter SOS", None) == Role.PANIC.value
+    assert (
+        classify_entity("binary_sensor.rauchmelder_flur", "Rauchmelder Flur", "smoke")
+        == Role.SMOKE.value
+    )
+    assert (
+        classify_entity("binary_sensor.notruf_taster", "Panikschalter SOS", None)
+        == Role.PANIC.value
+    )
 
 
 def test_classify_entity_noise_exclusion():
     # Companion apps / phones
-    assert classify_entity("binary_sensor.pixel_7_pro_is_charging", "Pixel 7 Pro Is Charging", "battery_charging") is None
+    assert (
+        classify_entity(
+            "binary_sensor.pixel_7_pro_is_charging", "Pixel 7 Pro Is Charging", "battery_charging"
+        )
+        is None
+    )
     assert classify_entity("binary_sensor.galaxy_s22_app_active", "Galaxy S22 App", None) is None
     assert classify_entity("binary_sensor.iphone_14_geocoded", "iPhone Geocoded", None) is None
 
     # Battery & system diagnostics
     assert classify_entity("binary_sensor.fenster_battery", "Fenster Batterie", "battery") is None
-    assert classify_entity("binary_sensor.bwm_update_available", "Update Available", "update") is None
-    assert classify_entity("binary_sensor.zigbee_connectivity", "Network Connectivity", "connectivity") is None
+    assert (
+        classify_entity("binary_sensor.bwm_update_available", "Update Available", "update") is None
+    )
+    assert (
+        classify_entity("binary_sensor.zigbee_connectivity", "Network Connectivity", "connectivity")
+        is None
+    )
 
     # Unrelated domains
     assert classify_entity("light.wohnzimmer_deckenleuchte", "Deckenleuchte", None) is None
@@ -101,7 +150,9 @@ def test_discover_sensors_with_mock_hass():
 
     # Device registry
     dr_mock = MagicMock()
-    dev_mock = MagicMock(id="dev_42", area_id="wohnzimmer", manufacturer="Signify Netherlands B.V.", model="SML002")
+    dev_mock = MagicMock(
+        id="dev_42", area_id="wohnzimmer", manufacturer="Signify Netherlands B.V.", model="SML002"
+    )
     dev_mock.name = "Hue BWM WZ"
     dr_mock.async_get.side_effect = lambda did: dev_mock if did == "dev_42" else None
 
@@ -111,11 +162,31 @@ def test_discover_sensors_with_mock_hass():
     hass.area_registry = ar_mock
 
     # States
-    s1 = MagicMock(entity_id="binary_sensor.fenster_wz_1", attributes={"friendly_name": "Fenster WZ", "device_class": "window"}, state="off")
-    s2 = MagicMock(entity_id="binary_sensor.motionsensor_dev", attributes={"friendly_name": "Bewegungsmelder", "device_class": "motion"}, state="off")
-    s3 = MagicMock(entity_id="binary_sensor.fenster_wc", attributes={"friendly_name": "Fenster Gäste WC", "device_class": "window"}, state="off")
-    s4 = MagicMock(entity_id="binary_sensor.already_done", attributes={"friendly_name": "Bereits da", "device_class": "window"}, state="off")
-    s5 = MagicMock(entity_id="binary_sensor.tur_haustur", attributes={"friendly_name": "Eingangstür", "device_class": "door"}, state="off")
+    s1 = MagicMock(
+        entity_id="binary_sensor.fenster_wz_1",
+        attributes={"friendly_name": "Fenster WZ", "device_class": "window"},
+        state="off",
+    )
+    s2 = MagicMock(
+        entity_id="binary_sensor.motionsensor_dev",
+        attributes={"friendly_name": "Bewegungsmelder", "device_class": "motion"},
+        state="off",
+    )
+    s3 = MagicMock(
+        entity_id="binary_sensor.fenster_wc",
+        attributes={"friendly_name": "Fenster Gäste WC", "device_class": "window"},
+        state="off",
+    )
+    s4 = MagicMock(
+        entity_id="binary_sensor.already_done",
+        attributes={"friendly_name": "Bereits da", "device_class": "window"},
+        state="off",
+    )
+    s5 = MagicMock(
+        entity_id="binary_sensor.tur_haustur",
+        attributes={"friendly_name": "Eingangstür", "device_class": "door"},
+        state="off",
+    )
     hass.states.async_all.return_value = [s1, s2, s3, s4, s5]
 
     rooms = {
@@ -155,4 +226,3 @@ def test_discover_sensors_with_mock_hass():
     # s5 is entrance door, should have entry_delay True
     c5 = next(c for c in candidates if c["entity_id"] == "binary_sensor.tur_haustur")
     assert c5["entry_delay"] is True
-

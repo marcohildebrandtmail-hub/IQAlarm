@@ -1,5 +1,6 @@
 """Admin-scoped, validated API with revision control and live subscriptions."""
 
+import time
 from copy import deepcopy
 from pathlib import Path
 from uuid import uuid4
@@ -13,8 +14,9 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from .compat import vol
 from .const import ALLOWED_SENSOR_DOMAINS, DOMAIN, SIGNAL_UPDATE
 from .floorplan_analysis import analyze_image
-from .models import Action, FloorPlan, Profile, Room, SensorConfig, construct
+from .models import Action, FloorPlan, Profile, Room, SensorConfig, WindowConfig, construct
 from .sensor_discovery import discover_sensors
+from .windows import capture_position, inspect_window
 
 
 def runtime(hass):
@@ -38,8 +40,54 @@ def register(hass) -> None:
         ws_catalog,
         ws_analyze_floorplan,
         ws_discover_sensors,
+        ws_window_preview,
+        ws_window_capture,
     ):
         websocket_api.async_register_command(hass, handler)
+
+
+def window_preview(hass, data):
+    instance = runtime(hass)
+    window = construct(WindowConfig, data)
+    if window.room_id not in instance.config.rooms:
+        raise ValueError("Bitte zuerst einen vorhandenen Raum auswählen")
+    now = time.time()
+    states = {source: hass.states.get(source) for source in window.members}
+    raw = {source: state.state if state else "unavailable" for source, state in states.items()}
+    result = inspect_window(window, raw)
+    result["stable"] = all(
+        states[source] and now - states[source].last_changed.timestamp() >= window.settle_seconds
+        for source in window.position_inputs
+    )
+    result["can_capture"] = result["stable"] and result["available"]
+    return window, raw, result
+
+
+@websocket_api.websocket_command({"type": "iqalarm/window/preview", vol.Required("window"): dict})
+@websocket_api.require_admin
+@callback
+def ws_window_preview(hass, connection, msg):
+    try:
+        _, _, preview = window_preview(hass, msg["window"])
+        connection.send_result(msg["id"], preview)
+    except (ValueError, TypeError, KeyError, HomeAssistantError) as err:
+        connection.send_error(msg["id"], "invalid_window", str(err))
+
+
+@websocket_api.websocket_command(
+    {"type": "iqalarm/window/capture", vol.Required("window"): dict, vol.Required("state"): str}
+)
+@websocket_api.require_admin
+@callback
+def ws_window_capture(hass, connection, msg):
+    try:
+        window, raw, preview = window_preview(hass, msg["window"])
+        if not preview["stable"]:
+            raise ValueError("Bitte warten, bis alle Signale stabil sind")
+        rule = capture_position(window, raw, msg["state"])
+        connection.send_result(msg["id"], {"mapping": rule, "preview": preview})
+    except (ValueError, TypeError, KeyError, HomeAssistantError) as err:
+        connection.send_error(msg["id"], "invalid_window", str(err))
 
 
 @websocket_api.websocket_command(
@@ -122,7 +170,7 @@ async def ws_config(hass, connection, msg) -> None:
     {
         "type": "iqalarm/crud",
         vol.Required("collection"): vol.In(
-            ["rooms", "sensors", "actions", "profiles", "floorplans"]
+            ["rooms", "sensors", "actions", "profiles", "floorplans", "windows"]
         ),
         vol.Required("operation"): vol.In(["save", "delete"]),
         vol.Required("revision"): int,
@@ -161,10 +209,17 @@ async def ws_crud(hass, connection, msg) -> None:
                 for profile in data["profiles"].values():
                     if profile.get(reference) is not None:
                         profile[reference] = [value for value in profile[reference] if value != key]
+            if collection == "windows":
+                virtual = f"binary_sensor.iqalarm_window_{key}"
+                for profile in data["profiles"].values():
+                    if profile.get("sensor_ids") is not None:
+                        profile["sensor_ids"] = [
+                            value for value in profile["sensor_ids"] if value != virtual
+                        ]
             del data[collection][key]
         else:
             item = dict(msg["item"])
-            if collection in ("rooms", "actions", "profiles", "floorplans"):
+            if collection in ("rooms", "actions", "profiles", "floorplans", "windows"):
                 item.setdefault("id", uuid4().hex)
             key = item["entity_id" if collection == "sensors" else "id"]
             if collection == "profiles":
@@ -176,6 +231,7 @@ async def ws_crud(hass, connection, msg) -> None:
                     "sensors": SensorConfig,
                     "actions": Action,
                     "floorplans": FloorPlan,
+                    "windows": WindowConfig,
                 }[collection]
                 construct(cls, item)
             data[collection][key] = item
@@ -280,6 +336,7 @@ async def ws_test(hass, connection, msg) -> None:
 @callback
 def ws_catalog(hass, connection, msg) -> None:
     domains = ALLOWED_SENSOR_DOMAINS | {
+        "sensor",
         "siren",
         "switch",
         "script",
@@ -293,7 +350,9 @@ def ws_catalog(hass, connection, msg) -> None:
     dev_reg = device_registry.async_get(hass)
     entities = []
     for s in hass.states.async_all():
-        if s.domain not in domains or s.entity_id.startswith(("sensor.iqalarm", "binary_sensor.iqalarm")):
+        if s.domain not in domains or s.entity_id.startswith(
+            ("sensor.iqalarm", "binary_sensor.iqalarm")
+        ):
             continue
         entry = ent_reg.async_get(s.entity_id)
         area_id = None

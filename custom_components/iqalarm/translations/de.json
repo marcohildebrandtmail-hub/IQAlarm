@@ -30,6 +30,18 @@
       },
       "profile": {
         "name": "Aktuelles Profil"
+      },
+      "window_position": {
+        "name": "Fensterstellung",
+        "state": {
+          "closed": "Geschlossen",
+          "unlatched": "Geschlossen · entriegelt",
+          "open": "Offen",
+          "tilt_ready": "Griff in Kippstellung",
+          "tilted": "Gekippt",
+          "unknown_position": "Stellung nicht eindeutig",
+          "settling": "Stellung wird ermittelt"
+        }
       }
     },
     "switch": {

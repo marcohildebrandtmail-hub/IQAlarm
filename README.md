@@ -73,6 +73,18 @@ Unter **Profile & System** hat jedes Profil ein eigenes, frei wählbares Symbol.
 
 Die Migration übernimmt vorhandene Profile, Auswahl, Regeln, Aktionen, PIN und Quarantäne. Frühere HA-Basismodi werden einmalig in explizite Profilregeln übersetzt und anschließend nicht mehr ausgewertet.
 
+## Fenster-Assistent und Schlösser
+
+Unter **Kameras & Sensoren → Türen, Fenster & Schlösser (Außenhaut) → Fenster einrichten** werden ein Fensterkontakt, bis zu zwei Griffsignale, die optionale Schlossentität und eine Verbindungsüberwachung zu einem Fenster zusammengeführt. Ein einfacher Kontakt benötigt nur die Schritte geschlossen/offen. Mit Griffsignalen führt der Assistent durch geschlossen, entriegelt aber geschlossen, offen, Griff in Kippstellung bei geschlossenem Fenster und gekippt geöffnet. Nicht unterscheidbare Stellungen lassen sich nicht doppelt einlernen; nicht unterstützte Schritte können übersprungen werden. Die abschließende Live-Vorschau zeigt die erkannten Stellungen und Eingangssignale. Erst **Fenster speichern** übernimmt die Konfiguration.
+
+Alle Quellen stehen eingerückt unter dem Fenster; sie erscheinen nicht zusätzlich verstreut in der Außenhautliste oder als neue Vorschläge im Entitätskatalog. Die Integration erzeugt einen HA-Sensor für die Fensterstellung und einen Öffnungs-Binary-Sensor. Zuordnungen und eindeutige Entity-IDs bleiben bei Neustarts erhalten. Beim Entfernen der Zusammenführung werden die IQAlarm-Ausgabesensoren entfernt; die ursprünglichen HA-Entitäten bleiben bestehen.
+
+**Fehler sind keine Fensterstellung.** Bei einem ausgefallenen benötigten Eingang oder einer ausgefallenen Verbindungsüberwachung steht im Panel „Keine Verbindung“ und der Stellungssensor wird nicht verfügbar. Unbekannte Signalkombinationen werden als „Stellung nicht eindeutig“ angezeigt. Eine ausdrücklich dokumentierte Codierung `unknown` kann für Griffsignale nur mit separater Verbindungsüberwachung aktiviert werden. `unavailable` ist immer ein Fehler. Ein weiterhin verfügbarer physischer Fensterkontakt wird trotz eines ausgefallenen Griffs unabhängig für die Alarmbewertung ausgewertet. Kurze Zwischenmeldungen werden vor der Erkennung stabilisiert.
+
+**Fenstergriff und Türschloss sind eigene Gerätearten.** Fenstergriffe liefern reine Informationen: Sie ändern keine Alarmstufe, bestätigen keinen Einbruch, verhindern keine Scharfschaltung und werden durch normales Ver-/Entriegeln nicht in Prell-Quarantäne gesetzt. Bei ausgeschalteter Anlage erscheinen Entriegelungshinweise nicht in der Übersicht; bei eingeschalteter Anlage werden sie kompakt als **Potenziell unsicher** dargestellt. In den Sensordetails bleiben sie sichtbar. Eindeutig als Fenstergriff benannte Bestandsentitäten werden bei der Migration so eingeordnet; die Geräteart kann manuell angepasst werden. Bestehende falsche Griff-Quarantäne und darauf beruhende Bestätigungen werden beim Laden verworfen. Türschlösser behalten ihre profilabhängige Alarmbewertung.
+
+Ein zusammengeführtes Fenster zählt als **eine physische Alarmquelle**. Seine Griffsignale und sein Kontakt können sich niemals gegenseitig einen Einbruch bestätigen. Profile mit expliziter Sensorauswahl berücksichtigen auch die ausgewählten Stellungseingänge eines zusammengeführten Fensters. Information, Warnung, Alarm und Störung werden unabhängig von den eigenen Alarmstufen ausgewiesen; **Isoliert** bezeichnet einen bewusst deaktivierten Eintrag, **Prell-Quarantäne** einen technischen Ausschluss.
+
 ## Installation und Einrichtung
 
 Unterstützt: **Home Assistant ab 2025.12.0**, geprüft mit 2025.12.5 und 2026.10.2.
@@ -132,7 +144,7 @@ Nach einem Neustart wird der gewählte Modus einschließlich Quarantäne und bes
 | `iqalarm.trigger_test_level` | Eigene Stufen-ID oder `diagnostic`, `dry_run` standardmäßig `true`, optional `profile_id` |
 | `iqalarm_event` | Strukturierte Ereignisse mit Zeit, Modus, Profil, Entscheidung und Auslösekette |
 
-WebSocket-Befehle: `iqalarm/get`, `iqalarm/subscribe`, `iqalarm/catalog`, `iqalarm/config/save`, `iqalarm/crud`, `iqalarm/import_areas`, `iqalarm/set_mode`, `iqalarm/arm_profile`, `iqalarm/clear_quarantine`, `iqalarm/test_level`, `iqalarm/floorplan/analyze`. CRUD unterstützt Räume, Sensoren, Aktionen, Profile und Grundrisse. Stufen werden mit der gesamten Konfiguration gespeichert. Neue Etage mit Bild: POST `/api/iqalarm/floorplans/upload?name=Etagenname`. Die Flächenanalyse ist schreibgeschützt. Geschützte Bild-API: GET/POST `/api/iqalarm/floorplans/{id}/image`; Upload mit aktuellem `X-IQAlarm-Revision`-Header. Alle Befehle verlangen einen Administrator. CRUD und Konfigurationsänderungen verlangen die aktuelle `revision`.
+WebSocket-Befehle: `iqalarm/get`, `iqalarm/subscribe`, `iqalarm/catalog`, `iqalarm/config/save`, `iqalarm/crud`, `iqalarm/import_areas`, `iqalarm/set_mode`, `iqalarm/arm_profile`, `iqalarm/clear_quarantine`, `iqalarm/test_level`, `iqalarm/floorplan/analyze`, `iqalarm/window/preview`, `iqalarm/window/capture`. CRUD unterstützt Räume, Sensoren, Aktionen, Profile und Grundrisse. Stufen werden mit der gesamten Konfiguration gespeichert. Neue Etage mit Bild: POST `/api/iqalarm/floorplans/upload?name=Etagenname`. Die Flächenanalyse ist schreibgeschützt. Geschützte Bild-API: GET/POST `/api/iqalarm/floorplans/{id}/image`; Upload mit aktuellem `X-IQAlarm-Revision`-Header. Alle Befehle verlangen einen Administrator. CRUD und Konfigurationsänderungen verlangen die aktuelle `revision`.
 
 ## Entwicklung und Verifikation
 

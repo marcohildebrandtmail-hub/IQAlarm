@@ -207,12 +207,23 @@ def friendly_manufacturer(manufacturer: str | None) -> str | None:
     return MANUFACTURER_ALIASES.get(cleaned.lower(), cleaned)
 
 
-def build_room_matcher(rooms: dict[str, Any], areas: dict[str, str] | None = None) -> list[tuple[str, str]]:
+def build_room_matcher(
+    rooms: dict[str, Any], areas: dict[str, str] | None = None
+) -> list[tuple[str, str]]:
     """Build a priority list of (search_keyword, room_id) tuples sorted by keyword length descending."""
     aliases_map: dict[str, list[str]] = {
         "wc": ["gaste_wc", "gäste wc", "gästewc", "toilette", "klo", "gaste wc", "guest wc"],
         "hwr": ["hwr", "hauswirtschaftsraum", "hauswirtschaft", "utility room"],
-        "garderobe": ["garderobe", "gardrobe", "diele", "eingang", "haustür", "haustuer", "eingangsbereich", "flur ug"],
+        "garderobe": [
+            "garderobe",
+            "gardrobe",
+            "diele",
+            "eingang",
+            "haustür",
+            "haustuer",
+            "eingangsbereich",
+            "flur ug",
+        ],
         "sophies bad": ["sophies bad", "sophies_bad", "kinderbad", "sbad"],
         "sophie": ["sophie", "kinderzimmer"],
         "garage": ["garage", "garagentor"],
@@ -236,8 +247,14 @@ def build_room_matcher(rooms: dict[str, Any], areas: dict[str, str] | None = Non
     seen: set[tuple[str, str]] = set()
 
     for rid, r in rooms.items():
-        raw_name = (getattr(r, "name", None) or (r.get("name", "") if isinstance(r, dict) else "") or "").strip()
-        raw_area = (getattr(r, "area_id", None) or (r.get("area_id", "") if isinstance(r, dict) else "") or "").strip()
+        raw_name = (
+            getattr(r, "name", None) or (r.get("name", "") if isinstance(r, dict) else "") or ""
+        ).strip()
+        raw_area = (
+            getattr(r, "area_id", None)
+            or (r.get("area_id", "") if isinstance(r, dict) else "")
+            or ""
+        ).strip()
         norm_name = normalize_text(raw_name)
         norm_area = normalize_text(raw_area)
 
@@ -253,7 +270,12 @@ def build_room_matcher(rooms: dict[str, Any], areas: dict[str, str] | None = Non
                 cands.add(normalize_text(areas[raw_area]))
 
         for key, aliases in aliases_map.items():
-            if key == norm_name or key == norm_area or key == raw_name.lower() or key == raw_area.lower():
+            if (
+                key == norm_name
+                or key == norm_area
+                or key == raw_name.lower()
+                or key == raw_area.lower()
+            ):
                 for alias in aliases:
                     cands.add(alias.lower())
                     cands.add(normalize_text(alias))
@@ -281,7 +303,9 @@ def classify_entity(entity_id: str, name: str, device_class: str | None) -> str 
     norm = normalize_text(f"{name} {entity_id}")
 
     # Check for excluded device classes unless explicit security keywords are present
-    if device_class in EXCLUDED_DC and not any(k in norm for k in DOOR_WINDOW_KEYWORDS + MOTION_KEYWORDS + LOCK_KEYWORDS):
+    if device_class in EXCLUDED_DC and not any(
+        k in norm for k in DOOR_WINDOW_KEYWORDS + MOTION_KEYWORDS + LOCK_KEYWORDS
+    ):
         return None
 
     # 1. Panic
@@ -289,7 +313,9 @@ def classify_entity(entity_id: str, name: str, device_class: str | None) -> str 
         return Role.PANIC.value
 
     # 2. Smoke / Fire
-    if device_class in ("smoke", "gas", "carbon_monoxide") or any(k in norm for k in SMOKE_KEYWORDS):
+    if device_class in ("smoke", "gas", "carbon_monoxide") or any(
+        k in norm for k in SMOKE_KEYWORDS
+    ):
         return Role.SMOKE.value
 
     # 3. Perimeter Camera / Person Detection
@@ -311,11 +337,15 @@ def classify_entity(entity_id: str, name: str, device_class: str | None) -> str 
         return Role.LOCK.value
 
     # 6. Doors & Windows
-    if device_class in ("door", "window", "opening", "garage_door") or any(k in norm for k in DOOR_WINDOW_KEYWORDS):
+    if device_class in ("door", "window", "opening", "garage_door") or any(
+        k in norm for k in DOOR_WINDOW_KEYWORDS
+    ):
         return Role.ENTRY.value
 
     # 7. Motion & Presence
-    if device_class in ("motion", "occupancy", "presence") or any(k in norm for k in MOTION_KEYWORDS + MMWAVE_KEYWORDS):
+    if device_class in ("motion", "occupancy", "presence") or any(
+        k in norm for k in MOTION_KEYWORDS + MMWAVE_KEYWORDS
+    ):
         if any(k in norm for k in OUTDOOR_KEYWORDS):
             return Role.PERIMETER_SENSOR.value
         if device_class == "presence" or any(k in norm for k in MMWAVE_KEYWORDS):
@@ -331,9 +361,19 @@ def discover_sensors(
     rooms: dict[str, Any],
 ) -> list[dict[str, Any]]:
     """Scan Home Assistant entities and propose security sensors with role and room assignments."""
-    ent_reg = entity_registry.async_get(hass) if entity_registry else getattr(hass, "entity_registry", None)
-    dev_reg = device_registry.async_get(hass) if device_registry else getattr(hass, "device_registry", None)
-    ar_reg = area_registry.async_get(hass) if area_registry else getattr(hass, "area_registry", None)
+    ent_reg = (
+        entity_registry.async_get(hass)
+        if entity_registry
+        else getattr(hass, "entity_registry", None)
+    )
+    dev_reg = (
+        device_registry.async_get(hass)
+        if device_registry
+        else getattr(hass, "device_registry", None)
+    )
+    ar_reg = (
+        area_registry.async_get(hass) if area_registry else getattr(hass, "area_registry", None)
+    )
 
     areas_map = {a.id: a.name for a in ar_reg.async_list_areas()} if ar_reg else {}
     matcher = build_room_matcher(rooms, areas_map)
@@ -387,7 +427,9 @@ def discover_sensors(
         matched_room_id = None
         if effective_area_id:
             norm_area = normalize_text(effective_area_id)
-            matched_room_id = area_to_room.get(effective_area_id.lower()) or area_to_room.get(norm_area)
+            matched_room_id = area_to_room.get(effective_area_id.lower()) or area_to_room.get(
+                norm_area
+            )
 
         if not matched_room_id:
             norm_text = normalize_text(f"{name} {entity_id} {device_name or ''}")
@@ -404,7 +446,14 @@ def discover_sensors(
                 entry_delay = True
 
         r_obj = rooms.get(matched_room_id) if matched_room_id else None
-        r_name = (getattr(r_obj, "name", None) or (r_obj.get("name") if isinstance(r_obj, dict) else None)) if r_obj else None
+        r_name = (
+            (
+                getattr(r_obj, "name", None)
+                or (r_obj.get("name") if isinstance(r_obj, dict) else None)
+            )
+            if r_obj
+            else None
+        )
 
         candidates.append(
             {

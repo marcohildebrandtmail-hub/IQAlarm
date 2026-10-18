@@ -27,6 +27,8 @@ class CorrelationEngine:
 
     def __init__(self, config: Configuration) -> None:
         self.config = config
+        self.sensors = config.all_sensors()
+        self.grouped_inputs = config.window_members()
         self.config.validate()
         self.stage_id = config.stages[0].id
         self.profile_id: str | None = None
@@ -126,16 +128,25 @@ class CorrelationEngine:
 
     def seed(self, entity_id: str, active: bool | None) -> None:
         """Record current availability without creating synthetic intrusion evidence."""
+        if entity_id in self.config.sensors:
+            self.sensors[entity_id] = self.config.sensors[entity_id]
         self.raw[entity_id] = active
 
     def arm_blockers(self) -> list[str]:
         """List contact openings and unavailable inputs under the selected policy."""
         result = []
-        included = [sensor for sensor in self.config.sensors.values() if self._included(sensor)]
+        included = [sensor for sensor in self.sensors.values() if self._included(sensor)]
         if (
             self.profile
             and (self.profile.room_ids is not None or self.profile.sensor_ids is not None)
             and not included
+            and not any(
+                sensor.enabled
+                and sensor.information_only
+                and (self.profile.room_ids is None or sensor.room_id in self.profile.room_ids)
+                and (self.profile.sensor_ids is None or sensor.entity_id in self.profile.sensor_ids)
+                for sensor in self.sensors.values()
+            )
         ):
             result.append("Profil enthält keine aktivierten Sensoren in seiner Auswahl")
         for sensor in included:
@@ -226,7 +237,7 @@ class CorrelationEngine:
         return bool(a and b and (second in a.adjacent or first in b.adjacent))
 
     def _perimeter_matches(self, perimeter: Evidence, contact: Evidence) -> bool:
-        sensor = self.config.sensors[perimeter.entity_id]
+        sensor = self.sensors[perimeter.entity_id]
         spaces = sensor.front_of or ([sensor.room_id] if sensor.room_id else [])
         return not spaces or contact.room_id in spaces
 
@@ -243,6 +254,8 @@ class CorrelationEngine:
     def _included(self, sensor) -> bool:
         """Intersect profile scopes before blockers, evidence and correlation."""
         profile = self.profile
+        if sensor.information_only or sensor.entity_id in self.grouped_inputs:
+            return False
         if not sensor.enabled or profile is None:
             return False
         if sensor.role in PERIMETER_ROLES and not profile.perimeter_enabled:
@@ -252,7 +265,11 @@ class CorrelationEngine:
         if sensor.role in INTERIOR_ROLES and profile.motion_mode == "ignore":
             return False
         if profile.sensor_ids is not None and sensor.entity_id not in profile.sensor_ids:
-            return False
+            window = next(
+                (w for w in self.config.windows.values() if w.sensor_id == sensor.entity_id), None
+            )
+            if window is None or not set(window.position_inputs).intersection(profile.sensor_ids):
+                return False
         if profile.room_ids is not None:
             rooms = set(profile.room_ids)
             if sensor.role in PERIMETER_ROLES:
@@ -268,7 +285,7 @@ class CorrelationEngine:
         return self.arming_until is None and self._included(sensor)
 
     def _has_flap_confirmation(self, entity_id: str, now: float) -> bool:
-        sensor = self.config.sensors[entity_id]
+        sensor = self.sensors[entity_id]
         source = sensor.source_id or entity_id
         for other in self.evidence:
             if other.source_id == source or not self._fresh(other, now):
@@ -286,7 +303,7 @@ class CorrelationEngine:
     def feed(self, entity_id: str, active: bool | None, now: float) -> None:
         """Handle only meaningful raw transitions; unavailable never counts as an edge."""
         now = self._time(now)
-        sensor = self.config.sensors.get(entity_id)
+        sensor = self.sensors.get(entity_id)
         if sensor is None:
             return
         old = self.raw.get(entity_id)
@@ -313,6 +330,8 @@ class CorrelationEngine:
             )
             return
         if old == active:
+            return
+        if sensor.information_only or entity_id in self.grouped_inputs:
             return
         diagnose = self.reactions_enabled or self.config.settings.diagnose_disarmed
         if diagnose and sensor.role in CONTACT_ROLES and sensor.flap_enabled:
@@ -358,7 +377,7 @@ class CorrelationEngine:
             self._activate(entity_id, now)
 
     def _activate(self, entity_id: str, now: float) -> None:
-        sensor = self.config.sensors[entity_id]
+        sensor = self.sensors[entity_id]
         if not self._enabled(sensor) or entity_id in self.quarantine:
             return
         current = Evidence(
@@ -438,7 +457,7 @@ class CorrelationEngine:
             return
         # Only a chain involving a configured entry contact gets an entry delay.
         entry = any(
-            self.config.sensors[e.entity_id].entry_delay and e.role in CONTACT_ROLES for e in chain
+            self.sensors[e.entity_id].entry_delay and e.role in CONTACT_ROLES for e in chain
         )
         duration = self.profile.entry_seconds if entry and self.reactions_enabled else 0
         if duration:
@@ -516,9 +535,9 @@ class CorrelationEngine:
                 )
         if self.profile and any(
             0 <= now - q["since"] < self.profile.correlation_seconds
-            and self._included(self.config.sensors[key])
+            and self._included(self.sensors[key])
             for key, q in self.quarantine.items()
-            if key in self.config.sensors
+            if key in self.sensors
         ):
             choices.append(
                 (
@@ -538,7 +557,7 @@ class CorrelationEngine:
         if self.arming_until is not None and now >= self.arming_until:
             self.arming_until = None
             self._log(now, "armed", "Ausgangsverzögerung abgelaufen")
-            for sensor in self.config.sensors.values():
+            for sensor in self.sensors.values():
                 if sensor.role in CONTACT_ROLES and self.raw.get(sensor.entity_id) is True:
                     self._activate(sensor.entity_id, now)
         for entity_id, deadline in list(self.debouncing.items()):
@@ -587,21 +606,23 @@ class CorrelationEngine:
             "perimeter": perimeter,
             "open": [
                 s.entity_id
-                for s in self.config.sensors.values()
+                for s in self.sensors.values()
                 if s.room_id == room_id
                 and s.role in CONTACT_ROLES
+                and not s.information_only
+                and s.entity_id not in self.grouped_inputs
                 and self.raw.get(s.entity_id) is True
             ],
             "motion": [
                 s.entity_id
-                for s in self.config.sensors.values()
+                for s in self.sensors.values()
                 if s.room_id == room_id
                 and s.role in INTERIOR_ROLES
                 and self.raw.get(s.entity_id) is True
             ],
             "persons": [
                 s.entity_id
-                for s in self.config.sensors.values()
+                for s in self.sensors.values()
                 if s.role in PERIMETER_ROLES
                 and self.raw.get(s.entity_id) is True
                 and self._perimeter_matches(
@@ -611,7 +632,7 @@ class CorrelationEngine:
             ],
             "quarantined": [
                 s.entity_id
-                for s in self.config.sensors.values()
+                for s in self.sensors.values()
                 if s.room_id == room_id and s.entity_id in self.quarantine
             ],
         }
@@ -630,9 +651,7 @@ class CorrelationEngine:
                 else None
             ),
             "monitored_sensors": [
-                sensor.entity_id
-                for sensor in self.config.sensors.values()
-                if self._included(sensor)
+                sensor.entity_id for sensor in self.sensors.values() if self._included(sensor)
             ],
             "level": self.level,
             "stage_id": self.stage_id,
@@ -686,29 +705,54 @@ class CorrelationEngine:
         self.pending_rule = data.get("pending_rule", "contact_motion")
         self.last_profile_id = data.get("last_profile_id", self.profile_id)
         self.quarantine = {
-            k: v for k, v in data.get("quarantine", {}).items() if k in self.config.sensors
+            k: v
+            for k, v in data.get("quarantine", {}).items()
+            if k in self.sensors
+            and not self.sensors[k].information_only
+            and k not in self.grouped_inputs
         }
         self.arming_until = data.get("arming_until")
         self.pending_until = data.get("pending_until")
         self.pending_chain = [
             Evidence(**e)
             for e in data.get("pending_chain", [])
-            if e["entity_id"] in self.config.sensors
+            if e["entity_id"] in self.sensors
+            and not self.sensors[e["entity_id"]].information_only
+            and e["entity_id"] not in self.grouped_inputs
         ]
         self.breach_chain = [
             Evidence(**e)
             for e in data.get("breach_chain", [])
-            if e["entity_id"] in self.config.sensors
+            if e["entity_id"] in self.sensors
+            and not self.sensors[e["entity_id"]].information_only
+            and e["entity_id"] not in self.grouped_inputs
         ]
         self.evidence = deque(
             (
                 Evidence(**e)
                 for e in data.get("evidence", [])
-                if e["entity_id"] in self.config.sensors
+                if e["entity_id"] in self.sensors
+                and not self.sensors[e["entity_id"]].information_only
+                and e["entity_id"] not in self.grouped_inputs
             ),
             maxlen=2000,
         )
         self.events = deque(
             (EventLog(**e) for e in data.get("events", [])[:MAX_EVENTS]), maxlen=MAX_EVENTS
         )
+        previous_chain = data.get("breach_chain", []) + data.get("pending_chain", [])
+        if any(
+            e["entity_id"] not in self.sensors
+            or self.sensors[e["entity_id"]].information_only
+            or e["entity_id"] in self.grouped_inputs
+            for e in previous_chain
+        ):
+            self.latched = False
+            self.severity = Level.SECURE
+            self.stage_id = self.config.stages[0].id
+            self.confirmation_rule = None
+            self.pending_until = None
+            self.pending_rule = None
+            self.pending_chain = []
+            self.breach_chain = []
         self.tick(now)

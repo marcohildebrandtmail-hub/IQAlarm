@@ -13,6 +13,7 @@ from pathlib import Path
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP, EVENT_STATE_CHANGED
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
@@ -22,6 +23,7 @@ from .const import EVENT_TYPE, SIGNAL_UPDATE
 from .correlation_engine import CorrelationEngine
 from .models import Configuration, EventLog
 from .store import IQAlarmStore
+from .windows import WindowTracker
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -46,6 +48,7 @@ class IQAlarmRuntime:
         self._next_simulation = 0.0
         self._next_prune = 0.0
         self._failed_pins: list[float] = []
+        self.windows: dict[str, WindowTracker] = {}
 
     @property
     def config(self) -> Configuration:
@@ -53,6 +56,10 @@ class IQAlarmRuntime:
 
     def active_state(self, sensor, state) -> bool | None:
         if state is None or state.state in ("unknown", "unavailable"):
+            return None
+        if sensor.entity_id.startswith("lock.") and state.state in ("locking", "unlocking"):
+            return self.engine.raw.get(sensor.entity_id)
+        if sensor.entity_id.startswith("lock.") and state.state == "jammed":
             return None
         value = state.attributes.get(sensor.attribute) if sensor.attribute else state.state
         if value is None:
@@ -65,6 +72,24 @@ class IQAlarmRuntime:
             self.engine.seed(
                 sensor.entity_id, self.active_state(sensor, self.hass.states.get(sensor.entity_id))
             )
+        self.windows = {key: WindowTracker(window) for key, window in self.config.windows.items()}
+        self._update_windows(time.time(), seed=True)
+
+    def _window_states(self, window) -> dict[str, str]:
+        return {
+            source: (state.state if (state := self.hass.states.get(source)) else "unavailable")
+            for source in window.members
+        }
+
+    def _update_windows(self, now: float, *, seed: bool = False) -> bool:
+        changed = False
+        for tracker in self.windows.values():
+            changed = tracker.update(self._window_states(tracker.window), now, seed=seed) or changed
+            if seed:
+                self.engine.seed(tracker.window.sensor_id, tracker.reading["opening"])
+            elif tracker.reading["opening_stable"]:
+                self.engine.feed(tracker.window.sensor_id, tracker.reading["opening"], now)
+        return changed
 
     async def start(self) -> None:
         await self.store.async_load()
@@ -87,11 +112,17 @@ class IQAlarmRuntime:
     def _state_changed(self, event) -> None:
         entity_id = event.data["entity_id"]
         sensor = self.config.sensors.get(entity_id)
-        if sensor is None or self.stopped:
+        if self.stopped:
             return
-        self.engine.feed(
-            entity_id, self.active_state(sensor, event.data.get("new_state")), time.time()
-        )
+        grouped = entity_id in self.config.window_members()
+        if sensor is None and not grouped:
+            return
+        if sensor:
+            self.engine.feed(
+                entity_id, self.active_state(sensor, event.data.get("new_state")), time.time()
+            )
+        if grouped:
+            self._update_windows(time.time())
         self.hass.async_create_task(self.flush(), "IQAlarm sensor update")
 
     async def _tick(self, now) -> None:
@@ -99,8 +130,9 @@ class IQAlarmRuntime:
             return
         self._timer_running = True
         try:
+            windows_changed = self._update_windows(time.time())
             self.engine.tick(time.time())
-            if self.engine._outbox:
+            if self.engine._outbox or windows_changed:
                 await self.flush()
             if time.time() >= self._next_simulation:
                 self._next_simulation = time.time() + 180
@@ -283,6 +315,15 @@ class IQAlarmRuntime:
                 "Konfiguration wurde in einem anderen Fenster geändert. Bitte neu laden."
             )
         candidate = Configuration.from_dict(data)
+        registry = er.async_get(self.hass)
+        for window in candidate.windows.values():
+            if any(
+                (entry := registry.async_get(source)) and entry.platform == "iqalarm"
+                for source in window.members
+            ):
+                raise ValueError(
+                    "IQAlarm-Fenster benötigen unabhängige Eingangssensoren; keine eigenen Ausgabesensoren"
+                )
         candidate.revision = self.config.revision + 1
         obsolete_images = {p.image for p in self.config.floorplans.values() if p.image} - {
             p.image for p in candidate.floorplans.values() if p.image
@@ -291,7 +332,11 @@ class IQAlarmRuntime:
         replacement.events = self.engine.events.copy()
         replacement.last_profile_id = self.engine.last_profile_id
         replacement.quarantine = {
-            key: value for key, value in self.engine.quarantine.items() if key in candidate.sensors
+            key: value
+            for key, value in self.engine.quarantine.items()
+            if key in replacement.sensors
+            and not replacement.sensors[key].information_only
+            and key not in replacement.grouped_inputs
         }
         for sensor in candidate.sensors.values():
             replacement.seed(
@@ -305,6 +350,7 @@ class IQAlarmRuntime:
                 outputs=deepcopy(self.dispatcher.outputs),
             )
         self.engine = replacement
+        self.seed()
         self.generation += 1
         for event in replacement.drain():
             self.hass.bus.async_fire(EVENT_TYPE, event.to_dict())
@@ -357,4 +403,58 @@ class IQAlarmRuntime:
             "status": self.engine.snapshot(time.time()),
             "config": self.config.to_dict(),
             "pin_required": bool(self.entry.data.get("pin_hash")),
+            "windows": {key: tracker.reading for key, tracker in self.windows.items()},
+            "information": self._lock_information(),
         }
+
+    def _lock_information(self):
+        result = []
+        for key, tracker in self.windows.items():
+            if tracker.window.enabled and (
+                tracker.reading.get("locked") is False
+                or tracker.reading.get("state") in ("unlatched", "tilt_ready")
+            ):
+                result.append(
+                    {
+                        "entity_id": tracker.window.sensor_id,
+                        "name": tracker.window.name,
+                        "room_id": tracker.window.room_id,
+                        "window_id": key,
+                        "category": "information",
+                        "label": "Potenziell unsicher",
+                    }
+                )
+        registry = er.async_get(self.hass)
+        seen = set()
+        claimed = self.config.window_members()
+        candidates = sorted(
+            self.config.sensors.values(),
+            key=lambda sensor: not sensor.entity_id.startswith("lock."),
+        )
+        for sensor in candidates:
+            if (
+                not sensor.enabled
+                or not sensor.information_only
+                or sensor.entity_id in claimed
+                or self.engine.raw.get(sensor.entity_id) is not True
+            ):
+                continue
+            record = registry.async_get(sensor.entity_id)
+            source = (
+                record.device_id
+                if record and record.device_id
+                else sensor.source_id or sensor.entity_id
+            )
+            if source in seen:
+                continue
+            seen.add(source)
+            result.append(
+                {
+                    "entity_id": sensor.entity_id,
+                    "name": sensor.name or sensor.entity_id,
+                    "room_id": sensor.room_id,
+                    "category": "information",
+                    "label": "Potenziell unsicher",
+                }
+            )
+        return result

@@ -1,6 +1,9 @@
-import {DraftJournal} from "./floorplan-drafts.js?v=2.2.18";
-import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.2.18";
-/* IQAlarm 2.2.18 · native ES module · no CDN, framework or build required. */
+import {DraftJournal} from "./floorplan-drafts.js?v=2.3.0";
+import "./window-assistant.js?v=2.3.0";
+import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.3.0";
+/* IQAlarm 2.3.0 · native ES module · no CDN, framework or build required. */
+const WINDOW_CSS = `.window-group{padding:18px 0;border-bottom:1px solid var(--divider-color,#dce3ec)}.window-inputs{margin:14px 0 0 24px;padding-left:18px;border-left:2px solid var(--divider-color,#dce3ec)}.window-inputs code{display:block;font-size:10px;overflow-wrap:anywhere;color:var(--secondary-text-color,#64758b)}.information{border-color:color-mix(in srgb,var(--primary-color,#2986bb) 25%,transparent)}.information summary,details.banner summary{cursor:pointer;font-size:13px}.information ha-icon{color:var(--primary-color,#2986bb)}`;
+const CATEGORIES={information:"Information",warning:"Warnung",alarm:"Alarm",fault:"Störung",isolated:"Isoliert"};
 const RULES = {perimeter: "Vorfeld-Erkennung", single: "Unbestätigter Einzelsensor", flapping: "Sensor-Prellen", perimeter_contact: "Vorfeld + Öffnung", contact_motion: "Öffnung + Bewegung", multi_contact: "Zwei Öffnungssensoren", multi_motion: "Zwei Bewegungsmelder", immediate: "Freigegebene Einzelauslösung / Gefahr"};
 const PROFILE_ICONS = {"mdi:home-outline":"Zuhause", "mdi:weather-night":"Nacht", "mdi:home-export-outline":"Abwesend", "mdi:palm-tree":"Urlaub", "mdi:account-group-outline":"Besuch", "mdi:garage-variant":"Garage", "mdi:shield-check-outline":"Schutz", "mdi:eye-outline":"Beobachtung", "mdi:dog":"Haustiere", "mdi:briefcase-outline":"Arbeit", "mdi:bed-outline":"Schlafzimmer", "mdi:lock-outline":"Schloss", "mdi:home-floor-0":"Erdgeschoss", "mdi:home-floor-1":"Obergeschoss", "mdi:home-floor-b":"Keller", "mdi:tree-outline":"Garten"};
 const ROLES = {perimeter_camera: "Außenkamera / Person", perimeter_sensor: "Vorfeld-Sensor", entry_contact: "Tür / Fenster", lock_contact: "Schloss / Riegel", vibration_glass: "Glas / Vibration", interior_motion: "Bewegung innen", interior_mmwave: "Präsenz / mmWave", panic: "Panik", smoke: "Rauch / Gefahr"};
@@ -52,7 +55,8 @@ class IQAlarmPanel extends HTMLElement {
     this._onWindowKey = e => this._windowKey(e);
     this._onDisconnect = () => this._connection(false);
     this._onReady = () => { if (!this._unsubscribe) this._connect(); };
-    this.shadowRoot.innerHTML = `<style>${CSS}</style><div class="shell"><header class="top"><div class="brand-row"><button class="icon-button" data-command="menu" aria-label="Seitenmenü öffnen">${icon("menu")}</button><div class="brandmark">IQ</div><div class="brand-copy"><div class="brand-title">IQAlarm</div><div class="eyebrow">Intelligenz vor dem Alarm</div></div><div class="connection" role="status"><span class="dot off"></span><span id="connection-text">Verbinde …</span></div></div><nav aria-label="IQAlarm Bereiche" role="tablist"></nav></header><main id="main"><div class="loading">IQAlarm wird verbunden …</div></main><div class="footer-note">IQAlarm · Lokal. Räumlich. Korrelierend.</div></div><dialog id="editor" aria-labelledby="dialog-title"></dialog><div id="toast" role="status" aria-live="polite"></div>`;
+    this.shadowRoot.innerHTML = `<style>${CSS}${WINDOW_CSS}</style><div class="shell"><header class="top"><div class="brand-row"><button class="icon-button" data-command="menu" aria-label="Seitenmenü öffnen">${icon("menu")}</button><div class="brandmark">IQ</div><div class="brand-copy"><div class="brand-title">IQAlarm</div><div class="eyebrow">Intelligenz vor dem Alarm</div></div><div class="connection" role="status"><span class="dot off"></span><span id="connection-text">Verbinde …</span></div></div><nav aria-label="IQAlarm Bereiche" role="tablist"></nav></header><main id="main"><div class="loading">IQAlarm wird verbunden …</div></main><div class="footer-note">IQAlarm · Lokal. Räumlich. Korrelierend.</div></div><dialog id="editor" aria-labelledby="dialog-title"></dialog><div id="toast" role="status" aria-live="polite"></div>`;
+    this.shadowRoot.getElementById("editor").addEventListener("close",()=>this.shadowRoot.querySelector("iqalarm-window-assistant")?.stop());
     this.shadowRoot.addEventListener("click", e => this._click(e));
     this.shadowRoot.addEventListener("click", e => this._planClick(e));
     this.shadowRoot.addEventListener("keydown", e => { const zone=e.target.closest("[data-room]"); if (zone && ["Enter"," "].includes(e.key)) {e.preventDefault(); this._liveDialog(zone.dataset.room);} });
@@ -163,7 +167,7 @@ class IQAlarmPanel extends HTMLElement {
         if (data.available === false) { this._connection(false); return; }
         const first = !this.data; this.data = data; this._connection(true);
         if (first || this.tab === 0 || this.tab === 5) this._render();
-        else this._updateLock();
+        else {this._updateLock();if(this.tab===2)this._updateWindowStatuses();}
       }, {type: "iqalarm/subscribe"});
       if (!this.isConnected || attempt !== this._connectAttempt) unsub();
       else this._unsubscribe = unsub;
@@ -176,6 +180,43 @@ class IQAlarmPanel extends HTMLElement {
   _connection(ok) { this._connected = ok; this.shadowRoot.querySelector(".dot").classList.toggle("off", !ok); this.shadowRoot.getElementById("connection-text").textContent = ok ? "Live verbunden · lokal" : "Verbindung unterbrochen"; if (this.data) this._updateLock(); }
   _toast(message, error = false) { const toast = this.shadowRoot.getElementById("toast"); toast.textContent = message; toast.classList.toggle("error", error); clearTimeout(this._toastTimer); this._toastTimer = setTimeout(() => {toast.textContent = "";}, error ? 10000 : 5000); }
   _color(level) { return this.data?.config.stages[level]?.color || "var(--iq-green)"; }
+  _windowMembers() { return new Set(Object.values(this.data.config.windows || {}).flatMap(w=>[w.contact_entity_id,...w.handle_entity_ids,w.lock_entity_id,w.availability_entity_id].filter(Boolean))); }
+  _allSensorRecords() {
+    return {...this.data.config.sensors,...Object.fromEntries(Object.values(this.data.config.windows || {}).map(w=>[`binary_sensor.iqalarm_window_${w.id}`,{entity_id:`binary_sensor.iqalarm_window_${w.id}`,name:w.name,room_id:w.room_id,front_of:[],role:"entry_contact",enabled:w.enabled,window_id:w.id,sensor_kind:"generic"}]))};
+  }
+  _displaySensors() { const claimed=this._windowMembers();return Object.values(this._allSensorRecords()).filter(s=>!claimed.has(s.entity_id)); }
+  _sensorRecord(id) { return this._allSensorRecords()[id]; }
+  _sensorLabel(sensor,overview=false) {
+    if(!sensor.enabled)return "Isoliert";
+    if(sensor.window_id){const reading=this.data.windows?.[sensor.window_id];return overview&&!this.data.status.active&&["unlatched","tilt_ready"].includes(reading?.state)?"Geschlossen":reading?.label||"Stellung wird ermittelt";}
+    if(this.data.status.quarantine[sensor.entity_id])return "Störung · Prell-Quarantäne";
+    const raw=this.data.status.raw[sensor.entity_id];
+    if(raw==null)return "Störung · Keine Verbindung";
+    if(sensor.sensor_kind==="window_handle")return sensor.entity_id.startsWith("lock.")?(raw?"Entriegelt · Information":"Verriegelt"):(raw?"Griffmeldung · Information":"Griffmeldung inaktiv");
+    if(sensor.sensor_kind==="door_lock"||sensor.role==="lock_contact")return raw?"Entriegelt":"Verriegelt";
+    return raw?"Aktiv":"Ruhig";
+  }
+  _windowTable() {
+    return Object.values(this.data.config.windows || {}).map(w=>{
+      const reading=this.data.windows?.[w.id]||{},members=[...new Set([w.contact_entity_id,...w.handle_entity_ids,w.lock_entity_id,w.availability_entity_id].filter(Boolean))];
+      return `<article class="window-group" data-window-id="${esc(w.id)}"><div class="row between"><div><h3>${icon("window-closed-variant")} ${esc(w.name)}</h3><p>${esc(this.data.config.rooms[w.room_id]?.name)} · <strong data-window-status="${esc(w.id)}">${esc(reading.label||"Stellung wird ermittelt")}</strong>${w.lock_entity_id?` · Schloss: ${reading.locked===true?"verriegelt":reading.locked===false?"entriegelt":"Keine Verbindung"}`:""}${w.enabled?"":" · Isoliert"}</p></div><div class="row"><button class="small" data-command="window-edit" data-id="${esc(w.id)}" data-config>Bearbeiten</button><button class="small danger" data-command="window-delete" data-id="${esc(w.id)}" data-config>Fenster entfernen</button></div></div><div class="window-inputs">${members.map(id=>`<div class="sensor-line"><div class="sensor-name">${esc(this.data.config.sensors[id]?.name||this.catalog.entities.find(e=>e.entity_id===id)?.name||id)}<code>${esc(id)}</code></div><span class="sensor-state" data-source-state="${esc(id)}" data-source-window="${esc(w.id)}">${esc(reading.inputs?.[id]||"unavailable")}${reading.faults?.includes(id)?" · Keine Verbindung":""}</span></div>`).join("")}</div></article>`;
+    }).join("");
+  }
+  _updateWindowStatuses() {
+    this.shadowRoot.querySelectorAll("[data-window-status]").forEach(node=>node.textContent=this.data.windows?.[node.dataset.windowStatus]?.label||"Stellung wird ermittelt");
+    this.shadowRoot.querySelectorAll("[data-source-state]").forEach(node=>{const reading=this.data.windows?.[node.dataset.sourceWindow],id=node.dataset.sourceState;node.textContent=`${reading?.inputs?.[id]||"unavailable"}${reading?.faults?.includes(id)?" · Keine Verbindung":""}`;});
+  }
+  async _windowDialog(id) {
+    this.catalog=await this._call("catalog");
+    this._dialog(id?"Fenster bearbeiten":"Fenster einrichten","<iqalarm-window-assistant></iqalarm-window-assistant>","window");
+    const dialog=this.shadowRoot.getElementById("editor"),wizard=dialog.querySelector("iqalarm-window-assistant"),revision=this._dialogRevision;
+    dialog.querySelector(".dialog-foot").hidden=true;
+    wizard.setup({hass:this._hass,catalog:this.catalog,rooms:this.data.config.rooms,windows:this.data.config.windows||{},initial:this.data.config.windows?.[id],onCancel:()=>dialog.close(),onSave:async window=>{
+      const config=structuredClone(this.data.config);config.windows||={};config.windows[window.id]=window;
+      this.data=await this._call("config/save",{config,revision});dialog.close();this._render();this._toast("Fenster eingerichtet");
+    }});
+    dialog.addEventListener("close",()=>wizard.stop(),{once:true});
+  }
   _roomsOptions(value, blank = "Raum wählen") { return options(Object.fromEntries(Object.values(this.data.config.rooms).map(r => [r.id, r.name])), value, blank); }
   _floorplanRoomsOptions(value = "") {
     return `<option value="">Raum auswählen</option>` + roomGroups(this.data.config.rooms, this.catalog.areas).map(group => `<optgroup label="${esc(group.name)}">${group.items.map(room => `<option value="${esc(room.id)}"${selected(room.id,value)}>${esc(room.name)}</option>`).join("")}</optgroup>`).join("");
@@ -225,12 +266,14 @@ class IQAlarmPanel extends HTMLElement {
   }
 
   _dashboard() {
-    const {status: s, config: c} = this.data, sensors = Object.values(c.sensors).filter(x => x.enabled), rooms = Object.values(c.rooms);
-    const quarantine = Object.entries(s.quarantine).map(([id]) => `<div class="banner" role="alert">${icon("connection")}<div><strong>Prell-Schutz aktiv: ${esc(c.sensors[id]?.name || id)}</strong><p>Sensor isoliert. Er liefert keine Einbruchsbestätigung für diese Scharfschalt-Periode.</p></div><button class="small" data-command="clear-quarantine" data-id="${esc(id)}">Quarantäne aufheben</button></div>`).join("");
+    const {status: s, config: c} = this.data, sensors = this._displaySensors().filter(x => x.enabled), rooms = Object.values(c.rooms);
+    const quarantineItems=Object.entries(s.quarantine);
+    const quarantine=quarantineItems.length?`<details class="banner"><summary>Störung: Prell-Schutz bei ${quarantineItems.length} Sensoren aktiv</summary>${quarantineItems.map(([id])=>`<div class="sensor-line"><span class="sensor-name">${esc(this._sensorRecord(id)?.name||id)} · temporäre Prell-Quarantäne</span><button class="small" data-command="clear-quarantine" data-id="${esc(id)}">Quarantäne aufheben</button></div>`).join("")}</details>`:"";
+    const information=s.active&&(this.data.information||[]).length?`<details class="card information" data-category="information" style="margin-bottom:18px"><summary>${icon("information-outline")} Information · ${(this.data.information||[]).length} Fenstergriffe: Potenziell unsicher</summary>${this.data.information.map(item=>`<div class="sensor-line"><span class="sensor-name">${esc(item.name)}</span><span>Entriegelt · Potenziell unsicher</span></div>`).join("")}</details>`:"";
     const open = sensors.filter(x => ["entry_contact", "lock_contact", "vibration_glass"].includes(x.role) && s.raw[x.entity_id] === true).length;
     const offline = sensors.filter(x => s.raw[x.entity_id] == null).length;
     const profileButtons = `<button data-command="mode" data-mode="inactive" class="${!s.profile_id ? "active" : ""}">${icon("power")}Aus</button>` + Object.entries(c.profiles).map(([id, p]) => `<button data-command="profile-arm" data-id="${esc(id)}" class="${s.profile_id === id ? "active" : ""}">${this._profileSymbol(p)}${esc(p.name)}</button>`).join("");
-    return this._head("Dein Haus im Überblick") + quarantine +
+    return this._head("Dein Haus im Überblick") + quarantine + information +
       `<section class="card hero" style="--level-color:${this._color(s.level)}"><div class="level-display"><div class="level-caption">${esc(s.stage_name)}</div><div class="level-ring" aria-label="${esc(s.stage_name)}: ${s.level}"><strong>${s.level}</strong></div></div><div class="hero-copy"><h2>${s.profile_name ? esc(s.profile_name) : "Anlage aus"}</h2><p>${s.active ? "Alarmreaktionen aktiv" : "Live-Status aktiv · keine Geräteaktionen"}</p><p>${s.monitored_sensors.length} Sensoren ausgewertet · Home Assistant: ${s.active ? "An" : "Aus"}</p>${s.pending_until ? `<div class="countdown">Eingangsverzögerung bis ${date(s.pending_until)}</div>` : s.arming_until ? `<div class="countdown">Scharf ab ${date(s.arming_until)}</div>` : ""}<div class="mode-buttons">${profileButtons}</div></div></section>` + this._floorplan(false) +
       `<div class="metrics">${[["floor-plan", rooms.length, "Räume verbunden"], ["shield-check-outline", !s.active ? sensors.length : s.monitored_sensors.length, !s.active ? "Sensoren eingerichtet" : "Sensoren im Profil"], ["window-open-variant", open, "Kontakte geöffnet"], ["connection", Object.keys(s.quarantine).length + offline, "Störungen / isoliert"]].map(([symbol, n, title]) => `<div class="card metric">${icon(symbol)}<div><strong>${n}</strong><span>${title}</span></div></div>`).join("")}</div>` +
       `<div class="section-title"><h2>Räume & Sicherheitsstatus</h2><button class="small" data-tab="1">Räume verwalten ${icon("arrow-right")}</button></div><div class="grid">${rooms.length ? rooms.map(r => this._roomLive(r)).join("") : this._empty("Hier beginnt dein Schutzkonzept", "Lege Räume an oder importiere deine Home-Assistant-Bereiche.", "floor-plan")}</div>`;
@@ -239,19 +282,19 @@ class IQAlarmPanel extends HTMLElement {
   _logbook() {
     const s = this.data.status;
     return this._head("Ereignis-Logbuch", "Chronologische Historie der Alarmereignisse, Stufenschaltungen und Sensorauswertungen.") +
-      `<section class="card"><div class="row between" style="margin-bottom:14px"><h2>Ereignisse <span class="muted" style="font-size:12px">· ${s.events.length}</span></h2><span class="muted" style="font-size:12px">Letzte ${s.events.length} Einträge</span></div>${s.events.length ? s.events.map(e => `<div class="event" style="--level-color:${this._color(e.level)}"><time>${date(e.timestamp)}</time><span class="event-level">${e.level}</span><div><strong>${esc(e.reason)}</strong>${e.chain?.length ? `<p>${e.chain.map(x => `${esc(x.name)} [${date(x.timestamp)}]`).join(" → ")}</p>` : ""}<p>${esc(e.profile_name || e.mode)} · ${esc(e.kind)}</p></div></div>`).join("") : this._empty("Alles ruhig", "Sicherheitsereignisse und Korrelationsentscheidungen erscheinen hier.", "history")}</section>`;
+      `<section class="card"><div class="row between" style="margin-bottom:14px"><h2>Ereignisse <span class="muted" style="font-size:12px">· ${s.events.length}</span></h2><span class="muted" style="font-size:12px">Letzte ${s.events.length} Einträge</span></div>${s.events.length ? s.events.map(e => `<div class="event" style="--level-color:${this._color(e.level)}"><time>${date(e.timestamp)}</time><span class="event-level">${e.level}</span><div><strong>${esc(e.reason)}</strong>${e.chain?.length ? `<p>${e.chain.map(x => `${esc(x.name)} [${date(x.timestamp)}]`).join(" → ")}</p>` : ""}<p>${esc(CATEGORIES[e.category]||"Information")} · ${esc(e.profile_name || e.mode)} · ${esc(e.kind)}</p></div></div>`).join("") : this._empty("Alles ruhig", "Sicherheitsereignisse und Korrelationsentscheidungen erscheinen hier.", "history")}</section>`;
   }
 
   _roomLive(room) {
-    const state = this.data.status.rooms[room.id] || {level: 0}, sensors = Object.values(this.data.config.sensors).filter(s => s.room_id === room.id || s.front_of.includes(room.id));
-    return `<article class="card" style="--level-color:${this._color(state.level)}"><div class="room-head">${icon("floor-plan")}<h3>${esc(room.name)}</h3><span class="pill">${esc(this.data.config.stages[state.level]?.name || "Sicher")}</span></div>${sensors.length ? sensors.map(s => { const raw = this.data.status.raw[s.entity_id], isolated = this.data.status.quarantine[s.entity_id]; return `<div class="sensor-line">${icon(s.role.startsWith("perimeter") ? "cctv" : s.role.startsWith("interior") ? "motion-sensor" : "window-closed-variant")}<span class="sensor-name">${esc(s.name || s.entity_id)}</span><span class="sensor-state ${raw === true ? "on" : ""}">${!s.enabled ? "Deaktiviert" : isolated ? "Isoliert" : raw == null ? "Nicht verfügbar" : raw ? "Aktiv" : "Ruhig"}${!this.data.status.monitored_sensors.includes(s.entity_id) ? " · nur Anzeige" : ""}</span></div>`; }).join("") : `<p>Noch keine Sensoren zugeordnet.</p>`}</article>`;
+    const state = this.data.status.rooms[room.id] || {level: 0}, sensors = this._displaySensors().filter(s => (s.room_id === room.id || s.front_of.includes(room.id)) && (s.sensor_kind!=="window_handle" || this.data.status.active));
+    return `<article class="card" style="--level-color:${this._color(state.level)}"><div class="room-head">${icon("floor-plan")}<h3>${esc(room.name)}</h3><span class="pill">${esc(this.data.config.stages[state.level]?.name || "Sicher")}</span></div>${sensors.length ? sensors.map(s => { const raw = this.data.status.raw[s.entity_id], isolated = this.data.status.quarantine[s.entity_id]; return `<div class="sensor-line">${icon(s.role.startsWith("perimeter") ? "cctv" : s.role.startsWith("interior") ? "motion-sensor" : "window-closed-variant")}<span class="sensor-name">${esc(s.name || s.entity_id)}</span><span class="sensor-state ${raw === true && s.sensor_kind!=="window_handle" ? "on" : ""}">${esc(this._sensorLabel(s,true))}${!this.data.status.monitored_sensors.includes(s.entity_id) ? " · nur Anzeige" : ""}</span></div>`; }).join("") : `<p>Noch keine Sensoren zugeordnet.</p>`}</article>`;
   }
 
   _lockNote() { return `<div class="help armed-note" hidden>Zum Ändern der Konfiguration zuerst entschärfen. Quarantäne und Aktionstests bleiben bedienbar.</div>`; }
   _rooms() {
     return this._head("Räume & Grundriss", "Verbinde Vorfeld, Außenhaut und Innenraum zu einem räumlichen Schutzkonzept.", `<div class="row"><button data-command="import" data-config>${icon("import")}HA-Bereiche importieren</button><button class="primary" data-command="room-new" data-config>${icon("plus")}Raum anlegen</button></div>`) + this._lockNote() +
       `<div class="grid">${Object.values(this.data.config.rooms).map(r => {
-        const sensors = Object.values(this.data.config.sensors), count = prefix => sensors.filter(s => (s.room_id === r.id || s.front_of.includes(r.id)) && prefix.some(p => s.role.startsWith(p))).length;
+        const sensors = this._displaySensors(), count = prefix => sensors.filter(s => (s.room_id === r.id || s.front_of.includes(r.id)) && prefix.some(p => s.role.startsWith(p))).length;
         return `<article class="card"><div class="row between"><h2>${esc(r.name)}</h2><div><button class="icon-button" aria-label="${esc(r.name)} bearbeiten" data-command="room-edit" data-id="${r.id}" data-config>${icon("pencil-outline")}</button><button class="icon-button danger" aria-label="${esc(r.name)} löschen" data-command="room-delete" data-id="${r.id}" data-config>${icon("delete-outline")}</button></div></div><div class="topology"><span><strong>${count(["perimeter"])}</strong>${icon("cctv")} Vorfeld</span>${icon("arrow-right")}<span><strong>${count(["entry", "lock", "vibration"])}</strong>Außenhaut</span>${icon("arrow-right")}<span><strong>${count(["interior"])}</strong>Innenraum</span></div><p>Überwachung nach gewähltem IQAlarm-Profil</p><p>Angrenzend: ${r.adjacent.length ? r.adjacent.map(id => esc(this.data.config.rooms[id]?.name)).join(", ") : "Keine Räume verknüpft"}</p><button class="small" style="margin-top:16px" data-tab="2">Sensoren zuweisen ${icon("arrow-right")}</button></article>`;
       }).join("") || this._empty("Deine Räume fehlen noch", "Importiere HA-Bereiche oder lege den ersten Raum an.", "floor-plan")}</div><div class="help">Eine Raumverbindung gilt in beiden Richtungen und genau einen Schritt weit. Vorfeld ohne Raumzuordnung überwacht das gesamte Haus.</div>` + this._floorplan(true);
   }
@@ -261,19 +304,19 @@ class IQAlarmPanel extends HTMLElement {
     return `<div class="table-scroll"><table><thead><tr><th>Sensor</th><th>Rolle / Bereich</th><th>Schutz / Details</th><th>Status</th><th>Bearbeiten</th></tr></thead><tbody>${items.map(s => {
       const area = s.role.startsWith("perimeter") ? (s.front_of.length ? `Vor: ${s.front_of.map(id => this.data.config.rooms[id]?.name || id).join(", ")}` : (this.data.config.rooms[s.room_id]?.name || "Gesamtes Umfeld (global)")) : (this.data.config.rooms[s.room_id]?.name || "Kein Raum");
       const detail = s.role.startsWith("perimeter") ? `${s.camera_entity_id ? `Kamera: ${s.camera_entity_id}` : "Direktsensor"}<code>Entprellen: ${s.debounce_ms || this.data.config.settings.debounce_by_role[s.role] || 0} ms</code>` : `${s.flap_enabled && ["entry_contact", "lock_contact", "vibration_glass"].includes(s.role) ? `${s.flap_threshold} Wechsel / ${s.flap_window} s` : "Direkt"}<code>Entprellen: ${s.debounce_ms || this.data.config.settings.debounce_by_role[s.role] || 0} ms</code>`;
-      return `<tr><td><strong>${esc(s.name || s.entity_id)}</strong><code>${esc(s.entity_id)}</code></td><td>${esc(ROLES[s.role])}<code>${esc(area)}</code></td><td>${detail}</td><td>${!s.enabled ? "Deaktiviert" : this.data.status.quarantine[s.entity_id] ? "Isoliert" : this.data.status.raw[s.entity_id] == null ? "Nicht verfügbar" : this.data.status.raw[s.entity_id] ? "Aktiv" : "Ruhig"}${s.immediate ? " · Override" : ""}</td><td><button class="icon-button" aria-label="${esc(s.name || s.entity_id)} bearbeiten" data-command="sensor-edit" data-id="${esc(s.entity_id)}" data-config>${icon("pencil-outline")}</button><button class="icon-button danger" aria-label="Sensor entfernen" data-command="sensor-delete" data-id="${esc(s.entity_id)}" data-config>${icon("delete-outline")}</button></td></tr>`;
+      return `<tr><td><strong>${esc(s.name || s.entity_id)}</strong><code>${esc(s.entity_id)}</code></td><td>${esc(s.sensor_kind==="window_handle"?"Fenstergriff":s.sensor_kind==="door_lock"?"Türschloss":ROLES[s.role])}<code>${esc(area)}</code></td><td>${s.sensor_kind==="window_handle"?"Information · ohne Alarmauswertung":detail}</td><td>${esc(this._sensorLabel(s))}${s.immediate ? " · Override" : ""}</td><td><button class="icon-button" aria-label="${esc(s.name || s.entity_id)} bearbeiten" data-command="sensor-edit" data-id="${esc(s.entity_id)}" data-config>${icon("pencil-outline")}</button><button class="icon-button danger" aria-label="Sensor entfernen" data-command="sensor-delete" data-id="${esc(s.entity_id)}" data-config>${icon("delete-outline")}</button></td></tr>`;
     }).join("")}</tbody></table></div>`;
   }
 
   _sensors() {
-    const sensors = Object.values(this.data.config.sensors);
+    const claimed=this._windowMembers(),sensors = Object.values(this.data.config.sensors).filter(sensor=>!claimed.has(sensor.entity_id));
     const perimeter = sensors.filter(s => s.role.startsWith("perimeter"));
     const contacts = sensors.filter(s => ["entry_contact", "lock_contact", "vibration_glass"].includes(s.role));
     const interior = sensors.filter(s => ["interior_motion", "interior_mmwave", "panic", "smoke"].includes(s.role));
     const emptyBanner = sensors.length === 0 ? `<section class="card hero" style="margin-bottom:18px;background:linear-gradient(135deg,color-mix(in srgb,var(--iq-accent) 10%,var(--iq-surface)),var(--iq-surface));border:1px solid color-mix(in srgb,var(--iq-accent) 30%,var(--iq-border))"><div class="row between" style="gap:16px;width:100%"><div><h2 style="display:flex;align-items:center;gap:10px">${icon("auto-fix")} Sensor-Erkennungs-Assistent</h2><p style="margin-top:6px">IQAlarm kann deine Home-Assistant-Entitäten automatisch durchsuchen, passende Türen, Fenster, Kameras und Melder finden und den richtigen Räumen zuordnen.</p></div><button class="primary" data-command="sensor-assistant" data-config>${icon("auto-fix")}Sensoren jetzt automatisch erkennen</button></div></section>` : "";
     return this._head("Kameras & Sensoren", "Umfeldüberwachung (Kameras & Außensensoren), Tür-/Fensterkontakte und Innenraummelder klar getrennt verwalten.", `<div class="row"><button class="primary small" data-command="sensor-assistant" data-config>${icon("auto-fix")}Sensoren automatisch erkennen</button><button data-command="filter-perimeter" class="small">${icon("cctv")}Kameras & Außensensoren wählen</button><button data-command="refresh" class="small">${icon("refresh")}Entitäten aktualisieren</button></div>`) + this._lockNote() + emptyBanner +
       `<section class="card" style="margin-bottom:18px"><div class="row between"><div><h2>${icon("cctv")} Kameras & Außensensoren (Umfeldüberwachung) <span class="muted">· ${perimeter.length}</span></h2><p>Kameras mit Personen-/Objekterkennung und Bewegungsmelder im Außenbereich für die Vorfeld-Überwachung.</p></div></div><div style="margin-top:14px">${this._sensorTable(perimeter, "Noch keine Kameras oder Außensensoren", "Wähle oben „Sensoren automatisch erkennen“ oder unten im Katalog eine Kamera aus.", "cctv")}</div></section>` +
-      `<section class="card" style="margin-bottom:18px"><h2>${icon("window-closed-variant")} Türen, Fenster & Schlösser (Außenhaut) <span class="muted">· ${contacts.length}</span></h2><div style="margin-top:14px">${this._sensorTable(contacts, "Noch keine Tür-/Fensterkontakte", "Weise Öffnungs-, Riegel- oder Glasbruchsensoren automatisch oder manuell zu.", "window-closed-variant")}</div></section>` +
+      `<section class="card" style="margin-bottom:18px"><div class="row between"><h2>${icon("window-closed-variant")} Türen, Fenster & Schlösser (Außenhaut) <span class="muted">· ${contacts.length+Object.keys(this.data.config.windows||{}).length}</span></h2><button class="primary" data-command="window-new" data-config>${icon("window-open-variant")}Fenster einrichten</button></div>${this._windowTable()}<div style="margin-top:14px">${this._sensorTable(contacts, "Noch keine Tür-/Fensterkontakte", "Weise Öffnungs-, Riegel- oder Glasbruchsensoren automatisch oder manuell zu.", "window-closed-variant")}</div></section>` +
       `<section class="card" style="margin-bottom:18px"><h2>${icon("motion-sensor")} Innenraum- & Gefahrenmelder <span class="muted">· ${interior.length}</span></h2><div style="margin-top:14px">${this._sensorTable(interior, "Noch keine Innenraummelder", "Weise Bewegungsmelder, Präsenzmelder oder Rauch-/Panikmelder zu.", "motion-sensor")}</div></section>` +
       `<div class="section-title"><div><h2>Verfügbare Home-Assistant-Entitäten</h2><div class="chips" style="margin-top:10px">${[["all", "Alle"], ["perimeter", "Kameras & Außen"], ["contact", "Türen & Fenster"], ["interior", "Innenraum"]].map(([id, label]) => `<button type="button" class="small ${this.catalogFilter === id ? "active" : ""}" data-catalog-filter="${id}">${label}</button>`).join("")}</div></div><input class="search" id="sensor-search" type="search" aria-label="Sensoren suchen" placeholder="Kamera, Bewegung oder Entitäts-ID suchen …"></div><section class="card catalog" id="catalog"></section><div class="help">Kamera-Streaming ist keine Personenerkennung. Verwende bevorzugt den Personen-Binary-Sensor deiner Kamera (z. B. Reolink / Frigate / UniFi Person) oder einen Außen-Bewegungsmelder. Direkte camera-/image_processing-Entitäten brauchen ein explizites Erkennungsattribut.</div>`;
   }
@@ -282,7 +325,7 @@ class IQAlarmPanel extends HTMLElement {
     const target = this.shadowRoot.getElementById("catalog"); if (!target) return;
     const needle = query.toLocaleLowerCase("de");
     const entities = this._entities(["binary_sensor", "lock", "camera", "image_processing"]).filter(e => {
-      if (this.data.config.sensors[e.entity_id]) return false;
+      if (this.data.config.sensors[e.entity_id] || this._windowMembers().has(e.entity_id)) return false;
       const text = `${e.name} ${e.entity_id}`.toLocaleLowerCase("de");
       if (!text.includes(needle)) return false;
       if (this.catalogFilter === "perimeter") return e.entity_id.startsWith("camera.") || e.entity_id.startsWith("image_processing.") || /person|outdoor|außen|aussen|garten|terrasse|einfahrt|kamera|vorfeld|hof|carport|motion|bewegung/.test(text);
@@ -318,7 +361,7 @@ class IQAlarmPanel extends HTMLElement {
     const c = this.data.config, keys = Object.keys(c.profiles), idx = keys.indexOf(this.profile), p = c.profiles[this.profile], s = c.settings;
     const names = collection => Object.fromEntries(Object.entries(collection).map(([id, item]) => [id, item.name || item.entity_id || `${KINDS[item.kind]} · ${item.target} · ${item.level}`]));
     return this._head("Profile & System", "Profile bestimmen die gesamte Steuerung. Namen, Reihenfolge und Regeln sind frei wählbar.", `<button class="primary" data-command="profile-new" data-config>${icon("plus")}Profil anlegen</button>`) + this._lockNote() +
-      `<div class="row between" style="margin-bottom:20px"><div class="chips">${Object.entries(c.profiles).map(([id,item]) => `<button data-profile="${esc(id)}" class="${id === this.profile ? "active" : ""}">${this._profileSymbol(item)}${esc(item.name)}</button>`).join("")}</div><div class="row"><button type="button" class="small" data-command="profile-move" data-dir="-1" aria-label="Profil nach links verschieben" ${idx <= 0 ? "disabled" : ""} data-config>${icon("arrow-left")}Nach links</button><button type="button" class="small" data-command="profile-move" data-dir="1" aria-label="Profil nach rechts verschieben" ${idx < 0 || idx >= keys.length - 1 ? "disabled" : ""} data-config>Nach rechts${icon("arrow-right")}</button></div></div><div class="grid two"><form id="rules-form" class="card"><fieldset data-config><div class="row between"><h2>${esc(p.name)}</h2><div class="row"><button type="button" class="small" data-command="profile-copy">Duplizieren</button><button type="button" class="small danger" data-command="profile-delete" data-id="${esc(this.profile)}">Löschen</button></div></div><div class="form-grid" style="margin-top:20px"><label class="field wide">Profilname<input name="profile_name" value="${esc(p.name)}" required maxlength="100"></label>${this._profileIconField(p.icon)}<div class="wide checks">${this._checkbox("reactions_enabled", "Alarmreaktionen und Geräteaktionen erlauben", p.reactions_enabled)}${this._checkbox("perimeter_enabled", "Vorfeld auswerten", p.perimeter_enabled)}${this._checkbox("contacts_enabled", "Öffnungs- und Schlosssensoren auswerten", p.contacts_enabled)}${this._checkbox("simulation_enabled", "Anwesenheitssimulation in diesem Profil erlauben", p.simulation_enabled)}</div><label class="field">Bewegung auswerten<select name="motion_mode">${options({always:"Immer",after_contact:"Erst nach einem Öffnungssignal",ignore:"Nur live anzeigen"},p.motion_mode)}</select></label><label class="field">Freigabe nach Öffnung<select name="motion_scope">${options({room:"Raum und freigegebene Nachbarräume",house:"Gesamtes Haus"},p.motion_scope)}</select></label>${this._profileScope("room_ids", "Räume", p.room_ids, names(c.rooms))}${this._profileScope("sensor_ids", "Sensoren", p.sensor_ids, names(c.sensors))}${this._profileScope("action_ids", "Aktionen", p.action_ids, names(c.actions))}${this._number("perimeter_seconds","Vorfeld-Gedächtnis (Sekunden)",p.perimeter_seconds,1,3600)}${this._number("correlation_seconds","Korrelationsfenster (Sekunden)",p.correlation_seconds,1,3600)}${this._number("entry_seconds","Eingangsverzögerung (Sekunden)",p.entry_seconds,0,600)}${this._number("exit_seconds","Ausgangsverzögerung (Sekunden)",p.exit_seconds,0,600)}</div><div class="checks" style="margin-top:24px">${["perimeter_contact","contact_motion","multi_contact","multi_motion"].map(key => this._checkbox(key,RULES[key],p[key])).join("")}${this._checkbox("adjacent_rooms","Angrenzende Räume für Öffnung + Bewegung einbeziehen",p.adjacent_rooms)}</div><h3 style="margin-top:24px">Ereignis → Alarmstufe</h3><div class="form-grid" style="margin-top:16px">${Object.entries(RULES).map(([key,name]) => `<label class="field">${esc(name)}<select name="target_${key}">${options(Object.fromEntries(c.stages.filter(stage => !["perimeter","single","flapping"].includes(key) || !stage.requires_confirmation).map(stage => [stage.id,`${c.stages.indexOf(stage)} · ${stage.name}`])),p.stage_targets[key])}</select></label>`).join("")}</div><div class="save-row"><button class="primary" type="submit">Profil speichern</button></div></fieldset></form>` +
+      `<div class="row between" style="margin-bottom:20px"><div class="chips">${Object.entries(c.profiles).map(([id,item]) => `<button data-profile="${esc(id)}" class="${id === this.profile ? "active" : ""}">${this._profileSymbol(item)}${esc(item.name)}</button>`).join("")}</div><div class="row"><button type="button" class="small" data-command="profile-move" data-dir="-1" aria-label="Profil nach links verschieben" ${idx <= 0 ? "disabled" : ""} data-config>${icon("arrow-left")}Nach links</button><button type="button" class="small" data-command="profile-move" data-dir="1" aria-label="Profil nach rechts verschieben" ${idx < 0 || idx >= keys.length - 1 ? "disabled" : ""} data-config>Nach rechts${icon("arrow-right")}</button></div></div><div class="grid two"><form id="rules-form" class="card"><fieldset data-config><div class="row between"><h2>${esc(p.name)}</h2><div class="row"><button type="button" class="small" data-command="profile-copy">Duplizieren</button><button type="button" class="small danger" data-command="profile-delete" data-id="${esc(this.profile)}">Löschen</button></div></div><div class="form-grid" style="margin-top:20px"><label class="field wide">Profilname<input name="profile_name" value="${esc(p.name)}" required maxlength="100"></label>${this._profileIconField(p.icon)}<div class="wide checks">${this._checkbox("reactions_enabled", "Alarmreaktionen und Geräteaktionen erlauben", p.reactions_enabled)}${this._checkbox("perimeter_enabled", "Vorfeld auswerten", p.perimeter_enabled)}${this._checkbox("contacts_enabled", "Öffnungs- und Schlosssensoren auswerten", p.contacts_enabled)}${this._checkbox("simulation_enabled", "Anwesenheitssimulation in diesem Profil erlauben", p.simulation_enabled)}</div><label class="field">Bewegung auswerten<select name="motion_mode">${options({always:"Immer",after_contact:"Erst nach einem Öffnungssignal",ignore:"Nur live anzeigen"},p.motion_mode)}</select></label><label class="field">Freigabe nach Öffnung<select name="motion_scope">${options({room:"Raum und freigegebene Nachbarräume",house:"Gesamtes Haus"},p.motion_scope)}</select></label>${this._profileScope("room_ids", "Räume", p.room_ids, names(c.rooms))}${this._profileScope("sensor_ids", "Sensoren", p.sensor_ids, names(this._allSensorRecords()))}${this._profileScope("action_ids", "Aktionen", p.action_ids, names(c.actions))}${this._number("perimeter_seconds","Vorfeld-Gedächtnis (Sekunden)",p.perimeter_seconds,1,3600)}${this._number("correlation_seconds","Korrelationsfenster (Sekunden)",p.correlation_seconds,1,3600)}${this._number("entry_seconds","Eingangsverzögerung (Sekunden)",p.entry_seconds,0,600)}${this._number("exit_seconds","Ausgangsverzögerung (Sekunden)",p.exit_seconds,0,600)}</div><div class="checks" style="margin-top:24px">${["perimeter_contact","contact_motion","multi_contact","multi_motion"].map(key => this._checkbox(key,RULES[key],p[key])).join("")}${this._checkbox("adjacent_rooms","Angrenzende Räume für Öffnung + Bewegung einbeziehen",p.adjacent_rooms)}</div><h3 style="margin-top:24px">Ereignis → Alarmstufe</h3><div class="form-grid" style="margin-top:16px">${Object.entries(RULES).map(([key,name]) => `<label class="field">${esc(name)}<select name="target_${key}">${options(Object.fromEntries(c.stages.filter(stage => !["perimeter","single","flapping"].includes(key) || !stage.requires_confirmation).map(stage => [stage.id,`${c.stages.indexOf(stage)} · ${stage.name}`])),p.stage_targets[key])}</select></label>`).join("")}</div><div class="save-row"><button class="primary" type="submit">Profil speichern</button></div></fieldset></form>` +
       `<form id="settings-form" class="card"><fieldset data-config><h2>System & Anwesenheitssimulation</h2><div class="checks" style="margin:20px 0">${this._checkbox("live_evaluation", "Live-Status-Auswertung auch im ausgeschalteten Zustand mitlaufen lassen", s.observation_profile_id != null)}${this._checkbox("quiet_disarmed_floorplan", "Grundriss bei unscharfer Anlage ruhig halten (Offene Kontakte nur auf dem Schild anzeigen, Raumflächen nicht gelb färben)", s.quiet_disarmed_floorplan ?? true)}${this._checkbox("quiet_disarmed_locks", "Schlösser & Fenstergriffe bei unscharfer Anlage grundsätzlich nicht als Raumwarnung werten", s.quiet_disarmed_locks ?? true)}${this._checkbox("diagnose_disarmed", "Prell-Diagnose auch im unscharfen Zustand", s.diagnose_disarmed)}${this._checkbox("block_open_on_arm", "Scharfschalten bei geöffneten Kontakten verhindern", s.block_open_on_arm)}${this._checkbox("block_unavailable_on_arm", "Scharfschalten bei nicht verfügbaren Sensoren verhindern", s.block_unavailable_on_arm)}${this._checkbox("auto_camera_snapshot", "Bei Vorfeld automatisch verknüpfte Kamera fotografieren", s.auto_camera_snapshot)}${this._checkbox("auto_camera_record", "Bei Vorfeld zusätzlich 30 Sekunden Kamera aufnehmen", s.auto_camera_record)}${this._checkbox("simulation_enabled", "Anwesenheitssimulation global freigeben (zusätzlich pro Profil)", s.simulation_enabled)}</div><div class="form-grid">${this._number("simulation_start", "Lichtsimulation ab (Stunde)", s.simulation_start, 0, 23)}${this._number("simulation_end", "Lichtsimulation bis (Stunde)", s.simulation_end, 1, 24)}<label class="field wide">Simulationslichter<select name="simulation_lights" multiple>${this._entities(["light"]).map(e => `<option value="${esc(e.entity_id)}"${s.simulation_lights.includes(e.entity_id) ? " selected" : ""}>${esc(e.name)}</option>`).join("")}</select><small>Mehrfachauswahl mit Strg / ⌘. Bereits eingeschaltete Lichter werden nicht übernommen.</small></label>${this._number("retention_days", "Kameradateien aufbewahren (Tage)", s.retention_days, 1, 90)}</div><details style="margin-top:20px"><summary>Standard-Entprellzeiten nach Rolle</summary><div class="form-grid" style="margin-top:14px">${Object.entries(ROLES).map(([key, name]) => this._number(`debounce_${key}`, `${name} (ms)`, s.debounce_by_role[key] || 0, 0, 60000)).join("")}</div></details><div class="help">Kameradateien bleiben im geschützten IQAlarm-Verzeichnis. Aufzeichnungen benötigen eine Kamera mit stream-Unterstützung. Die Alarmkonfiguration erfolgt vollständig hier.</div><div class="save-row"><button type="submit" class="primary">${icon("content-save-outline")}System speichern</button></div></fieldset></form></div>`;
   }
 
@@ -609,7 +652,7 @@ class IQAlarmPanel extends HTMLElement {
   }
   _getRoomStatusLines(room) {
     const status = this.data.status?.rooms?.[room] || {};
-    const sensors = Object.values(this.data.config?.sensors || {});
+    const sensors = this._displaySensors();
     const roomSensors = sensors.filter(s => s.room_id === room);
     const frontSensors = sensors.filter(s => s.front_of?.includes(room));
     const allSensors = [...roomSensors, ...frontSensors];
@@ -626,7 +669,7 @@ class IQAlarmPanel extends HTMLElement {
       let hasAuto = false;
       let hasTier = false;
       for (const id of uniqueCamIds) {
-        const s = this.data.config.sensors[id] || {name: id, entity_id: id};
+        const s = this._sensorRecord(id) || {name: id, entity_id: id};
         const text = (s.name + " " + s.entity_id).toLowerCase();
         if (/fahrzeug|auto|car|vehicle/i.test(text)) hasAuto = true;
         if (/person/i.test(text)) hasPerson = true;
@@ -642,7 +685,7 @@ class IQAlarmPanel extends HTMLElement {
     // 2. Fenster oder Tür (je nachdem)
     let contactText = "";
     const openContactIds = (status.open || []).filter(id => {
-      const s = this.data.config.sensors[id];
+      const s = this._sensorRecord(id);
       return s ? s.role === "entry_contact" : !id.startsWith("lock.");
     });
     if (openContactIds.length > 0) {
@@ -651,7 +694,7 @@ class IQAlarmPanel extends HTMLElement {
       let doorCount = 0;
       let windowCount = 0;
       for (const id of openContactIds) {
-        const s = this.data.config.sensors[id] || {name: id, entity_id: id};
+        const s = this._sensorRecord(id) || {name: id, entity_id: id};
         const text = (s.name + " " + s.entity_id).toLowerCase();
         const isDoor = /tür|tur|door|eingang|pforte|tor|haustür|nebentür|innentür/i.test(text) && !/fenster/i.test(text);
         if (isDoor) {
@@ -671,25 +714,25 @@ class IQAlarmPanel extends HTMLElement {
     // 3. Schloss (Schloss / Riegel)
     let lockText = "";
     const openLockIds = (status.open || []).filter(id => {
-      const s = this.data.config.sensors[id];
+      const s = this._sensorRecord(id);
       return s ? s.role === "lock_contact" : id.startsWith("lock.");
     });
     if (openLockIds.length > 0) {
       let hasDoorLock = false;
       let hasWindowHandle = false;
       for (const id of openLockIds) {
-        const s = this.data.config.sensors[id] || {name: id, entity_id: id};
+        const s = this._sensorRecord(id) || {name: id, entity_id: id};
         const text = (s.name + " " + s.entity_id).toLowerCase();
-        if (/haustür|nebentür|schloss|tür|door/i.test(text) && !/fenster|griff/i.test(text)) {
+        if (s.sensor_kind === "door_lock" || (s.role === "lock_contact" && s.sensor_kind !== "window_handle")) {
           hasDoorLock = true;
         } else {
           hasWindowHandle = true;
         }
       }
-      if (hasDoorLock && hasWindowHandle) lockText = "Schloss & Griff offen";
-      else if (hasDoorLock) lockText = "Schloss offen";
-      else if (hasWindowHandle) lockText = "Griff offen";
-      else lockText = "Schloss offen";
+      if (hasDoorLock && hasWindowHandle) lockText = "Schloss entriegelt";
+      else if (hasDoorLock) lockText = "Türschloss entriegelt";
+      else if (hasWindowHandle) lockText = "Potenziell unsicher";
+      else lockText = "Türschloss entriegelt";
     }
 
     // 4. Bewegung
@@ -701,10 +744,12 @@ class IQAlarmPanel extends HTMLElement {
     // 5. Quarantäne
     let quarantineText = "";
     if (status.quarantined?.length > 0) {
-      quarantineText = "Sensor isoliert";
+      quarantineText = "Störung: Prell-Quarantäne";
     }
 
+    const informationText=this.data.status.active&&(this.data.information||[]).some(item=>item.room_id===room)?"Potenziell unsicher":"";
     return {
+      informationText,
       cameraText,
       contactText,
       lockText,
@@ -766,6 +811,7 @@ class IQAlarmPanel extends HTMLElement {
     if (info.cameraText) subLines.push({text: info.cameraText, kind: "camera"});
     if (info.contactText) subLines.push({text: info.contactText, kind: "contact"});
     if (info.lockText) subLines.push({text: info.lockText, kind: "lock"});
+    if (info.informationText) subLines.push({text:info.informationText,kind:"information"});
     if (info.motionText) subLines.push({text: info.motionText, kind: "motion"});
     if (info.quarantineText) subLines.push({text: info.quarantineText, kind: "quarantine"});
 
@@ -788,7 +834,8 @@ class IQAlarmPanel extends HTMLElement {
 
     const tspans = subLines.map(l => {
       let fillClass = "room-sub";
-      if (l.kind !== "quiet") {
+      if(l.kind === "information")fillClass="room-sub info";
+      else if (l.kind !== "quiet") {
         if (hasBreach) fillClass = "room-sub alert";
         else if (isArmed) fillClass = "room-sub warn";
         else fillClass = "room-sub info";
@@ -1030,7 +1077,7 @@ class IQAlarmPanel extends HTMLElement {
   }
   _liveDialog(room) {
     const data = this.data.config.rooms[room]; if (!data) return;
-    const sensors = Object.values(this.data.config.sensors).filter(s => s.room_id === room || s.front_of.includes(room));
+    const sensors = this._displaySensors().filter(s => s.room_id === room || s.front_of.includes(room));
     const cameras = [...new Set(sensors.flatMap(s => [s.camera_entity_id,s.entity_id.startsWith("camera.") ? s.entity_id : null]).filter(Boolean))];
     this.liveRoom = room;
     this._dialog(data.name, `<div id="live-room-status">${this._roomLive(data)}</div>` + cameras.map(id => `<button type="button" style="margin-top:14px" data-command="more-info" data-id="${esc(id)}">${icon("cctv")}${esc(this.catalog.entities.find(e => e.entity_id === id)?.name || id)}</button>`).join(""),"live");
@@ -1061,7 +1108,7 @@ class IQAlarmPanel extends HTMLElement {
     const old = this.data.config.sensors[id], e = this.catalog.entities.find(x => x.entity_id === id);
     const defaultRole = forcePerimeter ? (id.startsWith("camera.") || id.startsWith("image_processing.") || /person|kamera|camera/i.test(`${e?.name || ""} ${id}`) ? "perimeter_camera" : "perimeter_sensor") : (id.startsWith("camera.") ? "perimeter_camera" : id.startsWith("lock.") ? "lock_contact" : "entry_contact");
     const s = old || {entity_id: id, name: e?.name || id, role: defaultRole, front_of: [], enabled: true, flap_enabled: true, flap_threshold: 3, flap_window: 15, debounce_ms: 0, active_states: id.startsWith("lock.") ? ["unlocked", "open"] : ["on"]};
-    this._dialog(old ? "Sensor bearbeiten" : (forcePerimeter ? "Kamera / Außensensor zuweisen" : "Sensor zuweisen"), `<div class="form-grid"><label class="field wide">Entität<input value="${esc(id)}" readonly></label><label class="field wide">Anzeigename<input name="name" value="${esc(s.name)}" required maxlength="200"></label><label class="field">Sicherheitsrolle<select name="role">${options(ROLES, s.role)}</select></label><label class="field">Raum<select name="room_id">${this._roomsOptions(s.room_id, "Kein Raum / globales Vorfeld")}</select></label><label class="field wide">Vorfeld vor diesen Räumen<select name="front_of" multiple>${Object.values(this.data.config.rooms).map(r => `<option value="${r.id}"${s.front_of.includes(r.id) ? " selected" : ""}>${esc(r.name)}</option>`).join("")}</select><small>Nur für Kameras & Außensensoren (Vorfeld). Keine Auswahl bedeutet gesamtes Grundstück (global), falls auch kein Raum gewählt ist.</small></label><label class="field wide">Unabhängige Signalquelle<input name="source_id" value="${esc(s.source_id || "")}" maxlength="200" placeholder="Standard: Entitäts-ID"><small>Mehrere Entitäten desselben physischen Sensors müssen dieselbe Quellenkennung haben. Sie dürfen sich nicht gegenseitig bestätigen.</small></label><div class="wide checks">${this._checkbox("enabled", "Sensor aktivieren", s.enabled)}${this._checkbox("flap_enabled", "Anti-Flapping für Öffnungs-/Schlosssensoren aktivieren", s.flap_enabled)}</div>${this._number("flap_threshold", "Quarantäne ab N Zustandswechseln", s.flap_threshold, 3, 100)}${this._number("flap_window", "Innerhalb von W Sekunden", s.flap_window, 1, 300)}${this._number("debounce_ms", "Mindest-Aktivzeit (Millisekunden)", s.debounce_ms, 0, 60000, "0 verwendet den Standard der Sensorrolle.")}<label class="field">Verknüpfte Kamera<select name="camera_entity_id">${this._entityOptions(["camera"], s.camera_entity_id)}</select></label><label class="field">Erkennungsattribut (optional)<input name="attribute" value="${esc(s.attribute || "")}" maxlength="100" placeholder="z. B. person_detected"><small>Für camera/image_processing erforderlich.</small></label><label class="field">Aktive Werte, durch Komma getrennt<input name="active_states" value="${esc(s.active_states.join(", "))}" required maxlength="500"><small>Boolesche Attribute: true / false; Zählwerte explizit angeben.</small></label><div class="wide checks">${this._checkbox("entry_delay", "Eingangsverzögerung für diesen Öffnungssensor erlauben", s.entry_delay)}${this._checkbox("immediate", "Darf alleine die zugeordnete bestätigte Stufe auslösen (Override)", s.immediate)}</div><div class="help wide">Override, Rauch und Panik lösen bei scharfer Anlage alleine aus. Für diese Sensoren ersetzt die Entprellzeit die Wartezeit auf eine Bestätigung.</div></div>`, "sensor", id);
+    this._dialog(old ? "Sensor bearbeiten" : (forcePerimeter ? "Kamera / Außensensor zuweisen" : "Sensor zuweisen"), `<div class="form-grid"><label class="field wide">Entität<input value="${esc(id)}" readonly></label><label class="field wide">Anzeigename<input name="name" value="${esc(s.name)}" required maxlength="200"></label><label class="field">Sicherheitsrolle<select name="role">${options(ROLES, s.role)}</select></label><label class="field">Geräteart<select name="sensor_kind" aria-label="Geräteart">${options({generic:"Kontakt / Sensor",window_handle:"Fenstergriff",door_lock:"Türschloss"},s.sensor_kind || (s.role==="lock_contact"?"door_lock":"generic"))}</select><small>Fenstergriffe liefern reine Informationen und lösen keine Alarmstufe oder Prell-Quarantäne aus.</small></label><label class="field">Raum<select name="room_id">${this._roomsOptions(s.room_id, "Kein Raum / globales Vorfeld")}</select></label><label class="field wide">Vorfeld vor diesen Räumen<select name="front_of" multiple>${Object.values(this.data.config.rooms).map(r => `<option value="${r.id}"${s.front_of.includes(r.id) ? " selected" : ""}>${esc(r.name)}</option>`).join("")}</select><small>Nur für Kameras & Außensensoren (Vorfeld). Keine Auswahl bedeutet gesamtes Grundstück (global), falls auch kein Raum gewählt ist.</small></label><label class="field wide">Unabhängige Signalquelle<input name="source_id" value="${esc(s.source_id || "")}" maxlength="200" placeholder="Standard: Entitäts-ID"><small>Mehrere Entitäten desselben physischen Sensors müssen dieselbe Quellenkennung haben. Sie dürfen sich nicht gegenseitig bestätigen.</small></label><div class="wide checks">${this._checkbox("enabled", "Sensor aktivieren", s.enabled)}${this._checkbox("flap_enabled", "Anti-Flapping für Öffnungs-/Schlosssensoren aktivieren", s.flap_enabled)}</div>${this._number("flap_threshold", "Quarantäne ab N Zustandswechseln", s.flap_threshold, 3, 100)}${this._number("flap_window", "Innerhalb von W Sekunden", s.flap_window, 1, 300)}${this._number("debounce_ms", "Mindest-Aktivzeit (Millisekunden)", s.debounce_ms, 0, 60000, "0 verwendet den Standard der Sensorrolle.")}<label class="field">Verknüpfte Kamera<select name="camera_entity_id">${this._entityOptions(["camera"], s.camera_entity_id)}</select></label><label class="field">Erkennungsattribut (optional)<input name="attribute" value="${esc(s.attribute || "")}" maxlength="100" placeholder="z. B. person_detected"><small>Für camera/image_processing erforderlich.</small></label><label class="field">Aktive Werte, durch Komma getrennt<input name="active_states" value="${esc(s.active_states.join(", "))}" required maxlength="500"><small>Boolesche Attribute: true / false; Zählwerte explizit angeben.</small></label><div class="wide checks">${this._checkbox("entry_delay", "Eingangsverzögerung für diesen Öffnungssensor erlauben", s.entry_delay)}${this._checkbox("immediate", "Darf alleine die zugeordnete bestätigte Stufe auslösen (Override)", s.immediate)}</div><div class="help wide">Override, Rauch und Panik lösen bei scharfer Anlage alleine aus. Für diese Sensoren ersetzt die Entprellzeit die Wartezeit auf eine Bestätigung.</div></div>`, "sensor", id);
   }
 
   async _sensorAssistantDialog() {
@@ -1394,6 +1441,8 @@ class IQAlarmPanel extends HTMLElement {
       if (command === "menu") this.dispatchEvent(new CustomEvent("hass-toggle-menu", {bubbles: true, composed: true}));
       else if (command === "close") { this.liveRoom = null; const ed = this.shadowRoot.getElementById("editor"); ed.classList.remove("wide"); ed.close(); }
       else if (command === "room-new" || command === "room-edit") this._roomDialog(id);
+      else if(command==="window-new"||command==="window-edit")await this._windowDialog(id);
+      else if(command==="window-delete")this._dialog("Fenster entfernen","<p>Die Zusammenführung wird entfernt. Die ursprünglichen Home-Assistant-Entitäten bleiben erhalten.</p>","delete-windows",id);
       else if (command === "sensor-assistant") await this._sensorAssistantDialog();
       else if (command === "assistant-cat") this._assistantFilterCategory(id);
       else if (command === "assistant-select-all") this._assistantToggleAll(true);
@@ -1568,6 +1617,7 @@ class IQAlarmPanel extends HTMLElement {
       if (s.room_id && !config.rooms[s.room_id]) s.room_id = null;
       s.front_of = (s.front_of || []).filter(r => config.rooms[r]);
     }
+    for(const window of Object.values(config.windows||{}))if(!config.rooms[window.room_id])throw new Error("Zuerst zusammengeführte Fenster aus diesem Raum entfernen oder einem anderen Raum zuordnen.");
     for (const p of Object.values(config.profiles)) {
       if (Array.isArray(p.room_ids)) p.room_ids = p.room_ids.filter(r => config.rooms[r]);
     }
@@ -1726,7 +1776,7 @@ class IQAlarmPanel extends HTMLElement {
           let item, collection;
           if (type === "room") {collection = "rooms"; item = {name: get("name"), adjacent: Object.keys(this.data.config.rooms).filter(r => bool(`adj_${r}`)), home_enabled: false, area_id: this.data.config.rooms[id]?.area_id || null}; if (id) item.id = id;}
           else if (type === "sensor") {
-            collection = "sensors"; item = {entity_id: id, name: get("name"), role: get("role"), room_id: get("room_id") || null, front_of: fields.getAll("front_of"), source_id: get("source_id"), enabled: bool("enabled"), flap_enabled: bool("flap_enabled"), flap_threshold: num("flap_threshold"), flap_window: num("flap_window"), debounce_ms: num("debounce_ms"), entry_delay: bool("entry_delay"), immediate: bool("immediate"), attribute: get("attribute") || null, active_states: get("active_states").split(",").map(s => s.trim()).filter(Boolean), camera_entity_id: get("camera_entity_id") || null};
+            collection = "sensors"; item = {entity_id: id, name: get("name"), role: get("role"), room_id: get("room_id") || null, front_of: fields.getAll("front_of"), source_id: get("source_id"), enabled: bool("enabled"), flap_enabled: bool("flap_enabled"), flap_threshold: num("flap_threshold"), flap_window: num("flap_window"), debounce_ms: num("debounce_ms"), entry_delay: bool("entry_delay"), immediate: bool("immediate"), attribute: get("attribute") || null, active_states: get("active_states").split(",").map(s => s.trim()).filter(Boolean), camera_entity_id: get("camera_entity_id") || null, sensor_kind:get("sensor_kind")};
           } else if (type === "action") {
             collection = "actions"; const old = this.data.config.actions[id], kind = get("kind");
             item = {level: old?.level || this.stage, kind, target: get("target"), title: get("title"), message: get("message"), duration: num("duration"), brightness: num("brightness"), critical: kind === "notify" && bool("critical"), camera_entity_id: kind === "notify" ? get("camera_entity_id") || null : null, media_player: kind === "tts" ? get("media_player") || null : null, enabled: bool("enabled"), color: kind === "light" && bool("use_color") ? [1, 3, 5].map(i => parseInt(get("color").slice(i, i + 2), 16)) : null}; if (id) item.id = id;

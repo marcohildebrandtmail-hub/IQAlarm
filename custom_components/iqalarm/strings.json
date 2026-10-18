@@ -4,14 +4,14 @@
     "step": {
       "user": {
         "title": "Set up IQAlarm",
-        "description": "Configure rooms, sensors, profiles and actions in the IQAlarm sidebar after setup. Optionally protect disarming with a 4\u201312 digit PIN.",
+        "description": "Configure rooms, sensors, profiles and actions in the IQAlarm sidebar after setup. Optionally protect disarming with a 4–12 digit PIN.",
         "data": {
           "pin": "Disarm PIN (optional)"
         }
       }
     },
     "error": {
-      "invalid_pin": "Use 4\u201312 digits, or leave empty."
+      "invalid_pin": "Use 4–12 digits, or leave empty."
     },
     "abort": {
       "already_configured": "IQAlarm is already configured."
@@ -30,6 +30,18 @@
       },
       "profile": {
         "name": "Current profile"
+      },
+      "window_position": {
+        "name": "Window position",
+        "state": {
+          "closed": "Closed",
+          "unlatched": "Closed · unlocked",
+          "open": "Open",
+          "tilt_ready": "Handle in tilt position",
+          "tilted": "Tilted open",
+          "unknown_position": "Position unclear",
+          "settling": "Reading position"
+        }
       }
     },
     "switch": {

@@ -39,6 +39,52 @@ async def async_setup_entry(hass, entry, async_add_entities) -> None:
     entry.async_on_unload(async_dispatcher_connect(hass, SIGNAL_UPDATE, add_rooms))
     add_rooms()
 
+    windows = {}
+
+    @callback
+    def add_windows():
+        registry = er.async_get(hass)
+        for removed in set(windows) - runtime.config.windows.keys():
+            entity = windows.pop(removed)
+            if entity.entity_id and registry.async_get(entity.entity_id):
+                registry.async_remove(entity.entity_id)
+        additions = []
+        for window in runtime.config.windows.values():
+            if window.id not in windows:
+                windows[window.id] = IQAlarmWindowOpening(runtime, window.id)
+                additions.append(windows[window.id])
+        if additions:
+            async_add_entities(additions)
+
+    entry.async_on_unload(async_dispatcher_connect(hass, SIGNAL_UPDATE, add_windows))
+    add_windows()
+
+
+class IQAlarmWindowOpening(IQAlarmEntity, BinarySensorEntity):
+    _attr_device_class = BinarySensorDeviceClass.WINDOW
+
+    def __init__(self, runtime, window_id):
+        super().__init__(runtime, f"window_{window_id}_opening")
+        self.window_id = window_id
+
+    @property
+    def name(self):
+        window = self.runtime.config.windows.get(self.window_id)
+        return f"{window.name if window else self.window_id} Fenster geöffnet"
+
+    @property
+    def available(self):
+        window = self.runtime.config.windows.get(self.window_id)
+        return bool(
+            window
+            and window.enabled
+            and self.runtime.windows[self.window_id].reading.get("opening") is not None
+        )
+
+    @property
+    def is_on(self):
+        return self.runtime.windows[self.window_id].reading["opening"] if self.available else None
+
 
 class IQAlarmRoomSensor(IQAlarmEntity, BinarySensorEntity):
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
