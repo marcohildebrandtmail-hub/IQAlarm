@@ -18,7 +18,7 @@ function setup({raw = false, last = 100, confirmed = false, visible = true, acti
       settings: {floorplan_disarmed_motion: visible},
     },
     information: [],
-    status: {active, raw: {"binary_sensor.motion": raw}, last_active: {"binary_sensor.motion": last},
+    status: {active, raw: {"binary_sensor.motion": raw}, last_active: {"binary_sensor.motion": last}, quarantine: {},
       rooms: {tv: {level: 2, confirmed, motion: raw === true ? ["binary_sensor.motion"] : [], open: [], persons: [], quarantined: []}}},
   };
   return panel;
@@ -100,6 +100,56 @@ test("an old disarmed correlation does not override hidden motion or a visible c
   const result=display(panel,200);
   assert.equal(result.color,"#f59e0b");
   assert.match(result.label,/Fenster offen/);
+});
+
+function receive(panel,serverTime,clientTime) {
+  const original=Date.now;
+  Date.now=()=>clientTime*1000;
+  try{panel.data={...panel.data,status:{...panel.data.status,server_time:serverTime}};}
+  finally{Date.now=original;}
+}
+
+test("the active-to-recent transition never clears text or red color when HA is slightly ahead",()=>{
+  const panel=setup({raw:true,last:100.08});
+  const sensor=panel.data.config.sensors["binary_sensor.motion"];sensor.enabled=true;
+  receive(panel,100.075,100);
+  assert.equal(panel._sensorLabel(sensor,true,100),"Aktiv");
+  panel.data.status.raw[sensor.entity_id]=false;
+  panel.data.status.rooms.tv.motion=[];
+  receive(panel,100.075,100);
+  for(const now of [100,100.001,100.08,100.9,114.9]){
+    assert.equal(panel._sensorLabel(sensor,true,now),"Kürzlich");
+    const result=display(panel,now);
+    assert.match(result.label,/Bewegung/);
+    assert.equal(result.color,"#ef4444");
+  }
+  const ended=display(panel,115.1);
+  assert.doesNotMatch(ended.label,/Bewegung/);
+  assert.equal(ended.color,"#14b8a6");
+  assert.equal(panel._sensorLabel(sensor,true,130.1),"Ruhig");
+});
+
+test("display age follows the received server clock in either clock direction and while a tab is hidden",()=>{
+  for(const serverTime of [10,10000]){
+    const panel=setup({last:serverTime});
+    const sensor=panel.data.config.sensors["binary_sensor.motion"];sensor.enabled=true;
+    receive(panel,serverTime,100);
+    assert.equal(panel._sensorLabel(sensor,true,100),"Kürzlich");
+    assert.match(display(panel,114.9).label,/Bewegung/);
+    assert.doesNotMatch(display(panel,115).label,/Bewegung/);
+    assert.equal(panel._sensorLabel(sensor,true,130.1),"Ruhig");
+    assert.equal(display(panel,200).color,"#14b8a6");
+  }
+});
+
+test("clock alignment does not accept an activity beyond its server snapshot or unavailable sources",()=>{
+  const panel=setup({last:101});
+  receive(panel,100,100);
+  assert.equal(display(panel,100).color,"#14b8a6");
+  assert.equal(display(panel,101).color,"#14b8a6");
+  panel.data.status.last_active["binary_sensor.motion"]=100;
+  panel.data.status.raw["binary_sensor.motion"]=null;
+  assert.equal(display(panel,100).color,"#14b8a6");
 });
 
 function perimeter(camera, motion) {

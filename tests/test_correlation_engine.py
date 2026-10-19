@@ -6,6 +6,15 @@ from iqalarm_core.correlation_engine import CorrelationEngine
 from iqalarm_core.models import SensorConfig
 
 
+def test_snapshot_supplies_the_server_clock_for_display_age(engine):
+    engine.feed("binary_sensor.motion", True, 101.1)
+    engine.feed("binary_sensor.motion", False, 103.398)
+    snapshot = engine.snapshot(103.399)
+    assert snapshot["server_time"] == 103.399
+    assert snapshot["last_active"]["binary_sensor.motion"] == 103.4
+    assert snapshot["raw"]["binary_sensor.motion"] is False
+
+
 def test_maco_flap_five_edges_eight_seconds(engine):
     engine.set_mode("armed_night", 100)
     for i in range(5):

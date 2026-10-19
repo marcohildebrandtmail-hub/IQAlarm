@@ -1609,6 +1609,7 @@ class CorrelationEngine:
         is_active = bool(self.reactions_enabled and self.profile_id)
         stage_id = self.stage_id if is_active else self.config.stages[0].id
         return {
+            "server_time": now,
             "mode": self.mode.value,
             "active": self.reactions_enabled,
             "observing": not self.reactions_enabled,

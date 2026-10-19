@@ -45,6 +45,47 @@ for(const width of [1440,390])test(`disarmed correlation cannot retain a red flo
   await expect(label).toContainText("Bestätigter Alarm");
 });
 
+for(const width of [1440,390])for(const route of ["render","timer"])test(`motion stays continuous with HA clock ahead on ${route} at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:844});
+  await page.locator("iqalarm-panel").evaluate(panel=>{
+    const plan={id:"eg",name:"Erdgeschoss",width:400,height:300,image:null,zones:{hall:[[.1,.1],[.9,.1],[.9,.9],[.1,.9]]}};
+    const now=Date.now()/1000;
+    panel.tab=0;panel._connected=true;panel.catalog={entities:[],areas:[]};
+    panel.data={
+      config:{secure_stage_id:"secure",stages:[{id:"off",name:"Aus"},{id:"secure",name:"Sicher"}],
+        profiles:{},robots:{},actions:{},rules:{},rooms:{hall:{id:"hall",name:"Flur UG"}},windows:{},floorplans:{eg:plan},settings:{recent_seconds:30,floorplan_disarmed_motion:true},
+        sensors:{"binary_sensor.motion":{entity_id:"binary_sensor.motion",name:"Bewegung Flur",room_id:"hall",role:"interior_motion",enabled:true}}},
+      information:[],windows:{},window_details:{},
+      status:{server_time:now+.075,active:false,profile_id:null,level:0,stage_id:"off",stage_name:"Aus",raw:{"binary_sensor.motion":true},last_active:{"binary_sensor.motion":now+.08},quarantine:{},
+        monitored_sensors:["binary_sensor.motion"],rooms:{hall:{level:0,confirmed:false,motion:["binary_sensor.motion"],open:[],persons:[],quarantined:[]}}},
+    };
+    panel._render();
+    panel.__clockShape=panel.shadowRoot.querySelector('g[data-room="hall"]:not([data-label-room]) polygon:nth-of-type(2)');
+  });
+  await page.clock.fastForward(2000);
+  const immediate=await page.locator("iqalarm-panel").evaluate((panel,route)=>{
+    const now=Date.now()/1000,previous=panel.data.status;
+    panel.data={...panel.data,status:{...previous,server_time:now+.075,raw:{"binary_sensor.motion":false},last_active:{"binary_sensor.motion":now+.08},
+      rooms:{hall:{...previous.rooms.hall,motion:[]}}}};
+    if(route==="render")panel._render();else{panel._updateSensorStatuses();panel._refreshFloorplanStatuses();}
+    return {sensor:panel.shadowRoot.querySelector('[data-sensor-state-id="binary_sensor.motion"]').textContent,
+      text:panel.shadowRoot.querySelector('[data-label-room="hall"]').textContent,
+      color:panel.__clockShape.getAttribute("fill"),connected:panel.__clockShape.isConnected};
+  },route);
+  expect(immediate).toEqual({sensor:"Kürzlich",text:"Flur UGBewegung",color:"#ef4444",connected:true});
+  const state=page.locator('[data-sensor-state-id="binary_sensor.motion"]'),label=page.locator('[data-label-room="hall"]');
+  for(const step of [100,900,13000]){
+    await page.clock.fastForward(step);
+    await expect(state).toHaveText("Kürzlich");
+    await expect(label).toContainText("Bewegung");
+  }
+  await page.clock.fastForward(2000);
+  await expect(label).not.toContainText("Bewegung");
+  await expect(page.locator('g[data-room="hall"]:not([data-label-room]) polygon').nth(1)).toHaveAttribute("fill","#14b8a6");
+  await page.clock.fastForward(15000);
+  await expect(state).toHaveText("Ruhig");
+});
+
 for(const width of [1440,390])test(`room badge and sensor row expire together without a new message at ${width}px`,async({page})=>{
   await page.setViewportSize({width,height:844});
   const errors=[];

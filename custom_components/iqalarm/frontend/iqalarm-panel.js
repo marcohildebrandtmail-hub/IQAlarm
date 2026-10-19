@@ -1,14 +1,14 @@
-import {sensorTypeField, setSensorType} from "./sensor-types.js?v=2.12.2";
-import {openRobotDialog, readRobotForm, renderCoverage, updateRobotStatuses} from "./robots.js?v=2.12.2";
-import {TOPOLOGY_CSS, connectionEditor, imageControls, roomConnections, setRoomConnection} from "./floorplan-topology.js?v=2.12.2";
-import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings} from "./live-view.js?v=2.12.2";
-import {RULE_SOURCES_CSS, updateRuleSources} from "./rule-sources.js?v=2.12.2";
-import {bindIconFields, iconField, MDI_ICON, roomSymbol, sensorSymbol, symbolHTML} from "./display-icons.js?v=2.12.2";
-import {DraftJournal} from "./floorplan-drafts.js?v=2.12.2";
-import {renderLevels, renderProfiles, renderDisplaySettings, renderConfirmationGrades, openRuleDialog, readRuleForm, readAutomaticDetection, testModeNotice} from "./level-configuration.js?v=2.12.2";
-import "./window-assistant.js?v=2.12.2";
-import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.12.2";
-/* IQAlarm 2.12.2 · native ES module · no CDN, framework or build required. */
+import {sensorTypeField, setSensorType} from "./sensor-types.js?v=2.12.3";
+import {openRobotDialog, readRobotForm, renderCoverage, updateRobotStatuses} from "./robots.js?v=2.12.3";
+import {TOPOLOGY_CSS, connectionEditor, imageControls, roomConnections, setRoomConnection} from "./floorplan-topology.js?v=2.12.3";
+import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings} from "./live-view.js?v=2.12.3";
+import {RULE_SOURCES_CSS, updateRuleSources} from "./rule-sources.js?v=2.12.3";
+import {bindIconFields, iconField, MDI_ICON, roomSymbol, sensorSymbol, symbolHTML} from "./display-icons.js?v=2.12.3";
+import {DraftJournal} from "./floorplan-drafts.js?v=2.12.3";
+import {renderLevels, renderProfiles, renderDisplaySettings, renderConfirmationGrades, openRuleDialog, readRuleForm, readAutomaticDetection, testModeNotice} from "./level-configuration.js?v=2.12.3";
+import "./window-assistant.js?v=2.12.3";
+import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.12.3";
+/* IQAlarm 2.12.3 · native ES module · no CDN, framework or build required. */
 const WINDOW_CSS = `.window-group{padding:18px 0;border-bottom:1px solid var(--divider-color,#dce3ec)}.window-inputs{margin:14px 0 0 24px;padding-left:18px;border-left:2px solid var(--divider-color,#dce3ec)}.window-inputs code{display:block;font-size:10px;overflow-wrap:anywhere;color:var(--secondary-text-color,#64758b)}.information{border-color:color-mix(in srgb,var(--primary-color,#2986bb) 25%,transparent)}.information summary,details.banner summary{cursor:pointer;font-size:13px}.information ha-icon{color:var(--primary-color,#2986bb)}`;
 const FLOORPLAN_MOTION_HOLD_SECONDS = 15;
 const CATEGORIES={information:"Information",warning:"Warnung",alarm:"Alarm",fault:"Störung",isolated:"Isoliert"};
@@ -246,6 +246,12 @@ class IQAlarmPanel extends HTMLElement {
     if (this.isConnected && !this._unsubscribe && !this._subscribing) this._connect();
   }
   get hass() { return this._hass; }
+  set data(value) {
+    this._data=value;
+    const serverTime=value?.status?.server_time;
+    this._displayClockOffset=Number.isFinite(serverTime)?serverTime-Date.now()/1000:0;
+  }
+  get data() { return this._data; }
   connectedCallback() {
     window.addEventListener("pagehide", this._saveDraftOnLeave);
     window.addEventListener("keydown", this._onWindowKey);
@@ -334,11 +340,19 @@ class IQAlarmPanel extends HTMLElement {
   }
   _displaySensors() { const claimed=this._windowMembers();return Object.values(this._allSensorRecords()).filter(s=>!claimed.has(s.entity_id)); }
   _sensorRecord(id) { return this._allSensorRecords()[id]; }
+  _activityAge(id,now=Date.now()/1000) {
+    const status=this.data.status,last=status.last_active?.[id],serverTime=status.server_time;
+    if(!Number.isFinite(last)||(Number.isFinite(serverTime)&&last>serverTime+0.01))return Infinity;
+    const age=now+(this._displayClockOffset||0)-last;
+    // last_active is rounded to hundredths; tolerate only that rounding ahead
+    // of the server snapshot, never an arbitrary future activity timestamp.
+    const rounding=Number.isFinite(serverTime)?0.01:0;
+    return age>=-rounding?Math.max(0,age):Infinity;
+  }
   _sensorRecent(sensor,now=Date.now()/1000) {
     const id=sensor.entity_id,status=this.data.status;
     if(sensor.enabled===false||sensor.window_id||sensor.sensor_kind==="window_handle"||sensor.sensor_kind==="door_lock"||sensor.role==="lock_contact"||sensor.activation_mode==="change"||status.raw[id]!==false||status.quarantine?.[id]||status.robot_paused_sensors?.includes(id)||status.ignored_windows?.includes(id))return false;
-    const last=status.last_active?.[id],age=now-last;
-    return Number.isFinite(last)&&age>=0&&age<=(this.data.config.settings?.recent_seconds??30);
+    return this._activityAge(id,now)<=(this.data.config.settings?.recent_seconds??30);
   }
   _sensorLabel(sensor,overview=false,now=Date.now()/1000) {
     if(!sensor.enabled)return "Isoliert";
@@ -1184,13 +1198,11 @@ class IQAlarmPanel extends HTMLElement {
 
     // 4. Bewegung
     let motionText = "";
-    const lastActive = this.data.status?.last_active || {};
     const recentMotion = roomSensors.some(sensor =>
       !this.data.status.robot_paused_sensors?.includes(sensor.entity_id) && sensor.activation_mode !== "change" &&
       ["interior_motion", "interior_mmwave"].includes(sensor.role) &&
       raw[sensor.entity_id] === false &&
-      Number.isFinite(lastActive[sensor.entity_id]) &&
-      now >= lastActive[sensor.entity_id] && now - lastActive[sensor.entity_id] < FLOORPLAN_MOTION_HOLD_SECONDS
+      this._activityAge(sensor.entity_id,now) < FLOORPLAN_MOTION_HOLD_SECONDS
     );
     if (status.motion?.length > 0 || recentMotion) {
       motionText = "Bewegung";
