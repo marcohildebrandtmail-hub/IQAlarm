@@ -67,7 +67,7 @@ test("roomVisualCenter, buildGraphicZones and graphicViewBox generate clean room
   assert.equal(zones.office.length, 4);
 
   const box = graphicViewBox(zones, 1000, 800);
-  assert.match(box.viewBox, /^\d+ \d+ \d+ \d+$/);
+  assert.equal(box.viewBox.split(" ").every(value=>Number.isFinite(Number(value))),true);
   assert.equal(box.scale >= 0.35 && box.scale <= 1, true);
 });
 

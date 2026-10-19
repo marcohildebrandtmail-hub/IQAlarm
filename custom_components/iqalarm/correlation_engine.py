@@ -293,6 +293,8 @@ class CorrelationEngine:
             return False
         if first == second:
             return True
+        if any({first, second} == set(pair) for pair in self.config.room_connections):
+            return True
         return bool(self.profile and [first, second] in self.profile.confirmation_paths)
 
     def _perimeter_matches(self, perimeter: Evidence, contact: Evidence) -> bool:

@@ -649,8 +649,10 @@ class FloorPlan:
     height: int = 0
     zones: dict[str, list[list[float]]] = field(default_factory=dict)
     labels: dict[str, list[float]] = field(default_factory=dict)
+    image_opacity: float = 0
 
     def __post_init__(self) -> None:
+        number(self.image_opacity, 0, 1, "Originalbild-Deckkraft")
         if not isinstance(self.id, str) or not ID_RE.fullmatch(self.id):
             raise ValueError("Ungültige Grundriss-ID")
         text(self.name, "Grundrissname", 100)
@@ -731,6 +733,7 @@ class Configuration:
     policy_version: int = 2
     secure_stage_id: str = "1"
     rules: dict[str, LevelRule] | None = field(default_factory=default_rules)
+    room_connections: list[list[str]] = field(default_factory=list)
 
     def all_sensors(self) -> dict[str, SensorConfig]:
         return self.sensors | {
@@ -784,6 +787,21 @@ class Configuration:
         }
 
     def validate(self) -> None:
+        if not isinstance(self.room_connections, list) or len(self.room_connections) > 500:
+            raise ValueError("Maximal 500 direkte Raumverbindungen erlaubt")
+        seen_connections = set()
+        for pair in self.room_connections:
+            if (
+                not isinstance(pair, list)
+                or len(pair) != 2
+                or any(not isinstance(room, str) or room not in self.rooms for room in pair)
+                or pair[0] == pair[1]
+            ):
+                raise ValueError("Eine Tür verbindet zwei verschiedene vorhandene Räume")
+            key = tuple(sorted(pair))
+            if key in seen_connections:
+                raise ValueError("Raumverbindung doppelt eingetragen")
+            seen_connections.add(key)
         if self.rules is not None and (not isinstance(self.rules, dict) or len(self.rules) > 500):
             raise ValueError("Maximal 500 Levelregeln als Objekt erlaubt")
         if len(self.rooms) > 250 or len(self.sensors) > 1000 or len(self.actions) > 500:
@@ -1039,6 +1057,7 @@ class Configuration:
             },
             policy_version=data.get("policy_version", 2),
             secure_stage_id=data.get("secure_stage_id", "1"),
+            room_connections=data.get("room_connections", []),
             rules={key: construct(LevelRule, value) for key, value in data["rules"].items()}
             if data.get("rules") is not None
             else None,

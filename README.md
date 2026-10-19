@@ -31,6 +31,16 @@ Beispiel: Eine Kamera meldet eine Person und hebt auf die Vorfeld-Stufe. Eine we
 
 Die höchste erfüllte Regel bestimmt die Stufe. „Sicher“ ergibt sich bei aktivem Profil automatisch, wenn keine höhere Regel erfüllt ist. Ein gehaltener bestätigter Alarm bleibt bis zum Entschärfen aktiv; eine höhere bestätigte Stufe kann ihn überlagern. Informationssignale der Fenstergriffe, ausgefallene und quarantänisierte Quellen bestätigen keinen Einbruch. Ein reines Schlossentriegeln mit Innenbewegung ersetzt keine physische Öffnung. Einzelsignale können eine bestätigungspflichtige Stufe nur über einen ausdrücklich freigegebenen Gefahrensensor erreichen.
 
+### Raumgrafik, Originalbild und Türen ab 2.9.0
+
+Die fertige Vorschau und der Live-Grundriss richten Bildausschnitt und Seitenverhältnis an den erzeugten Raumflächen aus. Leere Ränder des hochgeladenen Bildes fallen weg. Raumgeometrie und gespeicherte Beschriftungspositionen behalten ihre Koordinaten; auch Beschriftungen am Rand werden berücksichtigt.
+
+Mit **Originalbild einblenden** lässt sich die Zeichenvorlage in der fertigen Grafik von 0 bis 100 Prozent Deckkraft unterlegen. **Bildanzeige speichern** speichert diese Einstellung je Etage. Standard ist 0 Prozent. Bild, Raumflächen und Sensorzuordnungen werden dabei nicht verändert.
+
+Unter **Räume & Grundriss → Grundriss-Assistent → Türen / Raumverbindungen** kannst du zwei Räume nacheinander im Grundriss markieren oder über „Von Raum / Zu Raum“ verbinden. Markierst du dieselben verbundenen Räume erneut, entfernst du die Verbindung; dafür gibt es außerdem einen Entfernen-Button. Maus, Touch und Tastatur werden unterstützt. Die Linien und Türmarkierungen erscheinen nur in der Bearbeitungsansicht.
+
+Eine ausdrücklich eingetragene Tür oder ein offener Durchgang verbindet die beiden Räume direkt für passende Alarmbestätigungen. Ein Öffnungssignal in A und Bewegung in B dürfen räumlich zusammenpassen, wenn A ↔ B eingetragen wurde. A ↔ B ↔ C erlaubt keine Bestätigung zwischen A und C. Sensorrollen, Zeitfenster, unabhängige Quellen, konfigurierte Vorfeldbestätigung und Prell-Schutz gelten weiterhin. Berührende Polygone und alte allgemeine Nachbarschaftsangaben erzeugen keine Türfreigabe. Vorhandene gerichtete Bestätigungswege bleiben erhalten.
+
 ### Live-Anzeige und Bestätigungsgrade ab 2.8.0
 
 Das Cockpit zeigt zwei Ringe: außen die Alarmstufe im Verhältnis zur höchsten konfigurierten Stufe, innen den **Bestätigungsgrad** der aktuell angezeigten Stufe. Im Grundriss bleiben ruhige Räume nur mit ihrem Namen sichtbar; „Ruhig“, Sensoranzahl und „Bestätigte Korrelation“ entfallen dort. Aktivitätsfarben blenden innerhalb von 1,5 Sekunden zur Normalfarbe zurück. Bewegungstext und Farbziel nutzen weiterhin dieselbe 15-Sekunden-Nachlaufzeit; bei reduzierter Bewegungseinstellung entfallen Animationen.

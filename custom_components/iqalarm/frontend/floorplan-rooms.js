@@ -218,19 +218,29 @@ export function buildGraphicZones(planZones, rooms) {
   return result;
 }
 
-export function graphicViewBox(zones, width, height) {
+export function graphicViewBox(zones, width, height, labels = {}, captions = {}) {
   const pts = Object.values(zones || {}).flat();
-  if (!pts.length) return {viewBox: `0 0 ${width} ${height}`, scale: 1};
-  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  if (!pts.length) return {viewBox: `0 0 ${width} ${height}`, scale: 1, x: 0, y: 0, width, height};
+  pts.push(...Object.entries(labels).filter(([id])=>zones[id]).map(([,point])=>point));
+  const xs = pts.map(p => p[0]*width), ys = pts.map(p => p[1]*height);
+  const geometrySpan=Math.max((Math.max(...xs)-Math.min(...xs))/width,(Math.max(...ys)-Math.min(...ys))/height);
+  const scale=Math.max(.2,Math.min(1,geometrySpan*1.09));
+  const font=Math.max(11,Math.min(22,Math.max(width,height)*scale*.021)),sub=Math.max(9,font*.76);
+  for(const [id,lines] of Object.entries(captions)){
+    if(!zones[id])continue;
+    const center=labels[id]||roomVisualCenter(zones[id]);
+    const halfW=Math.max(font*6,Math.max((lines[0]||"").length*font*.62,...lines.slice(1).map(text=>text.length*sub*.54))+font*1.8)/2;
+    const halfH=(font*2.1+Math.max(0,lines.length-1)*sub*1.32)/2;
+    xs.push(center[0]*width-halfW,center[0]*width+halfW);
+    ys.push(center[1]*height-halfH,center[1]*height+halfH);
+  }
   const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
-  const spanX = Math.max(0.18, maxX - minX), spanY = Math.max(0.18, maxY - minY);
-  const padX = Math.max(0.04, spanX * 0.1), padY = Math.max(0.04, spanY * 0.12);
-  const x0 = Math.max(0, minX - padX), y0 = Math.max(0, minY - padY);
-  const x1 = Math.min(1, maxX + padX), y1 = Math.min(1, maxY + padY);
-  const vw = Math.max(120, (x1 - x0) * width), vh = Math.max(100, (y1 - y0) * height);
+  const pad = Math.max(12, Math.max(maxX-minX,maxY-minY)*0.045);
+  const x0=minX-pad,y0=minY-pad,vw=Math.max(1,maxX-minX)+2*pad,vh=Math.max(1,maxY-minY)+2*pad;
   return {
-    viewBox: `${Math.round(x0 * width)} ${Math.round(y0 * height)} ${Math.round(vw)} ${Math.round(vh)}`,
-    scale: Math.max(0.35, Math.min(1, Math.max(x1 - x0, y1 - y0))),
+    viewBox: `${x0} ${y0} ${vw} ${vh}`,
+    scale,
+    x:x0,y:y0,width:vw,height:vh,
   };
 }
 

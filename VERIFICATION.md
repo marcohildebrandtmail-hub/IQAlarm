@@ -1,8 +1,8 @@
-# IQAlarm · Prüfstand vom 18. Oktober 2026
+# IQAlarm · Prüfstand vom 19. Oktober 2026
 
-## Prüfumfang (Version 2.8.0)
+## Prüfumfang (Version 2.9.0)
 
-- **334 pytest-Tests** für Korrelationslogik, Nachtbetrieb, eigene Profile, Konfigurationsgrenzen, Archivierung, Repository-Metadaten und Deployment-Rollback.
+- **355 pytest-Tests** für Korrelationslogik, Nachtbetrieb, eigene Profile, Konfigurationsgrenzen, Archivierung, Repository-Metadaten und Deployment-Rollback.
 - Alle fünf geforderten Pflichtszenarien: MACO-Prellen, einzelnes Fenster, Fenster + Bewegung nach zwölf Sekunden, nächtlicher Toilettengang und Vorfeld + Fenster nach vierzig Sekunden.
 - Neue Sicherheitsregressionen: gerichtete Bestätigungswege, unzugeordnete Kameras, reine Außenbewegung, Schlossentriegelung ohne Öffnung, höherer Alarm trotz gehaltener Stufe und abgelehnte unabhängige Räume. Mehrfachkontakt-/Bewegungsregeln verlangen ausdrückliche Freigabe und räumliche Beziehung.
 - Echter Core: langsamer Lichtdienst blockiert keine andere Sirene; langsames Abschalten blockiert keinen Eingangstimer; eigene Alarm-Ausgänge werden nach Reload bis zum ursprünglichen Ablauf wieder aufgenommen.
@@ -14,11 +14,11 @@
 - Alle neun Aktionsarten gegen ausführbare Testdienste im echten HA-Service-Registry: Push, Sirene, Schalter, Skript, Licht, Rollos, Snapshot, Aufzeichnung und TTS.
 - Kamerafehler unterdrücken den Text-Push nicht. Langsame Verdachts-Pushs blockieren den bestätigten Sirenenalarm nicht. Selbst übernommene Ausgänge werden bei Entschärfung oder Timerende abgeschaltet.
 - Private Kameradateien, Kameraleserechte und PIN-Versuchslimit.
-- **43 Chromium-Browserprüfungen** gegen den echten Test-Core: CRUD über die deutsche Oberfläche, eigene Profile mit Auswahl und Duplizieren, Profilwechsel/PIN, mobile Darstellung und Dark Theme, Formulare, Text-Escaping und sichtbarer Verbindungsverlust mit Schreibsperre.
+- **46 Chromium-Browserprüfungen** gegen den echten Test-Core: CRUD über die deutsche Oberfläche, eigene Profile mit Auswahl und Duplizieren, Profilwechsel/PIN, mobile Darstellung und Dark Theme, Formulare, Text-Escaping und sichtbarer Verbindungsverlust mit Schreibsperre.
 - Beobachtung trotz bestätigter Korrelation ohne Geräte, Push, Kamera und Simulation; eigene Stufen mit echten Aktionszuordnungen; generische HA-An/Aus-Anbindung.
 - Private PNG-/JPG-Grundrisse: Authentifizierung, Adminrechte, ungültige Bilder, Revisionen, Raumgeometrie, Upload und Neustart.
 - Grafische Profilsymbole, freie MDI-Kennung, Speicherung und unveränderte Profilregeln. Direkter Datei-Dialog, ungültiger Upload ohne leere Etage, lokale Flächenvorschläge, korrigierbare Eckpunkte und bewusstes Übernehmen der Raumzuordnung.
-- **51 JavaScript-Tests** für lokale Entwurfssicherung, Rückgängig/Wiederholen, Bild-/Benutzertrennung, beschädigte Daten und Speicherausfälle. Browserregressionen bilden den Ablauf „korrigieren → Speichern ohne Raum → Raum auswählen“ ab und prüfen exakte Erhaltung der Eckpunkte, erneute Analyse, Etagenwechsel und Neuladen.
+- **56 JavaScript-Tests** für lokale Entwurfssicherung, Rückgängig/Wiederholen, Bild-/Benutzertrennung, beschädigte Daten und Speicherausfälle. Browserregressionen bilden den Ablauf „korrigieren → Speichern ohne Raum → Raum auswählen“ ab und prüfen exakte Erhaltung der Eckpunkte, erneute Analyse, Etagenwechsel und Neuladen.
 - Direkte Auswahl vorhandener Home-Assistant-Bereiche im Editor und Speicherdialog: aktuelle Liste, Verknüpfung erst beim Speichern, keine doppelten importierten Bereiche, unveränderte Eckpunkte nach Neuladen und vollständiger Entwurfserhalt bei zwischenzeitlich gelöschten HA-Bereichen.
 - Strukturierte Erkennung trennt generische farbige Wände von Möbeln und Schraffuren. Der persönliche EG-Grundriss wurde ausschließlich lokal im echten Editor geprüft und wird nicht mit dem Repository oder öffentlichen Testartefakten veröffentlicht.
 - Fenster-Assistent: Einlernen der fünf Stellungen, einfache Kontakte, stabile Signale, fehlende Verbindung, explizite unknown-Codes mit separatem Guard, nicht unterscheidbare Kombinationen, ein physisches Fenster als eine Alarmquelle und weiter funktionierender Kontakt bei ausgefallenem Griff. Neue HA-Sensoren werden authentifiziert erzeugt, über Reload geprüft und beim Entfernen der Zuordnung entfernt.
@@ -45,6 +45,8 @@ Zusätzliche Prüfungen ab 2.6.1: individuelle Symbole für Sensoren, zusammenge
 Zusätzliche Prüfungen ab 2.7.0: größere Quellenauswahl mit konkreten Gruppenmitgliedern, Livezuständen, Raumbegrenzung und Verbindungsverlust. Bestätigungsgrade steigen von 1/3 auf 3/3, speichern ihre ursprüngliche Ablaufzeit und verlangen für den Vollalarm ein späteres, unabhängiges Öffnungssignal im passenden Raum. Zwei Quellen, gleiche Geräte, fremde Kameraräume, vorherige Öffnungen, abgelaufene/ausgefallene/quarantänisierte Quellen sowie ungültige Abhängigkeiten werden abgewiesen. Neustart und bereits gehaltener Vollalarm werden getrennt geprüft. Browserfälle konfigurieren den vollständigen Ablauf über die Oberfläche und prüfen Desktop und Mobilansicht.
 
 Zusätzliche Prüfungen ab 2.8.0: unterschiedliche Meldeschwellen pro Bestätigungsgrad, eigene Ruhezeiten, schrittweiser Rückfall bis null ohne Wiederaufstieg aus alten Meldungen, echte neue Meldungen und unveränderte Geräteunabhängigkeit. Die ursprüngliche Rückstufungsfrist überlebt Neustarts. Gespeicherte vollständige Bestätigung bleibt unabhängig vom sichtbaren Rückfall gültig; ausgefallene, quarantänisierte oder räumlich veränderte Quellen werden abgewiesen. Abschlussaktionen und Level-Eintrittsaktionen sind im Dispatcher getrennt und pro Profil begrenzt; reine Beobachtung führt keine Abschlussaktion aus. Browserfälle prüfen dynamische Schwellen, Änderungen der Bedingungen ohne Datenverlust, Neuladen, mobile Breite, entfernte Checkboxen bei unveränderten Sicherheitsattributen, beide Ringe und tatsächliche Zwischenfarben auf denselben SVG-Knoten.
+
+Zusätzliche Prüfungen ab 2.9.0: Raumflächen statt Originalbildformat bestimmen Ausschnitt und Seitenverhältnis der Grafik. Symmetrische Ränder, Bildkanten, lange/verschobene Beschriftungen und unveränderte Quellkoordinaten werden geprüft. Deckkraft ist eine begrenzte, endliche Zahl und bleibt über Reload erhalten. Ausdrücklich markierte Türen erlauben räumliche Bestätigung in beiden Richtungen, während indirekte Verbindungen, alte Nachbarschaftsangaben, gemeinsame Geräte, Ausfälle, Quarantäne und veraltete Meldungen abgewiesen werden. Browserfälle prüfen echte Bild-Uploads, mobilen Zuschnitt, Originalbild-Deckkraft, Tastatur-Verknüpfung zweier Räume, direkte Alarmbestätigung, Ablehnung eines zweiten Wegabschnitts und unsichtbare Verbindungsmarkierungen in Vorschau und Live-Grafik.
 
 ## Veröffentlichungsstatus
 

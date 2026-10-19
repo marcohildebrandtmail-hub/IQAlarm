@@ -274,6 +274,7 @@ def match_rule(
         for _ in range(condition.count)
     ]
     budget = search_budget if search_budget is not None else [50000]
+    doors = {frozenset(pair) for pair in config.room_connections}
 
     def search(index, chain, used, anchors, previous_time):
         if index == len(slots):
@@ -302,7 +303,10 @@ def match_rule(
                 else {
                     a
                     for a in anchors
-                    if a in candidate_spaces or any([a, b] in rule.paths for b in candidate_spaces)
+                    if a in candidate_spaces
+                    or any(
+                        [a, b] in rule.paths or frozenset((a, b)) in doors for b in candidate_spaces
+                    )
                 }
             )
             if index and not next_anchors:

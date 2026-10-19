@@ -209,6 +209,9 @@ async def ws_crud(hass, connection, msg) -> None:
                                         a for a in profile["action_ids"] if a != action_id
                                     ]
             if collection == "rooms":
+                data["room_connections"] = [
+                    pair for pair in data["room_connections"] if key not in pair
+                ]
                 if any(
                     s["room_id"] == key or key in s["front_of"] for s in data["sensors"].values()
                 ):
