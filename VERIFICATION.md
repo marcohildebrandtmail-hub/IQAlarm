@@ -1,8 +1,8 @@
 # IQAlarm · Prüfstand vom 19. Oktober 2026
 
-## Prüfumfang (Version 2.12.1)
+## Prüfumfang (Version 2.12.2)
 
-- **473 pytest-Tests** für Korrelationslogik, Nachtbetrieb, eigene Profile, Konfigurationsgrenzen, Archivierung, Repository-Metadaten und Deployment-Rollback.
+- **480 pytest-Tests** für Korrelationslogik, Nachtbetrieb, eigene Profile, Konfigurationsgrenzen, Archivierung, Repository-Metadaten und Deployment-Rollback.
 - Alle fünf geforderten Pflichtszenarien: MACO-Prellen, einzelnes Fenster, Fenster + Bewegung nach zwölf Sekunden, nächtlicher Toilettengang und Vorfeld + Fenster nach vierzig Sekunden.
 - Neue Sicherheitsregressionen: gerichtete Bestätigungswege, unzugeordnete Kameras, reine Außenbewegung, Schlossentriegelung ohne Öffnung, höherer Alarm trotz gehaltener Stufe und abgelehnte unabhängige Räume. Mehrfachkontakt-/Bewegungsregeln verlangen ausdrückliche Freigabe und räumliche Beziehung.
 - Echter Core: langsamer Lichtdienst blockiert keine andere Sirene; langsames Abschalten blockiert keinen Eingangstimer; eigene Alarm-Ausgänge werden nach Reload bis zum ursprünglichen Ablauf wieder aufgenommen.
@@ -18,7 +18,7 @@
 - Beobachtung trotz bestätigter Korrelation ohne Geräte, Push, Kamera und Simulation; eigene Stufen mit echten Aktionszuordnungen; generische HA-An/Aus-Anbindung.
 - Private PNG-/JPG-Grundrisse: Authentifizierung, Adminrechte, ungültige Bilder, Revisionen, Raumgeometrie, Upload und Neustart.
 - Grafische Profilsymbole, freie MDI-Kennung, Speicherung und unveränderte Profilregeln. Direkter Datei-Dialog, ungültiger Upload ohne leere Etage, lokale Flächenvorschläge, korrigierbare Eckpunkte und bewusstes Übernehmen der Raumzuordnung.
-- **78 JavaScript-Tests** für lokale Entwurfssicherung, Rückgängig/Wiederholen, Bild-/Benutzertrennung, beschädigte Daten und Speicherausfälle. Browserregressionen bilden den Ablauf „korrigieren → Speichern ohne Raum → Raum auswählen“ ab und prüfen exakte Erhaltung der Eckpunkte, erneute Analyse, Etagenwechsel und Neuladen.
+- **88 JavaScript-Tests** für lokale Entwurfssicherung, Rückgängig/Wiederholen, Bild-/Benutzertrennung, beschädigte Daten und Speicherausfälle. Browserregressionen bilden den Ablauf „korrigieren → Speichern ohne Raum → Raum auswählen“ ab und prüfen exakte Erhaltung der Eckpunkte, erneute Analyse, Etagenwechsel und Neuladen.
 - Direkte Auswahl vorhandener Home-Assistant-Bereiche im Editor und Speicherdialog: aktuelle Liste, Verknüpfung erst beim Speichern, keine doppelten importierten Bereiche, unveränderte Eckpunkte nach Neuladen und vollständiger Entwurfserhalt bei zwischenzeitlich gelöschten HA-Bereichen.
 - Strukturierte Erkennung trennt generische farbige Wände von Möbeln und Schraffuren. Der persönliche EG-Grundriss wurde ausschließlich lokal im echten Editor geprüft und wird nicht mit dem Repository oder öffentlichen Testartefakten veröffentlicht.
 - Fenster-Assistent: Einlernen der fünf Stellungen, einfache Kontakte, stabile Signale, fehlende Verbindung, explizite unknown-Codes mit separatem Guard, nicht unterscheidbare Kombinationen, ein physisches Fenster als eine Alarmquelle und weiter funktionierender Kontakt bei ausgefallenem Griff. Neue HA-Sensoren werden authentifiziert erzeugt, über Reload geprüft und beim Entfernen der Zuordnung entfernt.
@@ -53,6 +53,8 @@ Zusätzliche Prüfungen ab 2.10.0: Roboter-Aktivität aus bis zu drei Quellen (O
 Zusätzliche Prüfungen ab 2.11.0: Bereits offene oder gekippte Fenster werden beim Scharfschalten automatisch für die gesamte Sitzung ignoriert. Schließen, erneutes Öffnen, Prellen und Neustarts heben die Ausnahme nicht auf; Ausschalten beendet sie. Ignorierte Fenster liefern weder Alarmbestätigung noch Bestätigungsgrade, während Kameras, Bewegung und zuvor geschlossene Fenster aktiv bleiben. HA-Geräteklassen einschließlich Benutzerzuordnung werden vor dem Scharfschalten neu gelesen; Namen ändern die Einordnung nicht. Türen und Verbindungsfehler bleiben getrennt geprüft. Rücknahme bei abgelehntem Scharfschalten, Profilbegrenzung, Risikobegrenzung und unveränderte Quellenbindung sind abgedeckt. Der Browserfall prüft die sichtbare Kennzeichnung, erneutes Öffnen, Seitenneuladen, weiter überwachte Fenster und ausgeblendete Raumplaketten bei ausgeschalteter Anlage. Alte Kontakt-Prellsperren werden beim Wechsel zur Bewegungsrolle entfernt.
 
 Zusätzliche Prüfungen ab 2.11.1: Außenbewegung und Kamera-/Personenerkennung werden im Grundriss getrennt angezeigt, auch bei gleichzeitig aktiven Quellen und einer verknüpften Snapshot-Kamera. Ausgefallene, isolierte und veraltete Eingangszustände erzeugen keine aktive Kamerabeschriftung. Der Farbverlauf bleibt beim Entfernen einer Bestätigungsgrad-Karte erhalten; die SVG-Elemente werden dabei nicht neu eingehängt. Browserfälle prüfen echte Zwischenfarben mit und ohne reduzierte Animationen. Zusätzliche lokale Browserprüfungen mit zwei Etagen decken normale Live-Pakete, Timerablauf und gleichzeitig verschwindende Statuskarten ab.
+
+Zusätzliche Prüfungen ab 2.12.2: Der LVL-3-Testbetrieb sperrt höhere Stufen in allen Profilen, einschließlich alter Vollalarmregeln, Gefahrensensoren, gespeicherter Alarme, laufender Verzögerungen und manueller Aktionstests. Bei 3/3 erfolgen weitere Meldungen ohne Hochstufung; ohne Meldungen sinkt der Grad schrittweise. Die Oberfläche kennzeichnet die Sperre und erhält gespeicherte Regeln und Aktionen. Bei ausgeschalteter Anlage hält eine intern bestätigte Sensorkombination die Raumfläche nach Ablauf des Bewegungstexts nicht länger rot. Zwei Browsergrößen prüfen Text und Zielfarbe nach Ablauf ohne neues Sensorereignis; lokale CSS-Prüfungen bestätigen den 1,5-Sekunden-Verlauf über echte Zwischenfarben auf erhaltenen SVG-Knoten.
 
 ## Veröffentlichungsstatus
 

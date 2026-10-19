@@ -17,6 +17,34 @@ test.beforeEach(async({page})=>{
   await page.waitForFunction(()=>customElements.get("iqalarm-panel"));
 });
 
+for(const width of [1440,390])test(`disarmed correlation cannot retain a red floorplan after motion expires at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:844});
+  await page.locator("iqalarm-panel").evaluate(panel=>{
+    const plan={id:"eg",name:"Erdgeschoss",width:400,height:300,image:null,zones:{hall:[[.1,.1],[.9,.1],[.9,.9],[.1,.9]]}};
+    panel.tab=0;
+    panel.data={
+      config:{rooms:{hall:{id:"hall",name:"Flur UG"}},windows:{},floorplans:{eg:plan},settings:{floorplan_disarmed_motion:true},
+        sensors:{"binary_sensor.motion":{entity_id:"binary_sensor.motion",room_id:"hall",role:"interior_motion",enabled:true}}},
+      information:[],
+      status:{active:false,raw:{"binary_sensor.motion":false},last_active:{"binary_sensor.motion":Date.now()/1000},quarantine:{},
+        rooms:{hall:{level:5,confirmed:true,motion:[],open:[],persons:[],quarantined:[]}}},
+    };
+    panel.shadowRoot.getElementById("main").innerHTML=panel._renderPlanSvg(plan,true,false,true).svg;
+  });
+  const room=page.locator('g[data-room="hall"]:not([data-label-room]) polygon').nth(1);
+  const label=page.locator('[data-label-room="hall"]');
+  await expect(room).toHaveAttribute("fill","#ef4444");
+  await expect(label).toContainText("Bewegung");
+  await page.clock.fastForward(16000);
+  await expect(label).not.toContainText("Bewegung");
+  await expect(label).not.toContainText("Bestätigter Alarm");
+  await expect(room).toHaveAttribute("fill","#14b8a6");
+  // Actual armed confirmations still retain their explicit red alarm display.
+  await page.locator("iqalarm-panel").evaluate(panel=>{panel.data.status.active=true;panel._refreshFloorplanStatuses();});
+  await expect(room).toHaveAttribute("fill","#ef4444");
+  await expect(label).toContainText("Bestätigter Alarm");
+});
+
 for(const width of [1440,390])test(`room badge and sensor row expire together without a new message at ${width}px`,async({page})=>{
   await page.setViewportSize({width,height:844});
   const errors=[];

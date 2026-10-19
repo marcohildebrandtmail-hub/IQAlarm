@@ -44,6 +44,72 @@ def complete(engine, room="kitchen", start=101):
         fire(engine, room, index, start + index - 1)
 
 
+def test_test_mode_stays_at_level_three_on_extra_triggers_and_timer(automatic):
+    automatic.config.automatic_detection.test_mode = True
+    complete(automatic)
+    assert grade(automatic)["current"] == 3
+    assert grade(automatic)["next_level_at"] is None
+    fire(automatic, "kitchen", 4, 110)
+    automatic.tick(163)  # The former LVL-4 deadline must not promote.
+    assert automatic.level == 3 and not automatic.confirmed
+    assert grade(automatic)["current"] == 3
+    assert grade(automatic)["detected_at"] is None
+    for at, expected in ((170, 2), (230, 1), (290, 0)):
+        automatic.tick(at)
+        progress = grade(automatic)
+        assert (progress["current"] if progress else 0) == expected
+        assert automatic.level == (3 if expected else 1)
+    assert all(event.level <= 3 for event in automatic.drain())
+
+
+@pytest.mark.parametrize("automatic_enabled", [False, True])
+def test_test_ceiling_also_blocks_manual_full_alarm_and_danger_overrides(
+    automatic, automatic_enabled
+):
+    automatic.config.automatic_detection.test_mode = True
+    profile = automatic.config.profiles["armed_away"]
+    profile.automatic_detection = automatic_enabled
+    profile.rule_ids.extend(["later", "immediate"])
+    automatic.config.rules["later"] = LevelRule(
+        "later", "Vollalarm", "5", [RuleCondition(roles=["interior_motion"], count=2)]
+    )
+    key = "binary_sensor.fire"
+    automatic.config.sensors[key] = SensorConfig(key, "smoke", "bed", immediate=True)
+    automatic.seed(key, False)
+    complete(automatic)
+    automatic.feed(key, True, 110)
+    automatic.tick(164)
+    assert automatic.level <= 3
+    assert not automatic.confirmed and not automatic.latched
+    assert all(automatic.config.stage_rank(rule.stage_id) <= 3 for rule in automatic.active_rules())
+    assert all(event.level <= 3 for event in automatic.drain())
+
+
+def test_restart_cannot_restore_a_held_or_pending_high_stage_in_test_mode(automatic):
+    automatic.config.rules["later"] = LevelRule(
+        "later", "Vollalarm", "5", [RuleCondition(roles=["interior_motion"], count=2)]
+    )
+    automatic.config.profiles["armed_away"].rule_ids.append("later")
+    complete(automatic)
+    fire(automatic, "kitchen", 4, 110)
+    fire(automatic, "kitchen", 5, 111)
+    assert automatic.level == 5 and automatic.latched
+    saved = deepcopy(automatic.persistent_state())
+    saved["rule_pending"] = {"later": {"until": 130, "chain": saved["breach_chain"]}}
+    config = automatic.config.to_dict()
+    config["automatic_detection"].pop("test_mode")  # New test operation is the default.
+    restored = CorrelationEngine(Configuration.from_dict(config))
+    for key in restored.sensors:
+        restored.seed(key, False)
+    restored.restore(saved, 120)
+    restored.tick(180)
+    assert restored.level <= 3
+    assert not restored.confirmed and not restored.latched and restored.held_alarm is None
+    assert "later" not in restored.rule_pending
+    assert all(event.level <= 3 for event in restored.drain())
+    assert restored.config.to_dict()["automatic_detection"]["test_mode"] is True
+
+
 def test_independent_sources_reach_three_steps_without_skipping_to_level_four(automatic):
     for index in range(1, 4):
         fire(automatic, "kitchen", index, 100 + index)
@@ -270,6 +336,7 @@ def test_settings_roundtrip_preserves_custom_stage_ids_and_old_configs(automatic
         {"quiet_seconds": 0},
         {"promote_seconds": 601},
         {"next_stage_id": "5"},
+        {"test_mode": "true"},
     ],
 )
 def test_invalid_automatic_settings_are_rejected(automatic, changes):

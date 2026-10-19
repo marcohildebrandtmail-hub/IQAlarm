@@ -81,6 +81,27 @@ test("observation hides the correlation caption while showing actual activity", 
   assert.match(result.label,/Bewegung/);
 });
 
+test("a disarmed correlation cannot keep the room red after its motion text expires", () => {
+  const panel=setup({confirmed:true});
+  for(const now of [114.999,115,160,200]){
+    const motion=now<115,result=display(panel,now);
+    assert.equal(result.color,motion?"#ef4444":"#14b8a6");
+    assert.equal(result.label.includes("Bewegung"),motion);
+    assert.doesNotMatch(result.label,/Bestätigter Alarm/);
+  }
+});
+
+test("an old disarmed correlation does not override hidden motion or a visible contact",()=>{
+  const panel=setup({confirmed:true,visible:false});
+  assert.equal(display(panel,105).color,"#14b8a6");
+  panel.data.config.sensors["binary_sensor.window"]={entity_id:"binary_sensor.window",role:"entry_contact",room_id:"tv",name:"Fenster"};
+  panel.data.status.raw["binary_sensor.window"]=true;
+  panel.data.status.rooms.tv.open=["binary_sensor.window"];
+  const result=display(panel,200);
+  assert.equal(result.color,"#f59e0b");
+  assert.match(result.label,/Fenster offen/);
+});
+
 function perimeter(camera, motion) {
   const panel=setup({last:0});
   panel.data.config.sensors["binary_sensor.person"]={entity_id:"binary_sensor.person",name:"Person",role:"perimeter_camera",front_of:["tv"]};

@@ -2,7 +2,51 @@
 
 import asyncio
 
+import pytest
 from safety_support import local_runtime, models
+
+
+def test_level_three_test_ceiling_blocks_high_actions_and_manual_tests(tmp_path):
+    async def scenario():
+        config = models.Configuration(
+            automatic_detection=models.AutomaticDetection(),
+            rooms={"r": models.Room("r", "Raum")},
+            sensors={
+                "binary_sensor.motion": models.SensorConfig(
+                    "binary_sensor.motion", "interior_motion", "r"
+                )
+            },
+        )
+        config.actions = {
+            stage: models.Action(
+                stage, stage, "notify", "notify.phone", message=stage, profile_ids=["armed_away"]
+            )
+            for stage in ("3", "4", "5")
+        }
+        runtime = local_runtime(tmp_path, config)
+        runtime.engine.set_profile("armed_away", 100)
+        for stage in ("4", "5"):
+            for dry_run in (True, False):
+                with pytest.raises(ValueError, match="Testbetrieb deaktiviert"):
+                    await runtime.test_level(stage, dry_run=dry_run, profile_id="armed_away")
+                event = models.EventLog(
+                    100,
+                    "test",
+                    int(stage),
+                    "active",
+                    "Alte vorgemerkte Aktion",
+                    stage_id=stage,
+                    profile_id="armed_away",
+                    confirmed=stage == "5",
+                    reactions_enabled=True,
+                )
+                assert await runtime.dispatcher.dispatch(event, 0, dry_run=dry_run) == []
+        assert not runtime.hass.services.calls
+        plan = await runtime.test_level("3", dry_run=False, profile_id="armed_away")
+        assert [action["id"] for action in plan] == ["3"]
+        assert [call[2]["message"] for call in runtime.hass.services.calls] == ["3"]
+
+    asyncio.run(scenario())
 
 
 def test_real_and_dry_profile_plans_never_mix_modes(tmp_path):

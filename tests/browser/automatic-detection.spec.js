@@ -40,16 +40,30 @@ for(const width of [1440,390])test(`automatic LVL 3 settings save with stable st
   await page.keyboard.press("ArrowRight");
   await expect(form.locator("[data-automatic-threshold-label]")).toContainText("1/3 ab 2 · 2/3 ab 3 · 3/3 ab 4");
   await form.getByLabel("Ohne neue Meldung einen Grad zurück nach (Sekunden)",{exact:true}).fill("90");
-  await form.getByLabel("Bei 3/3 zu LVL 4 nach (Sekunden)",{exact:true}).fill("30");
+  await expect(form.locator("[data-test-mode]")).toContainText("LVL 4 und LVL 5 sind deaktiviert");
+  await expect(form.locator('[name="automatic_promote"]')).toHaveCount(0);
   await form.getByRole("button",{name:"Automatik aktivieren",exact:true}).click();
-  expect(await page.locator("iqalarm-panel").evaluate(panel=>panel.__savedConfig.automatic_detection)).toEqual({stage_id:"sensor_stage",next_stage_id:"detected_stage",threshold:2,quiet_seconds:90,promote_seconds:30});
+  expect(await page.locator("iqalarm-panel").evaluate(panel=>panel.__savedConfig.automatic_detection)).toEqual({stage_id:"sensor_stage",next_stage_id:"detected_stage",threshold:2,quiet_seconds:90,promote_seconds:60,test_mode:true});
   await expect(form.getByRole("button",{name:"Automatik speichern",exact:true})).toBeVisible();
   await form.getByText("Sensoren und direkte Raumverbindungen ansehen",{exact:true}).click();
   await expect(form.getByText("binary_sensor.motion",{exact:true})).toBeVisible();
   await expect(form.locator("[data-automatic-required]")).toHaveText("4");
   await page.screenshot({path:`test-results/automatic-detection-${width}.png`,fullPage:true});
 
+  for(const [id,rank] of [["detected_stage",4],["alarm",5]]){
+    await page.locator(`[data-stage="${id}"]`).first().click();
+    await expect(page.locator("[data-stage-blocked]")).toContainText("Im Testbetrieb deaktiviert");
+    await expect(page.getByRole("button",{name:"Regel hinzufügen",exact:true})).toHaveCount(0);
+    await expect(page.locator(`[data-stage="${id}"]`).first()).toContainText(`LVL ${rank}`);
+    await expect(page.locator(`[data-stage="${id}"]`).first()).toContainText("deaktiviert");
+  }
   await page.getByRole("tab",{name:"Profile & System",exact:true}).click();
+  for(const id of ["detected_stage","alarm"]){
+    const actions=page.locator(`[data-profile-action-stage="${id}"]`);
+    await expect(actions.getByRole("button",{name:"Stufe trocken testen",exact:true})).toBeDisabled();
+    await expect(actions.locator("[data-real-level-test]")).toBeDisabled();
+  }
+  await expect(page.locator('[data-profile-action-stage="sensor_stage"] [data-command="profile-level-test"]')).toBeEnabled();
   const profile=page.locator("#profile-levels-form");
   await expect(profile.getByRole("heading",{name:"Sensorfreigaben für automatische Erkennung",exact:true})).toBeVisible();
   await expect(profile.locator('[name="use_rule_motion"]')).toHaveCount(0);
