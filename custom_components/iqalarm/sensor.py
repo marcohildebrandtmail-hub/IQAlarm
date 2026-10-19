@@ -92,8 +92,9 @@ class IQAlarmSensor(IQAlarmEntity, SensorEntity):
     @property
     def native_value(self):
         engine = self.runtime.engine
+        is_active = bool(engine.reactions_enabled and engine.profile_id)
         if self.key == "level":
-            return int(engine.level)
+            return int(engine.level) if is_active else 0
         if self.key == "flapping":
             return len(engine.quarantine)
         if self.key == "profile":
@@ -114,10 +115,12 @@ class IQAlarmSensor(IQAlarmEntity, SensorEntity):
                 "reason": engine.events[0].reason if engine.events else "",
                 "timestamp": engine.events[0].timestamp if engine.events else None,
             }
+        is_active = bool(engine.reactions_enabled and engine.profile_id)
+        stage_id = engine.stage_id if is_active else self.runtime.config.stages[0].id
         return {
             "mode": engine.mode.value,
-            "stage_id": engine.stage_id,
-            "stage_name": self.runtime.config.stage(engine.stage_id).name,
+            "stage_id": stage_id,
+            "stage_name": self.runtime.config.stage(stage_id).name,
             "active": engine.reactions_enabled,
             "profile_id": engine.profile_id,
             "profile_name": (

@@ -41,11 +41,13 @@ class IQAlarmPanel(IQAlarmEntity, AlarmControlPanelEntity):
     @property
     def extra_state_attributes(self) -> dict:
         engine = self.runtime.engine
+        is_active = bool(engine.reactions_enabled and engine.profile_id)
+        stage_id = engine.stage_id if is_active else self.runtime.config.stages[0].id
         return {
-            "alarm_level": int(engine.level),
+            "alarm_level": int(engine.level) if is_active else 0,
             "active": engine.reactions_enabled,
-            "stage_id": engine.stage_id,
-            "stage_name": self.runtime.config.stage(engine.stage_id).name,
+            "stage_id": stage_id,
+            "stage_name": self.runtime.config.stage(stage_id).name,
             "profile_id": engine.evaluation_profile_id,
             "profile_name": (
                 engine.config.profiles[engine.evaluation_profile_id].name
@@ -55,7 +57,7 @@ class IQAlarmPanel(IQAlarmEntity, AlarmControlPanelEntity):
             "quarantined_flapping": list(engine.quarantine),
             "entry_deadline": engine.pending_until,
             "exit_deadline": engine.arming_until,
-            "trigger_chain": [e.entity_id for e in engine.breach_chain],
+            "trigger_chain": [e.entity_id for e in engine.breach_chain] if is_active else [],
         }
 
     async def async_alarm_disarm(self, code=None) -> None:

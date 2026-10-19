@@ -277,3 +277,19 @@ def test_invalid_automatic_settings_are_rejected(automatic, changes):
     data["automatic_detection"].update(changes)
     with pytest.raises((ValueError, StopIteration)):
         Configuration.from_dict(data)
+
+
+def test_disarmed_inactive_does_not_count_or_elevate_automatic_detection(automatic):
+    automatic.set_profile(None, 200)
+    assert not automatic.reactions_enabled
+    # Trigger sensors while disarmed
+    for index in range(1, 4):
+        fire(automatic, "kitchen", index, 201 + index)
+    snap = automatic.snapshot(210)
+    assert snap["level"] == 0
+    assert snap["stage_id"] == automatic.config.stages[0].id
+    assert snap["stage_name"] == automatic.config.stages[0].name
+    assert snap["rule_progress"] == []
+    assert snap["matched_rules"] == []
+    assert snap["breach_chain"] == []
+    assert grade(automatic, "kitchen") is None

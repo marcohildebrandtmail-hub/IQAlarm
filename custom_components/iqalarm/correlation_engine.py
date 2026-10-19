@@ -178,6 +178,8 @@ class CorrelationEngine:
         return (self.config.rules or {}).get(rule_id)
 
     def _automatic_included(self, sensor):
+        if not self.reactions_enabled:
+            return False
         profile = self.profile
         if not self.config.automatic_detection or not profile or not profile.automatic_detection:
             return False
@@ -1293,7 +1295,12 @@ class CorrelationEngine:
 
     def _recompute_automatic(self, now: float) -> list[RuleMatch]:
         settings = self.config.automatic_detection
-        if not settings or not self.profile or not self.profile.automatic_detection:
+        if (
+            not settings
+            or not self.profile
+            or not self.profile.automatic_detection
+            or not self.reactions_enabled
+        ):
             self.automatic_states.clear()
             return []
         sensors = {
@@ -1523,6 +1530,8 @@ class CorrelationEngine:
         }
 
     def _automatic_progress(self, room_id):
+        if not self.reactions_enabled:
+            return None
         state = self.automatic_states.get(room_id)
         if not state or not state.get("grade") or not self.config.automatic_detection:
             return None
@@ -1546,6 +1555,8 @@ class CorrelationEngine:
         }
 
     def _rule_progress(self, now: float) -> list[dict]:
+        if not self.reactions_enabled:
+            return []
         progress = {}
         for match in self.rule_matches:
             if match.rule_id in (AUTO_RULE, DETECTED_RULE):
@@ -1595,12 +1606,14 @@ class CorrelationEngine:
         ]
 
     def snapshot(self, now: float) -> dict:
+        is_active = bool(self.reactions_enabled and self.profile_id)
+        stage_id = self.stage_id if is_active else self.config.stages[0].id
         return {
             "mode": self.mode.value,
             "active": self.reactions_enabled,
             "observing": not self.reactions_enabled,
-            "confirmed": self.confirmed,
-            "secure": self.secure,
+            "confirmed": self.confirmed if is_active else False,
+            "secure": self.secure if is_active else True,
             "evaluation_profile_id": self.evaluation_profile_id,
             "profile_id": self.profile_id,
             "profile_name": (
@@ -1614,10 +1627,10 @@ class CorrelationEngine:
             "monitored_sensors": [
                 sensor.entity_id for sensor in self.sensors.values() if self._included(sensor)
             ],
-            "level": self.level,
-            "stage_id": self.stage_id,
-            "stage_name": self.config.stage(self.stage_id).name,
-            "stage_color": self.config.stage(self.stage_id).color,
+            "level": self.level if is_active else 0,
+            "stage_id": stage_id,
+            "stage_name": self.config.stage(stage_id).name,
+            "stage_color": self.config.stage(stage_id).color,
             "reactions_enabled": self.reactions_enabled,
             "arming_until": self.arming_until,
             "pending_until": self.pending_until,
@@ -1628,9 +1641,11 @@ class CorrelationEngine:
             },
             "rooms": {r: self.room_status(r, now) for r in self.config.rooms},
             "events": [e.to_dict() for e in list(self.events)[:50]],
-            "breach_chain": [asdict(e) for e in self.breach_chain],
-            "matched_rules": list(dict.fromkeys(m.rule_id for m in self.rule_matches)),
-            "rule_progress": self._rule_progress(now),
+            "breach_chain": [asdict(e) for e in self.breach_chain] if is_active else [],
+            "matched_rules": (
+                list(dict.fromkeys(m.rule_id for m in self.rule_matches)) if is_active else []
+            ),
+            "rule_progress": self._rule_progress(now) if is_active else [],
         }
 
     def persistent_state(self) -> dict:

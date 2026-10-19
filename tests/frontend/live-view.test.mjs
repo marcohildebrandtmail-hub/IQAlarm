@@ -49,3 +49,19 @@ test("automatically ignored windows show risk on the baseline without any robot 
   assert.equal(ringValues(state).grade.kind,"coverage");
   assert.match(statusRings(state),/Überwachungsrisiko 1 von 3/);assert.doesNotMatch(statusRings(state),/Bestätigungsgrad/);
 });
+test("disarmed inactive status strictly enforces level 0 and empty rings",()=>{
+  const state=structuredClone(data);
+  state.status.level=3;
+  state.status.active=false;
+  state.status.mode="inactive";
+  state.status.rule_progress=[{stage_id:"outside",current:2,target:3}];
+  const values=ringValues(state);
+  assert.equal(values.level,0);
+  assert.equal(values.confirmation,0);
+  assert.equal(values.grade,null);
+  const html=statusRings(state);
+  assert.match(html,/<text x="72" y="72">0<\/text>/);
+  assert.match(html,/Deaktiviert/);
+  assert.doesNotMatch(html,/Bestätigungsgrad/);
+  assert.doesNotMatch(html,/grade-caption/);
+});
