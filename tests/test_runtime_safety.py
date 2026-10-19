@@ -8,6 +8,41 @@ import pytest
 from safety_support import core, local_runtime, models, runtime_module, windows_module
 
 
+def test_automatic_grade_decay_is_published_and_saved_without_a_level_change(tmp_path, monkeypatch):
+    async def scenario():
+        config = models.Configuration(
+            rooms={"r": models.Room("r", "Raum")},
+            sensors={
+                f"binary_sensor.motion_{n}": models.SensorConfig(
+                    f"binary_sensor.motion_{n}", "interior_motion", "r"
+                )
+                for n in (1, 2)
+            },
+            automatic_detection=models.AutomaticDetection(promote_seconds=300),
+        )
+        config.profiles["armed_away"].rule_ids = ["single", "motion"]
+        runtime = local_runtime(tmp_path, config)
+        runtime.engine.set_profile("armed_away", 100)
+        runtime.engine.feed("binary_sensor.motion_1", True, 101)
+        runtime.engine.feed("binary_sensor.motion_2", True, 102)
+        runtime.engine.drain()
+        await runtime.persist()
+        published = []
+        monkeypatch.setattr(
+            runtime_module,
+            "async_dispatcher_send",
+            lambda *_: published.append(runtime.engine.snapshot(162)),
+        )
+        monkeypatch.setattr(runtime_module, "time", NS(time=lambda: 162))
+        await runtime._tick(None)
+        await runtime.hass.drain()
+        assert runtime.engine.level == 3
+        assert published[-1]["rooms"]["r"]["detection"]["current"] == 1
+        assert runtime.store.state["automatic_states"]["r"]["grade"] == 1
+
+    asyncio.run(scenario())
+
+
 def composite(**kwargs):
     return models.WindowConfig(
         "w",

@@ -10,6 +10,7 @@ from collections import defaultdict, deque
 from dataclasses import asdict
 from typing import Any
 
+from .automatic_detection import AUTO_RULE, DETECTED_RULE, advance_detection
 from .confirmations import grade_match, match_with_memory, memory_signature, valid_memory
 from .const import (
     CHANGE_ACTIVITY_SECONDS,
@@ -63,6 +64,7 @@ class CorrelationEngine:
         self.rule_matches: list[RuleMatch] = []
         self.rule_confirmations: dict[str, dict] = {}
         self.rule_grades: dict[str, dict] = {}
+        self.automatic_states: dict[str, dict] = {}
         self.robot_devices: list[dict] = []
         self.robot_paused: set[str] = set()
         self.robot_waiting: set[str] = set()
@@ -125,15 +127,141 @@ class CorrelationEngine:
     def secure(self) -> bool:
         return self.severity == Level.SECURE and self.pending_until is None
 
+    def stage_allowed(self, stage_id: str) -> bool:
+        """Keep every rule and action below the temporary LVL-3 test ceiling."""
+        settings = self.config.automatic_detection
+        return not (
+            settings
+            and settings.test_mode
+            and self.config.stage_rank(stage_id) > self.config.stage_rank(settings.stage_id)
+        )
+
     def active_rules(self):
         profile = self.profile
         if self.config.rules is None or profile is None:
             return []
-        return [
+        rules = [
             rule
             for key, rule in self.config.rules.items()
             if rule.enabled and (profile.rule_ids is None or key in profile.rule_ids)
         ]
+        auto = self.config.automatic_detection
+        if auto:
+            rules = [
+                rule for rule in rules if rule.stage_id not in (auto.stage_id, auto.next_stage_id)
+            ]
+            if profile.automatic_detection:
+                rules.extend(self.automatic_rules.values())
+        return [rule for rule in rules if self.stage_allowed(rule.stage_id)]
+
+    @property
+    def automatic_rules(self):
+        settings = self.config.automatic_detection
+        if settings is None:
+            return {}
+        key = (
+            settings.stage_id,
+            settings.next_stage_id,
+            settings.threshold,
+            settings.quiet_seconds,
+            settings.promote_seconds,
+            settings.test_mode,
+        )
+        if getattr(self, "_automatic_rule_key", None) != key:
+            self._automatic_rule_key = key
+            self._automatic_rule_cache = settings.rules()
+        return self._automatic_rule_cache
+
+    def rule_definition(self, rule_id):
+        if self.config.automatic_detection and rule_id in (AUTO_RULE, DETECTED_RULE):
+            return self.automatic_rules[rule_id]
+        return (self.config.rules or {}).get(rule_id)
+
+    def _automatic_included(self, sensor):
+        profile = self.profile
+        if not self.config.automatic_detection or not profile or not profile.automatic_detection:
+            return False
+        if not sensor.enabled or sensor.information_only or sensor.entity_id in self.grouped_inputs:
+            return False
+        if sensor.entity_id in self.robot_mask or sensor.entity_id in self.ignored_windows:
+            return False
+        if sensor.role in CONTACT_ROLES:
+            if not profile.contacts_enabled:
+                return False
+        elif sensor.role in INTERIOR_ROLES:
+            if profile.motion_mode == "ignore":
+                return False
+        else:
+            return False
+        if profile.room_ids is not None and sensor.room_id not in profile.room_ids:
+            return False
+        if profile.sensor_ids is not None and sensor.entity_id not in profile.sensor_ids:
+            window = next(
+                (w for w in self.config.windows.values() if w.sensor_id == sensor.entity_id), None
+            )
+            if not window or not set(window.position_inputs).intersection(profile.sensor_ids):
+                return False
+        return bool(sensor.room_id in self.config.rooms)
+
+    def _automatic_prerequisite(self, rule):
+        settings = self.config.automatic_detection
+        return bool(
+            settings
+            and self.profile
+            and self.profile.automatic_detection
+            and self.config.stage_rank(rule.stage_id)
+            > self.config.stage_rank(settings.next_stage_id)
+            and not (len(rule.conditions) == 1 and rule.conditions[0].event == "override")
+        )
+
+    def _detected_contexts(self, now):
+        contexts = {}
+        for room, state in self.automatic_states.items():
+            at, deadline = state.get("promoted_at"), state.get("next_decay")
+            if (
+                type(at) not in (int, float)
+                or not math.isfinite(at)
+                or at > now
+                or state.get("grade") != 3
+                or type(deadline) not in (int, float)
+                or not math.isfinite(deadline)
+                or not now < deadline
+            ):
+                continue
+            chain = state.get("chain", [])
+            if not chain or any(
+                item["entity_id"] not in self.sensors
+                or not self._automatic_included(self.sensors[item["entity_id"]])
+                or self.raw.get(item["entity_id"]) is None
+                or item["entity_id"] in self.quarantine
+                for item in chain
+            ):
+                continue
+            for source_room in {room} | {item["room_id"] for item in chain}:
+                contexts[source_room] = min(at, contexts.get(source_room, at))
+        return contexts
+
+    def _match_active_rule(self, rule, now):
+        arguments = (
+            self.config,
+            rule,
+            self.rule_sensors,
+            self.raw,
+            list(self.evidence),
+            self.quarantine,
+            now,
+            self.rule_confirmations,
+        )
+        if not self._automatic_prerequisite(rule):
+            return match_with_memory(*arguments, debouncing=self.debouncing)
+        budget = [5000]
+        for room, at in self._detected_contexts(now).items():
+            match = match_with_memory(
+                *arguments, debouncing=self.debouncing, required_room_id=room, search_budget=budget
+            )
+            if match and any(item.timestamp >= at for item in match.chain):
+                return match
+        return None
 
     def target(self, rule: str) -> str:
         if self.config.rules is not None:
@@ -245,7 +373,12 @@ class CorrelationEngine:
         for key in mask:
             self.debouncing.pop(key, None)
             self.last_active.pop(key, None)
-        for values in (self.rule_pending, self.rule_confirmations, self.rule_grades):
+        for values in (
+            self.rule_pending,
+            self.rule_confirmations,
+            self.rule_grades,
+            self.automatic_states,
+        ):
             for key, record in list(values.items()):
                 if any(item.get("entity_id") in mask for item in record.get("chain", [])):
                     del values[key]
@@ -384,6 +517,7 @@ class CorrelationEngine:
         self.rule_pending.clear()
         self.rule_confirmations.clear()
         self.rule_grades.clear()
+        self.automatic_states.clear()
         self.rule_matches = []
         self._discard_excluded_evidence()
         if profile_id is None:
@@ -461,9 +595,10 @@ class CorrelationEngine:
         if not sensor.enabled or profile is None:
             return False
         if self.config.rules is not None:
-            return any(
+            return self._automatic_included(sensor) or any(
                 accepts(rule, condition, sensor)
                 for rule in self.active_rules()
+                if rule.id not in (AUTO_RULE, DETECTED_RULE)
                 for condition in rule.conditions
             )
         if sensor.role in PERIMETER_ROLES and not profile.perimeter_enabled:
@@ -809,6 +944,8 @@ class CorrelationEngine:
             Level.BREACH: "contact_motion",
         }.get(level)
         stage_id = stage_id or (self.target(rule) if rule else self.baseline_stage_id)
+        if not self.stage_allowed(stage_id):
+            return
         if (self.latched and self.config.stage_rank(stage_id) <= self.level) or (
             self.severity == level and self.stage_id == stage_id
         ):
@@ -912,6 +1049,11 @@ class CorrelationEngine:
         self._set_level(severity, now, reason, chain, rule)
 
     def _recompute_rules(self, now: float) -> None:
+        if self.held_alarm and not self.stage_allowed(self.held_alarm["stage_id"]):
+            self.held_alarm = None
+            self.latched = False
+        if not self.stage_allowed(self.stage_id):
+            self.latched = False
         rules = self.active_rules() if self.arming_until is None else []
         active_ids = {rule.id for rule in rules}
         self.rule_confirmations = {
@@ -925,6 +1067,8 @@ class CorrelationEngine:
         for key in set(self.rule_pending) - active_ids:
             del self.rule_pending[key]
         for rule in rules:
+            if rule.id in (AUTO_RULE, DETECTED_RULE):
+                continue
             waiting = self.rule_pending.get(rule.id)
             if waiting:
                 chain = [Evidence(**value) for value in waiting["chain"]]
@@ -967,17 +1111,7 @@ class CorrelationEngine:
                     )
                     del self.rule_pending[rule.id]
                     continue
-            match = match_with_memory(
-                self.config,
-                rule,
-                self.rule_sensors,
-                self.raw,
-                list(self.evidence),
-                self.quarantine,
-                now,
-                self.rule_confirmations,
-                debouncing=self.debouncing,
-            )
+            match = self._match_active_rule(rule, now)
             if not match:
                 continue
             delay = (
@@ -1070,6 +1204,7 @@ class CorrelationEngine:
                         held["rule"], held["stage_id"], [Evidence(**e) for e in held["chain"]], True
                     )
                 )
+        matches.extend(self._recompute_automatic(now) if self.arming_until is None else [])
         self.rule_matches = matches
         baseline_rank = self.config.stage_rank(self.baseline_stage_id)
         eligible = (
@@ -1091,7 +1226,7 @@ class CorrelationEngine:
             self._set_level(
                 level,
                 now,
-                f"{self.config.rules[winner.rule_id].name}: "
+                f"{self.rule_definition(winner.rule_id).name}: "
                 + " → ".join(e.name for e in winner.chain),
                 winner.chain,
                 winner.rule_id,
@@ -1156,6 +1291,137 @@ class CorrelationEngine:
         self._recompute(now)
         return activity_changed
 
+    def _recompute_automatic(self, now: float) -> list[RuleMatch]:
+        settings = self.config.automatic_detection
+        if not settings or not self.profile or not self.profile.automatic_detection:
+            self.automatic_states.clear()
+            return []
+        sensors = {
+            key: sensor
+            for key, sensor in self.rule_sensors.items()
+            if self._automatic_included(sensor)
+            and self.raw.get(key) is not None
+            and key not in self.quarantine
+        }
+        evidence = [item for item in self.evidence if item.entity_id in sensors]
+        rule = self.automatic_rules[AUTO_RULE]
+        if self.profile.motion_mode == "after_contact":
+            contacts = [item for item in evidence if item.role in (Role.ENTRY, Role.GLASS)]
+            doors = {frozenset(pair) for pair in self.config.room_connections}
+            evidence = [
+                item
+                for item in evidence
+                if item.role not in INTERIOR_ROLES
+                or any(
+                    contact.timestamp <= item.timestamp
+                    and item.timestamp - contact.timestamp < rule.window_seconds
+                    and (
+                        contact.room_id == item.room_id
+                        or frozenset((contact.room_id, item.room_id)) in doors
+                    )
+                    for contact in contacts
+                )
+            ]
+        context = {
+            "profile": self.evaluation_profile_id,
+            "revision": self.config.revision,
+            "settings": asdict(settings),
+            "connections": [list(pair) for pair in self.config.room_connections],
+        }
+        matches, states = [], {}
+        confirmed_proofs = set()
+        for room_id in self.config.rooms:
+            if room_id not in self.automatic_states and not any(
+                item.room_id == room_id for item in evidence
+            ):
+                continue
+            scope = {room_id} | {
+                other for pair in self.config.room_connections if room_id in pair for other in pair
+            }
+            scoped = {key: sensor for key, sensor in sensors.items() if sensor.room_id in scope}
+            previous = self.automatic_states.get(room_id)
+            if previous and previous.get("context") != context:
+                previous = None
+            state, match = advance_detection(
+                self.config,
+                settings,
+                room_id,
+                scoped,
+                self.raw,
+                [item for item in evidence if item.entity_id in scoped],
+                self.quarantine,
+                now,
+                previous,
+                self.debouncing,
+                rule=rule,
+            )
+            state["context"] = context
+            states[room_id] = state
+            if match:
+                matches.append(match)
+                if state["grade"] == 3 and (not previous or previous.get("grade") != 3):
+                    proof_id = tuple(
+                        sorted((item.source_id, item.timestamp) for item in match.chain)
+                    )
+                    if proof_id in confirmed_proofs:
+                        continue
+                    confirmed_proofs.add(proof_id)
+                    self._log(
+                        now,
+                        "rule_confirmation",
+                        f"{self.config.rooms[room_id].name}: Bestätigungsgrad 3/3",
+                        match.chain,
+                        stage_id=settings.stage_id,
+                        confirmed=False,
+                    )
+        self.automatic_states = states
+        return matches
+
+    def _room_rule_matches(self, room_id: str, now: float) -> list[RuleMatch]:
+        """Resolve every admitted rule locally without changing its global proof or timers."""
+        local = [
+            match
+            for match in self.rule_matches
+            if (
+                match.room_id == room_id
+                if match.room_id is not None
+                else any(room_id in spaces(self.sensors[e.entity_id]) for e in match.chain)
+            )
+        ]
+        resolved = {match.rule_id for match in local}
+        sensors = self.rule_sensors
+        evidence = list(self.evidence)
+        budget = [5000]
+        for match in self.rule_matches:
+            if match.rule_id in resolved:
+                continue
+            resolved.add(match.rule_id)
+            if match.rule_id in (AUTO_RULE, DETECTED_RULE):
+                continue
+            rule = self.config.rules[match.rule_id]
+            found = match_with_memory(
+                self.config,
+                rule,
+                sensors,
+                self.raw,
+                evidence,
+                self.quarantine,
+                now,
+                self.rule_confirmations,
+                debouncing=self.debouncing,
+                required_room_id=room_id,
+                search_budget=budget,
+            )
+            if found:
+                if self._automatic_prerequisite(rule) and not any(
+                    any(room in spaces(self.sensors[item.entity_id]) for item in found.chain)
+                    and any(item.timestamp >= at for item in found.chain)
+                    for room, at in self._detected_contexts(now).items()
+                ):
+                    continue
+                local.append(found)
+        return local
+
     def room_status(self, room_id: str, now: float) -> dict[str, Any]:
         valid = [e for e in self.evidence if self._fresh(e, now)]
         contacts = any(
@@ -1199,11 +1465,7 @@ class CorrelationEngine:
             if present:
                 ranks.append(self.config.stage_rank(self.target(rule)))
         if self.config.rules is not None:
-            local = [
-                m
-                for m in self.rule_matches
-                if any(room_id in spaces(self.sensors[e.entity_id]) for e in m.chain)
-            ]
+            local = self._room_rule_matches(room_id, now)
             breach = any(m.confirmed for m in local)
             ranks = [self.config.stage_rank(self.baseline_stage_id)] + [
                 self.config.stage_rank(m.stage_id) for m in local
@@ -1214,6 +1476,7 @@ class CorrelationEngine:
             )
             perimeter = any(any(e.role in PERIMETER_ROLES for e in m.chain) for m in local)
         return {
+            "detection": self._automatic_progress(room_id),
             "level": max(ranks)
             if self.config.rules is not None
             else self.level
@@ -1259,9 +1522,34 @@ class CorrelationEngine:
             ],
         }
 
+    def _automatic_progress(self, room_id):
+        state = self.automatic_states.get(room_id)
+        if not state or not state.get("grade") or not self.config.automatic_detection:
+            return None
+        settings = self.config.automatic_detection
+        return {
+            "rule_id": f"{AUTO_RULE}:{room_id}",
+            "name": f"Automatische Erkennung · {self.config.rooms[room_id].name}",
+            "room_id": room_id,
+            "stage_id": settings.stage_id,
+            "detected_at": state.get("promoted_at"),
+            "current": state["grade"],
+            "target": 3,
+            "complete": state["grade"] == 3,
+            "remembered": False,
+            "next_decay": state["next_decay"],
+            "until": None,
+            "sources": state["chain"],
+            "next_level_at": state["full"]["since"] + settings.promote_seconds
+            if not settings.test_mode and state.get("full") and state.get("promoted_at") is None
+            else None,
+        }
+
     def _rule_progress(self, now: float) -> list[dict]:
         progress = {}
         for match in self.rule_matches:
+            if match.rule_id in (AUTO_RULE, DETECTED_RULE):
+                continue
             rule = (self.config.rules or {}).get(match.rule_id)
             if rule is None or rule.confirmation_target is None:
                 continue
@@ -1300,7 +1588,11 @@ class CorrelationEngine:
                 "until": record["until"] if memory else None,
                 "sources": [asdict(e) for e in proof.chain] if proof else [],
             }
-        return list(progress.values())
+        return list(progress.values()) + [
+            progress
+            for room in self.automatic_states
+            if (progress := self._automatic_progress(room)) is not None
+        ]
 
     def snapshot(self, now: float) -> dict:
         return {
@@ -1337,7 +1629,7 @@ class CorrelationEngine:
             "rooms": {r: self.room_status(r, now) for r in self.config.rooms},
             "events": [e.to_dict() for e in list(self.events)[:50]],
             "breach_chain": [asdict(e) for e in self.breach_chain],
-            "matched_rules": [m.rule_id for m in self.rule_matches],
+            "matched_rules": list(dict.fromkeys(m.rule_id for m in self.rule_matches)),
             "rule_progress": self._rule_progress(now),
         }
 
@@ -1366,6 +1658,7 @@ class CorrelationEngine:
             "rule_pending": self.rule_pending,
             "rule_confirmations": self.rule_confirmations,
             "rule_grades": self.rule_grades,
+            "automatic_states": self.automatic_states,
             "robot_suppressed": sorted(self.robot_mask),
             "ignored_windows": self.ignored_windows.copy(),
             "robot_recovering": sorted(
@@ -1378,6 +1671,16 @@ class CorrelationEngine:
     def restore(self, data: dict, now: float) -> None:
         """Restore evidence only within its original window; never replay actions."""
         self.profile_id = data.get("profile_id")
+        self.automatic_states = (
+            data.get("automatic_states", {})
+            if isinstance(data.get("automatic_states", {}), dict)
+            else {}
+        )
+        self.automatic_states = {
+            key: value
+            for key, value in self.automatic_states.items()
+            if key in self.config.rooms and isinstance(value, dict)
+        }
         if "profile_id" not in data and data.get("mode", "disarmed").startswith("armed_"):
             self.profile_id = data["mode"]
         if self.profile_id is not None and self.profile_id not in self.config.profiles:

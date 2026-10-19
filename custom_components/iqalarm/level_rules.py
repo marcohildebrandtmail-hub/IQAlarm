@@ -168,6 +168,7 @@ class RuleMatch:
     stage_id: str
     chain: list["Evidence"]
     confirmed: bool
+    room_id: str | None = None
 
 
 def match_rule(
@@ -182,6 +183,7 @@ def match_rule(
     proof_only: bool = False,
     debouncing: dict | None = None,
     search_budget: list[int] | None = None,
+    required_room_id: str | None = None,
 ) -> RuleMatch | None:
     """Match each slot to a distinct physical source with one coherent spatial chain.
 
@@ -262,10 +264,22 @@ def match_rule(
                     sensor.name or key,
                 )
             candidates.append(item)
-        candidates.sort(key=lambda e: (e.timestamp, e.entity_id), reverse=True)
+        candidates.sort(
+            key=lambda e: (
+                required_room_id in spaces(sensors[e.entity_id]),
+                e.timestamp,
+                e.entity_id,
+            ),
+            reverse=True,
+        )
         if len({e.source_id for e in candidates}) < condition.count:
             return None
         groups.append(candidates)
+
+    if required_room_id is not None and not any(
+        required_room_id in spaces(sensors[e.entity_id]) for group in groups for e in group
+    ):
+        return None
 
     # Slot order follows the condition order; repetitions within a condition are unordered.
     slots = [
@@ -278,6 +292,10 @@ def match_rule(
 
     def search(index, chain, used, anchors, previous_time):
         if index == len(slots):
+            if required_room_id is not None and not any(
+                required_room_id in spaces(sensors[e.entity_id]) for e in chain
+            ):
+                return None
             if confirmed:
                 roles = {e.role for e in chain}
                 if any(c.event in ("unavailable", "flapping") for c in rule.conditions):

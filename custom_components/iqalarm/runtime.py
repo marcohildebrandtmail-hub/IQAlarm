@@ -342,6 +342,11 @@ class IQAlarmRuntime:
                 (key, value.get("grade"), value.get("next_decay"))
                 for key, value in self.engine.rule_grades.items()
             )
+        ) + tuple(
+            sorted(
+                (key, value.get("grade"), value.get("next_decay"), value.get("promoted_at"))
+                for key, value in self.engine.automatic_states.items()
+            )
         )
 
     def _activity_stamp(self):
@@ -621,6 +626,8 @@ class IQAlarmRuntime:
     ) -> list[dict]:
         if stage != "diagnostic" and stage not in {value.id for value in self.config.stages}:
             raise ValueError("Ungültige Teststufe")
+        if stage != "diagnostic" and not self.engine.stage_allowed(stage):
+            raise ValueError("Diese Stufe ist im LVL-3-Testbetrieb deaktiviert")
         if profile_id is not None and profile_id not in self.config.profiles:
             raise ValueError("Unbekanntes Alarmprofil")
         profile_id = profile_id or self.engine.evaluation_profile_id

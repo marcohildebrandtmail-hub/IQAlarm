@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass, field, fields
 from typing import Any
 from uuid import uuid4
 
+from .automatic_detection import AUTO_RULE, DETECTED_RULE, AutomaticDetection
 from .const import (
     ALLOWED_SENSOR_DOMAINS,
     ARMED_MODES,
@@ -387,6 +388,7 @@ class Profile:
     action_ids: list[str] | None = None
     confirmation_paths: list[list[str]] = field(default_factory=list)
     rule_ids: list[str] | None = None
+    automatic_detection: bool = True
 
     def __post_init__(self) -> None:
         for key in ("perimeter_seconds", "correlation_seconds"):
@@ -403,6 +405,7 @@ class Profile:
             "contacts_enabled",
             "reactions_enabled",
             "simulation_enabled",
+            "automatic_detection",
         ):
             if type(getattr(self, key)) is not bool:
                 raise ValueError(f"{key} muss boolesch sein")
@@ -741,6 +744,7 @@ class Configuration:
     rules: dict[str, LevelRule] | None = field(default_factory=default_rules)
     room_connections: list[list[str]] = field(default_factory=list)
     robots: dict[str, RobotConfig] = field(default_factory=dict)
+    automatic_detection: AutomaticDetection | None = None
 
     def all_sensors(self) -> dict[str, SensorConfig]:
         return self.sensors | {
@@ -794,6 +798,27 @@ class Configuration:
         }
 
     def validate(self) -> None:
+        if self.automatic_detection is not None:
+            detection = self.automatic_detection
+            if not isinstance(detection, AutomaticDetection) or self.rules is None:
+                raise ValueError("Ungültige automatische Erkennung")
+            self.stage(detection.stage_id)
+            self.stage(detection.next_stage_id)
+            start, target = (
+                self.stage_rank(detection.stage_id),
+                self.stage_rank(detection.next_stage_id),
+            )
+            if start <= self.stage_rank(self.secure_stage_id) or target != start + 1:
+                raise ValueError(
+                    "Automatische Erkennung benötigt zwei aufeinanderfolgende Stufen oberhalb Sicher"
+                )
+            if (
+                self.stage(detection.stage_id).requires_confirmation
+                or self.stage(detection.next_stage_id).requires_confirmation
+            ):
+                raise ValueError("Automatische Erkennung darf keine Vollalarmstufe verwenden")
+            if {AUTO_RULE, DETECTED_RULE}.intersection(self.rules):
+                raise ValueError("Regel-ID ist für automatische Erkennung reserviert")
         if not isinstance(self.robots, dict) or len(self.robots) > 100:
             raise ValueError("Maximal 100 Roboter-Ausnahmen erlaubt")
         for key, robot in self.robots.items():
@@ -1093,6 +1118,9 @@ class Configuration:
             robots={
                 key: construct(RobotConfig, value) for key, value in data.get("robots", {}).items()
             },
+            automatic_detection=construct(AutomaticDetection, data["automatic_detection"])
+            if data.get("automatic_detection") is not None
+            else None,
             rules={key: construct(LevelRule, value) for key, value in data["rules"].items()}
             if data.get("rules") is not None
             else None,

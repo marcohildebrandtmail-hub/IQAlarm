@@ -102,6 +102,102 @@ def test_same_physical_device_never_counts_twice(free):
     assert free.level == 1
 
 
+def parallel_room_rule(engine, *, count=1, stage_id="2", delay_seconds=0):
+    engine.sensors["binary_sensor.outside_motion"].front_of = ["hall"]
+    key = "binary_sensor.hall_person"
+    engine.config.sensors[key] = SensorConfig(key, "perimeter_camera", front_of=["hall"])
+    engine.seed(key, False)
+    return custom(
+        engine,
+        stage_id=stage_id,
+        conditions=[
+            RuleCondition(
+                sensor_ids=[
+                    "binary_sensor.terrace",
+                    "binary_sensor.person2",
+                    "binary_sensor.outside_motion",
+                    key,
+                ],
+                count=count,
+            )
+        ],
+        window_seconds=30,
+        delay_seconds=delay_seconds,
+    )
+
+
+def test_one_rule_reports_simultaneous_outdoor_activity_in_both_rooms(free):
+    parallel_room_rule(free)
+    free.set_profile("armed_away", 100)
+    free.feed("binary_sensor.terrace", True, 101)
+    free.feed("binary_sensor.terrace", False, 102)
+    free.feed("binary_sensor.outside_motion", True, 105)
+    free.feed("binary_sensor.outside_motion", False, 106)
+    before = deepcopy(free.persistent_state())
+    snapshot = free.snapshot(110)
+    for room in ("living", "hall"):
+        assert snapshot["rooms"][room]["level"] == 2
+        assert snapshot["rooms"][room]["perimeter"]
+    assert snapshot["rooms"]["bed"]["level"] == 1
+    assert snapshot["matched_rules"] == ["custom"]
+    assert len(free.rule_matches[0].chain) == 1
+    assert free.persistent_state() == before
+    # Each room expires on its own evidence; the older room cannot borrow the newer event.
+    free.tick(131)
+    assert free.room_status("living", 131)["level"] == 1
+    assert free.room_status("hall", 131)["level"] == 2
+    free.tick(135)
+    assert free.room_status("hall", 135)["level"] == 1
+
+
+@pytest.mark.parametrize("stage_id", ["2", "5"])
+def test_parallel_room_proofs_still_require_each_rooms_independent_sources(free, stage_id):
+    parallel_room_rule(free, count=2, stage_id=stage_id)
+    free.set_profile("armed_away", 100)
+    free.feed("binary_sensor.terrace", True, 101)
+    free.feed("binary_sensor.outside_motion", True, 102)
+    assert free.level == 1  # Two unrelated rooms do not confirm each other.
+    free.feed("binary_sensor.person2", True, 103)
+    assert free.room_status("living", 103)["level"] == int(stage_id)
+    assert free.room_status("hall", 103)["level"] == 1
+    free.feed("binary_sensor.hall_person", True, 104)
+    before = deepcopy(free.persistent_state())
+    for room in ("living", "hall"):
+        status = free.room_status(room, 104)
+        assert status["level"] == int(stage_id)
+        assert status["confirmed"] == (stage_id == "5")
+    assert free.room_status("bed", 104)["level"] == 1
+    assert len(free.rule_matches[0].chain) == 2
+    assert free.persistent_state() == before
+
+
+def test_parallel_room_display_does_not_bypass_a_pending_rule_delay(free):
+    parallel_room_rule(free, delay_seconds=10)
+    free.set_profile("armed_away", 100)
+    free.feed("binary_sensor.terrace", True, 101)
+    free.feed("binary_sensor.outside_motion", True, 105)
+    before = deepcopy(free.persistent_state())
+    for room in ("living", "hall"):
+        assert free.room_status(room, 105)["level"] == 1
+    assert free.persistent_state() == before
+    free.tick(111)
+    for room in ("living", "hall"):
+        assert free.room_status(room, 111)["level"] == 2
+
+
+def test_parallel_room_display_respects_rule_and_sensor_exclusions(free):
+    rule = parallel_room_rule(free)
+    rule.conditions[0].sensor_ids.remove("binary_sensor.outside_motion")
+    free.set_profile("armed_away", 100)
+    free.feed("binary_sensor.terrace", True, 101)
+    free.feed("binary_sensor.outside_motion", True, 102)
+    assert free.room_status("living", 102)["level"] == 2
+    assert free.room_status("hall", 102)["level"] == 1
+    free.sensors["binary_sensor.person2"].enabled = False
+    free.feed("binary_sensor.person2", True, 103)
+    assert free.room_status("hall", 103)["level"] == 1
+
+
 def test_window_and_unrelated_motion_never_confirm(free):
     free.set_profile("armed_night", 100)
     free.feed("binary_sensor.window", True, 101)

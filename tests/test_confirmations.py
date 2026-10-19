@@ -83,6 +83,40 @@ def test_only_a_new_related_opening_inside_memory_reaches_full_alarm(graded):
     assert [e.timestamp for e in graded.breach_chain] == [101, 102, 103, 201]
 
 
+def test_saved_camera_confirmation_does_not_hide_a_different_rooms_current_activity(graded):
+    key = "binary_sensor.hall_camera"
+    graded.config.sensors[key] = SensorConfig(key, "perimeter_camera", front_of=["hall"])
+    graded.seed(key, False)
+    graded.config.rules["outside"].conditions[0].sensor_ids.append(key)
+    complete(graded)
+    graded.feed(key, True, 110)
+    graded.feed(key, False, 111)
+    before = deepcopy(graded.persistent_state())
+    for room in ("living", "hall"):
+        assert graded.room_status(room, 115)["level"] == 2
+    assert graded.room_status("bed", 115)["level"] == 1
+    assert graded.persistent_state() == before
+    graded.tick(140)
+    # The saved camera proof belongs to living, never to the now quiet hall.
+    assert graded.room_status("living", 140)["level"] == 2
+    assert graded.room_status("hall", 140)["level"] == 1
+    assert graded.rule_confirmations["outside"]["until"] == 283
+
+
+def test_room_display_cannot_use_another_rooms_memory_to_confirm_an_unrelated_opening(graded):
+    key = "binary_sensor.hall_window"
+    graded.config.sensors[key] = SensorConfig(key, "entry_contact", "hall")
+    graded.seed(key, False)
+    complete(graded)
+    graded.feed("binary_sensor.window", True, 110)
+    graded.feed(key, True, 111)
+    before = deepcopy(graded.persistent_state())
+    assert graded.room_status("living", 111)["confirmed"]
+    assert not graded.room_status("hall", 111)["confirmed"]
+    assert graded.room_status("hall", 111)["level"] == 1
+    assert graded.persistent_state() == before
+
+
 @pytest.mark.parametrize(
     "scenario",
     [

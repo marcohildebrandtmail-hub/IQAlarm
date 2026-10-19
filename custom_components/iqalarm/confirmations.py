@@ -4,7 +4,7 @@ import hashlib
 import json
 from dataclasses import asdict, replace
 
-from .level_rules import RuleCondition, RuleMatch, match_rule
+from .level_rules import RuleCondition, RuleMatch, match_rule, spaces
 
 
 def grade_match(
@@ -19,6 +19,7 @@ def grade_match(
     *,
     proof_only=False,
     maximum_sources=None,
+    required_room_id=None,
 ):
     """Find the largest coherent proof up to the configured target, without side effects."""
     target = rule.confirmation_sources
@@ -66,6 +67,7 @@ def grade_match(
                 proof_only=True,
                 debouncing=debouncing,
                 search_budget=budget,
+                required_room_id=required_room_id,
             )
             if found:
                 return found
@@ -126,6 +128,8 @@ def match_with_memory(
     *,
     proof_only=False,
     debouncing=None,
+    required_room_id=None,
+    search_budget=None,
 ):
     """Require stored confirmation plus a new, independent, spatially related signal."""
     parent = config.rules.get(rule.prerequisite_rule_id) if rule.prerequisite_rule_id else None
@@ -142,9 +146,18 @@ def match_with_memory(
             now,
             proof_only=proof_only,
             debouncing=debouncing,
+            required_room_id=required_room_id,
+            search_budget=search_budget,
         )
         memory = valid_memory(config, rule, memories.get(rule.id), sensors, quarantine, now)
-        if memory and (proof_only or all(raw.get(e.entity_id) is not None for e in memory.chain)):
+        if (
+            memory
+            and (proof_only or all(raw.get(e.entity_id) is not None for e in memory.chain))
+            and (
+                required_room_id is None
+                or any(required_room_id in spaces(sensors[e.entity_id]) for e in memory.chain)
+            )
+        ):
             return memory
         return direct
     record = memories.get(parent.id)
@@ -188,6 +201,8 @@ def match_with_memory(
         now,
         proof_only=proof_only,
         debouncing=debouncing,
+        required_room_id=required_room_id,
+        search_budget=search_budget,
     )
     if not found:
         return None

@@ -5,7 +5,19 @@ from dataclasses import asdict
 from .confirmations import grade_match, memory_signature
 
 
-def advance_grade(config, rule, sensors, raw, evidence, quarantine, now, previous, debouncing):
+def advance_grade(
+    config,
+    rule,
+    sensors,
+    raw,
+    evidence,
+    quarantine,
+    now,
+    previous,
+    debouncing,
+    *,
+    required_room_id=None,
+):
     """Count independent sources once; expired steps require a genuine new edge to rise."""
     from .models import Evidence
 
@@ -34,6 +46,7 @@ def advance_grade(config, rule, sensors, raw, evidence, quarantine, now, previou
             now,
             debouncing,
             maximum_sources=cap,
+            required_room_id=required_room_id,
         )
 
     proof = best(chain)

@@ -23,6 +23,20 @@ Innenbewegung allein erzeugt auch auf Stufe 4 keinen Vollalarm. Im Nachtprofil b
 
 Der **Normalzustand bei aktivem Profil** ist separat wählbar (standardmäßig Stufe 1). Beim Rückfall werden eigene Alarmausgänge abgeschaltet. Stufe 0 und der aktive Normalzustand bleiben lautlos. Auslöser auf Stufe 0 sind deaktiviert. Alte Vier-Stufen-Konfigurationen behalten ihren bisherigen Normalzustand und ihre Aktionskennungen.
 
+### Automatische Erkennung in LVL 3
+
+Unter **Level-Konfiguration → LVL 3 → Automatik aktivieren** übernimmt die automatische Auswertung die bisher manuell definierten Auslöser von LVL 3 und den Übergang zu LVL 4. Bestehende Konfigurationen bleiben bis zu diesem Speichern unverändert. Namen, Farben und feste Stufenkennungen bleiben erhalten.
+
+Der Regler **Bestätigungsschwelle** bestimmt die benötigten unabhängigen Geräte: bei Stellung 1 gelten die Schwellen 1, 2 und 3 für die drei Bestätigungsgrade; bei Stellung 2 sind es 2, 3 und 4. Weitere Stellungen verschieben alle drei Schwellen entsprechend. Die Vorschau nennt die konkreten Sensorentitäten und die Anzahl unabhängiger Quellen eines Raums einschließlich seiner direkten Türen / Raumverbindungen. Fehlende Quellen werden nicht künstlich ergänzt. Fenstergruppen zählen über ihr physisches Gerät einmal.
+
+Jeder Raum hat einen eigenen Bestätigungsgrad. Ein Zusammenhang umfasst den Raum und seine direkten eingezeichneten Verbindungen; eine Kette über weitere Räume wird nicht automatisch freigegeben. Ohne neue passende Meldung fällt der Grad nach der **Ruhezeit** einen Schritt zurück. Alte bereits verarbeitete Meldungen erhöhen ihn beim nächsten Timerlauf nicht wieder.
+
+Bei **3/3** führt eine weitere neue passende Meldung oder die eingestellte **Verweildauer** zu LVL 4. Eine neue Aktivierung eines bereits beteiligten Geräts kann diesen zusätzlichen Trigger liefern; ein unverändert aktiver Zustand nicht. Wird 3/3 vor dem Ablauf durch Ruhe zurückgestuft, startet die Verweildauer erst beim erneuten Erreichen von 3/3. Bei gleicher Ruhe- und Verweildauer hat der Übergang zu LVL 4 Vorrang. LVL 4 ist dadurch kein Vollalarm und gibt keine Sirenen frei. Die weitere Gestaltung von LVL 4 ist davon getrennt.
+
+Normale bestehende Regeln oberhalb von LVL 4 benötigen bei aktiver Automatik zuerst eine gültige LVL-4-Erkennung im passenden Raumzusammenhang sowie eine zeitlich passende Meldung ab dieser Erkennung. Sie können LVL 3 dadurch nicht überspringen. Ihre eigenen Bedingungen, Bestätigungsvoraussetzungen und Verzögerungen gelten zusätzlich. Ausdrücklich freigegebene Gefahrensensoren behalten ihren unmittelbaren Override; bereits gehaltene Vollalarme bleiben erhalten.
+
+Unter **Profile & System → Sensorfreigaben für automatische Erkennung** stehen die Freigabe je Alarmmodus, Öffnungssensoren, Innenbewegung und optionale Raum-/Sensoreinschränkungen. Die Nacht-Freigabe „Erst nach einer passenden Öffnung“ gilt zeitlich und räumlich. Technische Ausfälle, Prellen, Informationssignale, ignorierte Fenster, Roboter-Ausnahmen und mehrere Entitäten desselben Geräts liefern keine zusätzliche unabhängige Bestätigung. Aktionen je Modus bleiben im eigenen Abschnitt. Neustarts behalten nur gültige Zähler und ihren ursprünglichen Ablaufzeitpunkt.
+
 ### Freie Auslöser und Bestätigung ab 2.6.0
 
 Unter **Level-Konfiguration → Stufe → Regel hinzufügen** wählst du konkrete, zuvor zugewiesene Sensoren oder ganze Sensorgruppen. Eine Bedingung legt die Meldungsart und die Mindestzahl unabhängiger Quellen fest. Mehrere Bedingungen gelten gemeinsam; optional müssen sie in der angegebenen Reihenfolge eintreffen. Das Bestätigungsfenster gilt ab der ersten frischen Meldung. Eine zusätzliche Verzögerung nach erfüllter Regel ist separat einstellbar, bei Bedarf nur für Sensoren mit erlaubter Eingangsverzögerung.

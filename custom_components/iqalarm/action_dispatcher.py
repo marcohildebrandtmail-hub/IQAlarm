@@ -158,6 +158,8 @@ class ActionDispatcher:
         self, event: EventLog, generation: int, dry_run: bool = False, stage: str | None = None
     ) -> list[dict]:
         stage = stage or ("diagnostic" if event.kind == "quarantined_flapping" else event.stage_id)
+        if stage != "diagnostic" and not self.runtime.engine.stage_allowed(stage):
+            return []
         profile = self.runtime.config.profiles.get(event.profile_id)
         actions = [
             a
