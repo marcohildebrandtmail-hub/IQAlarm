@@ -30,16 +30,19 @@ test("missing connections and missing locks remain explicit",()=>{
   assert.equal(setup({available:true,position:"closed"},null)._windowLabel("w"),"Geschlossen | Nicht zugeordnet");
   assert.equal(setup({available:true,position:"unknown",label:"Stellung nicht eindeutig",lock_state:"locked"})._windowLabel("w"),"Stellung nicht eindeutig | Verriegelt");
 });
-test("a window ignored for this arming session keeps that label in every physical state",()=>{
+test("an ignored window retains its actual position beside a separate ignore marker",()=>{
   const panel=setup({available:true,position:"tilted",lock_state:"unlocked"});
   panel.data.status.active=true;panel.data.status.ignored_windows=["binary_sensor.iqalarm_window_w"];
   const sensor={entity_id:"binary_sensor.iqalarm_window_w",window_id:"w",enabled:true};
   for(const position of ["open","tilted","closed"]){
     panel.data.windows.w.position=position;
-    assert.equal(panel._sensorLabel(sensor,true),"Ignoriert");
+    assert.equal(panel._sensorLabel(sensor,true),`${{open:"Offen",tilted:"Gekippt",closed:"Geschlossen"}[position]} | Entriegelt`);
+    assert.match(panel._sensorIgnoredMarker(sensor),/class="sensor-ignored"/);
+    assert.doesNotMatch(panel._sensorIgnoredMarker(sensor),/ hidden/);
   }
   panel.data.status.ignored_windows=[];
   assert.equal(panel._sensorLabel(sensor,true),"Geschlossen | Entriegelt");
+  assert.match(panel._sensorIgnoredMarker(sensor),/ hidden/);
 });
 test("related actor stays under its window and never replaces a required input",()=>{
   const panel=setup({position:"closed",available:true,lock_state:"locked",inputs:{"lock.grip":"locked"}});

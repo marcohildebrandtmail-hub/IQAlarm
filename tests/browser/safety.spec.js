@@ -33,27 +33,30 @@ test("known-open windows stay ignored for the arming session and inactive rooms 
   data.config.settings.block_open_on_arm=true;data.config.settings.block_unavailable_on_arm=true;
   data.config.profiles.ventilation={...data.config.profiles.armed_away,name:"Fenster-Test",sensor_ids:[open,closed],room_ids:["ventilation"],rule_ids:null,reactions_enabled:true,exit_seconds:0,entry_seconds:0};
   const configured=await save(page,data.config),baseline=configured.config.stages.findIndex(stage=>stage.id===configured.config.secure_stage_id);
-  const card=page.locator('[data-live-key="room-ventilation"]'),label=card.locator(`[data-sensor-state-id="${open}"]`);
+  const card=page.locator('[data-live-key="room-ventilation"]'),label=card.locator(`[data-sensor-state-id="${open}"]`),ignored=card.locator(`[data-sensor-ignored-id="${open}"]`);
   await expect(card.locator(".room-head .pill")).toHaveCount(0);
   await expect(label).toHaveText("Aktiv");
   await page.getByRole("button",{name:"Fenster-Test",exact:true}).click();
-  await expect(label).toHaveText("Ignoriert");
+  await expect(label).toHaveText("Aktiv");
+  await expect(ignored).toBeVisible();
   await expect(card.locator(".room-head .pill")).toBeVisible();
   await expect(page.locator("[data-risk-ring]")).toBeVisible();
   for(const value of ["off","on"]){
     await state(page,open,value,{device_class:"window"});
     await expect.poll(async()=>(await ws(page,"get")).status.raw[open]).toBe(value==="on");
-    await expect(label).toHaveText("Ignoriert");
+    await expect(label).toHaveText(value==="on"?"Aktiv":"Ruhig");
+    await expect(ignored).toBeVisible();
     await expect(label).not.toHaveClass(/\bon\b|recent/);
     expect((await ws(page,"get")).status.level).toBe(baseline);
   }
-  await page.reload();await expect(label).toHaveText("Ignoriert");
+  await page.reload();await expect(ignored).toBeVisible();await expect(label).toHaveText("Aktiv");
   await state(page,closed,"on",{device_class:"window"});
   await expect.poll(async()=>(await ws(page,"get")).status.level).toBeGreaterThan(baseline);
   await expect(card.locator(`[data-sensor-state-id="${closed}"]`)).toHaveText("Aktiv");
   await ws(page,"set_mode",{mode:"inactive",code:"2468"});
   await expect(card.locator(".room-head .pill")).toHaveCount(0);
   await expect(label).toHaveText("Aktiv");
+  await expect(ignored).not.toBeVisible();
   expect((await ws(page,"get")).status.ignored_windows).toEqual([]);
 });
 

@@ -35,6 +35,10 @@ Die höchste erfüllte Regel bestimmt die Stufe. „Sicher“ ergibt sich bei ak
 
 Außenbewegungsmelder erscheinen als **Bewegung erkannt**; Kamerameldungen wie **Person** bleiben getrennt sichtbar. Eine verknüpfte Snapshot-Kamera macht einen Bewegungsmelder nicht zur Kamerameldung. Raumfarben blenden über 1,5 Sekunden zurück, auch wenn die Bestätigungsanzeige gleichzeitig verschwindet. Der reine Farbverlauf bleibt bei reduzierten Animationen erhalten; Pulsieren bleibt dort deaktiviert.
 
+### Statusanzeige ignorierter Fenster und Außen-Sensoren ab 2.11.2
+
+Ignorierte Fenster behalten in den Sensorleisten und Tabellen ihren tatsächlichen physischen Zustand (z. B. **Gekippt | Entriegelt**) und werden durch eine separate **Ignoriert**-Plakette gekennzeichnet, anstatt den gesamten Zustandstext zu überschreiben. In den Regel- und Sensortypen wird der Rollenbegriff einheitlich als **Bewegungsmelder außen** geführt.
+
 ### Bereits offene Fenster beim Scharfschalten ab 2.11.0
 
 Beim Scharfschalten markiert IQAlarm bereits offene oder gekippte, überwachte Fenster automatisch als **Ignoriert**. Dafür gibt es keine zusätzliche Einstelloption und keine Bestätigungsabfrage. Die Ausnahme gilt für die gesamte Scharfschaltung: Schließen, erneutes Öffnen und Neustarts heben sie nicht auf. Erst beim Ausschalten wird sie verworfen. Beim nächsten Einschalten entscheidet wieder die dann vorhandene Fensterstellung.

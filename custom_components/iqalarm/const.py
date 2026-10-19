@@ -4,7 +4,7 @@ from enum import IntEnum, StrEnum
 
 DOMAIN = "iqalarm"
 NAME = "IQAlarm"
-VERSION = "2.11.1"
+VERSION = "2.11.2"
 STORAGE_VERSION = 1
 EVENT_TYPE = "iqalarm_event"
 SIGNAL_UPDATE = "iqalarm_update"

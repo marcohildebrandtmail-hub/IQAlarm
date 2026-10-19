@@ -1,7 +1,7 @@
-import {sensorSymbol, symbolHTML} from "./display-icons.js?v=2.11.1";
+import {sensorSymbol, symbolHTML} from "./display-icons.js?v=2.11.2";
 
 const esc=value=>String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-export const SOURCE_ROLES={perimeter_camera:"Personenerkennung außen",perimeter_sensor:"Bewegung / Sensor außen",entry_contact:"Öffnungskontakte",lock_contact:"Türschlösser",vibration_glass:"Glas / Vibration",interior_motion:"Bewegung innen",interior_mmwave:"Präsenz innen",panic:"Panik",smoke:"Rauch / Gefahr"};
+export const SOURCE_ROLES={perimeter_camera:"Personenerkennung außen",perimeter_sensor:"Bewegungsmelder außen",entry_contact:"Öffnungskontakte",lock_contact:"Türschlösser",vibration_glass:"Glas / Vibration",interior_motion:"Bewegung innen",interior_mmwave:"Präsenz innen",panic:"Panik",smoke:"Rauch / Gefahr"};
 export const RULE_SOURCES_CSS=`
 dialog.rule-editor{width:min(1120px,calc(100vw - 28px));max-width:min(1120px,calc(100vw - 28px))}
 .rule-sources-grid{display:grid;grid-template-columns:minmax(260px,.85fr) minmax(0,1.15fr);gap:20px;margin-top:14px;align-items:start}

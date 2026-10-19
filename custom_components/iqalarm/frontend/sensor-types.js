@@ -7,7 +7,7 @@ export const SENSOR_TYPES={
   motion_change:"Bewegung bei Zustandswechsel (15 s)",
   interior_mmwave:"Präsenz / mmWave",
   perimeter_camera:"Außenkamera · Person",
-  perimeter_sensor:"Vorfeld-Sensor",
+  perimeter_sensor:"Bewegungsmelder außen",
   vibration_glass:"Glas / Vibration",
   panic:"Panik",
   smoke:"Rauch / Gefahr",
