@@ -80,3 +80,46 @@ test("observation hides the correlation caption while showing actual activity", 
   assert.doesNotMatch(result.label,/Bestätigte Korrelation/);
   assert.match(result.label,/Bewegung/);
 });
+
+function perimeter(camera, motion) {
+  const panel=setup({last:0});
+  panel.data.config.sensors["binary_sensor.person"]={entity_id:"binary_sensor.person",name:"Person",role:"perimeter_camera",front_of:["tv"]};
+  panel.data.config.sensors["binary_sensor.outside_motion"]={entity_id:"binary_sensor.outside_motion",name:"Außenbewegung",role:"perimeter_sensor",room_id:"tv",camera_entity_id:"camera.roof"};
+  Object.assign(panel.data.status.raw,{"binary_sensor.person":camera,"binary_sensor.outside_motion":motion});
+  panel.data.status.rooms.tv.persons=["binary_sensor.person","binary_sensor.outside_motion"];
+  return panel;
+}
+
+test("outdoor motion is never presented as a camera even with a linked camera",()=>{
+  const result=display(perimeter(false,true),200);
+  assert.match(result.label,/Bewegung erkannt/);
+  assert.doesNotMatch(result.label,/Kamera aktiv|Person/);
+  assert.equal(result.color,"#f59e0b");
+});
+
+test("camera detection and outdoor motion remain separate simultaneous reports",()=>{
+  const result=display(perimeter(true,true),200);
+  assert.match(result.label,/Person/);assert.match(result.label,/Bewegung erkannt/);
+});
+
+test("a person detection does not invent a motion sensor report",()=>{
+  const result=display(perimeter(true,false),200);
+  assert.match(result.label,/Person/);assert.doesNotMatch(result.label,/Bewegung erkannt/);
+});
+
+test("stale or unavailable perimeter states and isolated sensors do not appear active",()=>{
+  const panel=perimeter(null,false);
+  assert.equal(display(panel,200).color,"#14b8a6");
+  panel.data.status.raw["binary_sensor.outside_motion"]=true;
+  panel.data.config.sensors["binary_sensor.outside_motion"].enabled=false;
+  assert.equal(display(panel,200).color,"#14b8a6");
+});
+
+test("outdoor display settings remain independent of interior motion",()=>{
+  const panel=perimeter(false,true);
+  panel.data.config.settings.floorplan_disarmed_motion=false;
+  assert.match(display(panel,200).label,/Bewegung erkannt/);
+  panel.data.config.settings.floorplan_disarmed_cameras=false;
+  assert.doesNotMatch(display(panel,200).label,/Bewegung erkannt/);
+  assert.equal(display(panel,200).color,"#14b8a6");
+});

@@ -31,6 +31,10 @@ Beispiel: Eine Kamera meldet eine Person und hebt auf die Vorfeld-Stufe. Eine we
 
 Die höchste erfüllte Regel bestimmt die Stufe. „Sicher“ ergibt sich bei aktivem Profil automatisch, wenn keine höhere Regel erfüllt ist. Ein gehaltener bestätigter Alarm bleibt bis zum Entschärfen aktiv; eine höhere bestätigte Stufe kann ihn überlagern. Informationssignale der Fenstergriffe, ausgefallene und quarantänisierte Quellen bestätigen keinen Einbruch. Ein reines Schlossentriegeln mit Innenbewegung ersetzt keine physische Öffnung. Einzelsignale können eine bestätigungspflichtige Stufe nur über einen ausdrücklich freigegebenen Gefahrensensor erreichen.
 
+### Grundriss-Anzeige ab 2.11.1
+
+Außenbewegungsmelder erscheinen als **Bewegung erkannt**; Kamerameldungen wie **Person** bleiben getrennt sichtbar. Eine verknüpfte Snapshot-Kamera macht einen Bewegungsmelder nicht zur Kamerameldung. Raumfarben blenden über 1,5 Sekunden zurück, auch wenn die Bestätigungsanzeige gleichzeitig verschwindet. Der reine Farbverlauf bleibt bei reduzierten Animationen erhalten; Pulsieren bleibt dort deaktiviert.
+
 ### Bereits offene Fenster beim Scharfschalten ab 2.11.0
 
 Beim Scharfschalten markiert IQAlarm bereits offene oder gekippte, überwachte Fenster automatisch als **Ignoriert**. Dafür gibt es keine zusätzliche Einstelloption und keine Bestätigungsabfrage. Die Ausnahme gilt für die gesamte Scharfschaltung: Schließen, erneutes Öffnen und Neustarts heben sie nicht auf. Erst beim Ausschalten wird sie verworfen. Beim nächsten Einschalten entscheidet wieder die dann vorhandene Fensterstellung.

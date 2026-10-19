@@ -240,7 +240,26 @@ test("a profile action can wait for full confirmation independently from level e
 });
 
 
-test("quiet floorplan labels stay minimal and live colors fade on retained SVG nodes",async({page})=>{
+test("outdoor motion and person detection show their own source type on the floorplan",async({page})=>{
+  const data=await ws(page,"get");
+  data.config.floorplans.source_labels={id:"source_labels",name:"Vorfeldanzeige",width:1000,height:600,zones:{living:[[.1,.1],[.9,.1],[.9,.9],[.1,.9]]}};
+  await save(page,data.config);
+  const label=page.locator('#floorplan-source_labels g[data-label-room="living"]');
+  await state(page,ids.outside,"on");
+  await expect(label).toContainText("Bewegung erkannt");
+  await expect(label).not.toContainText("Kamera aktiv");
+  await expect(label).not.toContainText("Person");
+  await state(page,ids.person,"on");
+  await expect(label).toContainText("Person");
+  await expect(label).toContainText("Bewegung erkannt");
+  await state(page,ids.outside,"off");
+  await expect(label).not.toContainText("Bewegung erkannt");
+  await expect(label).toContainText("Person");
+});
+
+for(const reducedMotion of ["no-preference","reduce"]){
+test(`live colors fade when the grade card disappears with reduced motion ${reducedMotion}`,async({page})=>{
+  await page.emulateMedia({reducedMotion});
   const panel=page.locator("iqalarm-panel");
   // Exercise the real dashboard renderer with a private in-browser snapshot.
   // No configured sensor, output, clock or HA entity is changed by this display check.
@@ -252,6 +271,7 @@ test("quiet floorplan labels stay minimal and live colors fade on retained SVG n
     el.data.status.raw["binary_sensor.level_motion"]=true;
     el.data.status.rooms.living.motion=["binary_sensor.level_motion"];
     el.data.status.last_active["binary_sensor.level_motion"]=Date.now()/1000;
+    el.data.status.rule_progress=[{rule_id:"display-fade",name:"Anzeigeprüfung",stage_id:el.data.status.stage_id,current:1,target:3,sources:[]}];
     el._render();
   });
   const room=panel.locator('g[data-room="living"]:not([data-label-room])').first();
@@ -265,6 +285,7 @@ test("quiet floorplan labels stay minimal and live colors fade on retained SVG n
     el.data.status.raw["binary_sensor.level_motion"]=false;
     el.data.status.rooms.living.motion=[];
     el.data.status.last_active["binary_sensor.level_motion"]=Date.now()/1000-16;
+    el.data.status.rule_progress=[];
     el._render();
   });
   await expect(fill).toHaveAttribute("fill","#14b8a6");
@@ -280,6 +301,7 @@ test("quiet floorplan labels stay minimal and live colors fade on retained SVG n
   await page.screenshot({path:"test-results/quiet-floorplan-two-rings.png",fullPage:true});
   await panel.evaluate(el=>{el.data=el.__liveOriginal;delete el.__liveOriginal;delete el.__fadePolygon;delete el.__ringNode;el._render();});
 });
+}
 
 
 test("live confirmation decays and is published without further sensor events",async({page})=>{

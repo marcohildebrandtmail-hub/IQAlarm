@@ -1,14 +1,14 @@
-import {sensorTypeField, setSensorType} from "./sensor-types.js?v=2.11.0";
-import {openRobotDialog, readRobotForm, renderCoverage, updateRobotStatuses} from "./robots.js?v=2.11.0";
-import {TOPOLOGY_CSS, connectionEditor, imageControls, roomConnections, setRoomConnection} from "./floorplan-topology.js?v=2.11.0";
-import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings} from "./live-view.js?v=2.11.0";
-import {RULE_SOURCES_CSS, updateRuleSources} from "./rule-sources.js?v=2.11.0";
-import {bindIconFields, iconField, MDI_ICON, roomSymbol, sensorSymbol, symbolHTML} from "./display-icons.js?v=2.11.0";
-import {DraftJournal} from "./floorplan-drafts.js?v=2.11.0";
-import {renderLevels, renderProfiles, renderDisplaySettings, renderConfirmationGrades, openRuleDialog, readRuleForm} from "./level-configuration.js?v=2.11.0";
-import "./window-assistant.js?v=2.11.0";
-import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.11.0";
-/* IQAlarm 2.11.0 · native ES module · no CDN, framework or build required. */
+import {sensorTypeField, setSensorType} from "./sensor-types.js?v=2.11.1";
+import {openRobotDialog, readRobotForm, renderCoverage, updateRobotStatuses} from "./robots.js?v=2.11.1";
+import {TOPOLOGY_CSS, connectionEditor, imageControls, roomConnections, setRoomConnection} from "./floorplan-topology.js?v=2.11.1";
+import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings} from "./live-view.js?v=2.11.1";
+import {RULE_SOURCES_CSS, updateRuleSources} from "./rule-sources.js?v=2.11.1";
+import {bindIconFields, iconField, MDI_ICON, roomSymbol, sensorSymbol, symbolHTML} from "./display-icons.js?v=2.11.1";
+import {DraftJournal} from "./floorplan-drafts.js?v=2.11.1";
+import {renderLevels, renderProfiles, renderDisplaySettings, renderConfirmationGrades, openRuleDialog, readRuleForm} from "./level-configuration.js?v=2.11.1";
+import "./window-assistant.js?v=2.11.1";
+import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.11.1";
+/* IQAlarm 2.11.1 · native ES module · no CDN, framework or build required. */
 const WINDOW_CSS = `.window-group{padding:18px 0;border-bottom:1px solid var(--divider-color,#dce3ec)}.window-inputs{margin:14px 0 0 24px;padding-left:18px;border-left:2px solid var(--divider-color,#dce3ec)}.window-inputs code{display:block;font-size:10px;overflow-wrap:anywhere;color:var(--secondary-text-color,#64758b)}.information{border-color:color-mix(in srgb,var(--primary-color,#2986bb) 25%,transparent)}.information summary,details.banner summary{cursor:pointer;font-size:13px}.information ha-icon{color:var(--primary-color,#2986bb)}`;
 const FLOORPLAN_MOTION_HOLD_SECONDS = 15;
 const CATEGORIES={information:"Information",warning:"Warnung",alarm:"Alarm",fault:"Störung",isolated:"Isoliert"};
@@ -828,7 +828,7 @@ class IQAlarmPanel extends HTMLElement {
         return `<div class="live-floorplan-item"><div class="row between" style="margin-bottom:6px"><h3 style="font-size:15px;font-weight:700">${esc(p.name)}</h3><span class="pill">${icon("floor-plan")}${roomCount} ${roomCount === 1 ? "Raum" : "Räume"}</span></div>${svg}</div>`;
       }).join("")}</div>`;
     }
-    return `<section class="card" style="margin:20px 0"><div class="row between"><div class="row"><h2>Live-Grundriss</h2><span class="pill">${icon("vector-polygon")}${activePlans.length === 1 ? esc(activePlans[0].name) : `${activePlans.length} Etagen`} · ${totalRooms} ${totalRooms === 1 ? "Raum" : "Räume"}</span></div><div class="row">${layoutToggle}${filterSelect}</div></div>${contentHtml}</section>`;
+    return `<section class="card" data-live-key="live-floorplans" style="margin:20px 0"><div class="row between"><div class="row"><h2>Live-Grundriss</h2><span class="pill">${icon("vector-polygon")}${activePlans.length === 1 ? esc(activePlans[0].name) : `${activePlans.length} Etagen`} · ${totalRooms} ${totalRooms === 1 ? "Raum" : "Räume"}</span></div><div class="row">${layoutToggle}${filterSelect}</div></div>${contentHtml}</section>`;
   }
   _floorplan(edit) {
     if (!edit) return this._liveFloorplans();
@@ -1071,12 +1071,16 @@ class IQAlarmPanel extends HTMLElement {
     const allSensors = [...roomSensors, ...frontSensors];
     const raw = this.data.status?.raw || {};
 
-    // 1. Kamera (Person / Auto)
+    // Perimeter snapshots contain both camera detections and outdoor sensors.
+    // Display their configured roles separately, even when a camera is linked
+    // to an ordinary motion detector for snapshots.
     let cameraText = "";
-    const activeCameraIds = (status.persons || []).concat(
+    const activePerimeterIds = (status.persons || []).concat(
       allSensors.filter(s => (s.role === "perimeter_camera" || s.role === "perimeter_sensor") && raw[s.entity_id] === true).map(s => s.entity_id)
     );
-    const uniqueCamIds = [...new Set(activeCameraIds)];
+    const activePerimeter = [...new Set(activePerimeterIds)].map(id => this._sensorRecord(id)).filter(s => s && s.enabled !== false && raw[s.entity_id] === true);
+    const uniqueCamIds = activePerimeter.filter(s => s.role === "perimeter_camera").map(s => s.entity_id);
+    const perimeterMotionText = activePerimeter.some(s => s.role === "perimeter_sensor") ? "Bewegung erkannt" : "";
     if (uniqueCamIds.length > 0) {
       let hasPerson = false;
       let hasAuto = false;
@@ -1172,11 +1176,12 @@ class IQAlarmPanel extends HTMLElement {
     return {
       informationText,
       cameraText,
+      perimeterMotionText,
       contactText,
       lockText,
       motionText,
       quarantineText,
-      hasActive: Boolean(cameraText || contactText || lockText || motionText || quarantineText),
+      hasActive: Boolean(cameraText || perimeterMotionText || contactText || lockText || motionText || quarantineText),
       sensorCount: allSensors.length,
     };
   }
@@ -1192,7 +1197,7 @@ class IQAlarmPanel extends HTMLElement {
     const showCamera = isArmed || (settings.floorplan_disarmed_cameras ?? true);
 
     const hasBreach = Boolean(status.confirmed || (showMotion && info.motionText));
-    const hasWarning = Boolean((showCamera && info.cameraText) || (showContact && info.contactText) || (showLock && info.lockText) || info.quarantineText);
+    const hasWarning = Boolean((showCamera && (info.cameraText || info.perimeterMotionText)) || (showContact && info.contactText) || (showLock && info.lockText) || info.quarantineText);
     const activeAlert = hasBreach || hasWarning;
     const shouldAnimate = activeAlert && (isArmed ? (settings.floorplan_armed_animation ?? true) : (settings.floorplan_disarmed_animation ?? false));
     const animClass = shouldAnimate ? " anim-pulse" : "";
@@ -1201,6 +1206,7 @@ class IQAlarmPanel extends HTMLElement {
     const subLines = [];
     if (status.confirmed && isArmed) subLines.push({text:"Bestätigter Alarm",kind:"confirmed"});
     if (info.cameraText && showCamera) subLines.push({text: info.cameraText, kind: "camera"});
+    if (info.perimeterMotionText && showCamera) subLines.push({text: info.perimeterMotionText, kind: "perimeter-motion"});
     if (info.contactText && showContact) subLines.push({text: info.contactText, kind: "contact"});
     if (info.lockText && showLock) subLines.push({text: info.lockText, kind: "lock"});
     if (info.informationText) subLines.push({text:info.informationText,kind:"information"});

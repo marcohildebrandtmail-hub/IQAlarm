@@ -19,6 +19,10 @@ export function patchNode(current,next) {
 }
 function patchChildren(current,next) {
   const old=[...current.childNodes],used=new Set(),keys=new Map(old.filter(n=>key(n)).map(n=>[key(n),n]));
+  // Remove disappearing keyed cards before aligning siblings. Moving the live
+  // floorplan in front of a card that is about to disappear cancels SVG fades.
+  const wanted=new Set([...next.childNodes].map(key).filter(Boolean));
+  for(const node of old)if(key(node)&&!wanted.has(key(node)))node.remove();
   let position=current.firstChild;
   for(const node of [...next.childNodes]){
     const id=key(node);
@@ -40,7 +44,7 @@ export const LIVE_VIEW_CSS=`
 .status-rings text{fill:var(--level-color);font:750 36px system-ui;text-anchor:middle;dominant-baseline:central}
 .grade-caption{font-size:12px;color:var(--iq-muted)}
 .plan-wrap polygon,.plan-wrap .room-badge,.plan-wrap .room-corner{transition:fill 1.5s ease,stroke 1.5s ease,fill-opacity 1.5s ease,stroke-opacity 1.5s ease}
-@media(prefers-reduced-motion:reduce){.status-rings circle,.plan-wrap polygon,.plan-wrap .room-badge,.plan-wrap .room-corner{transition:none!important}}
+@media(prefers-reduced-motion:reduce){.status-rings circle{transition:none!important}.plan-wrap .anim-pulse,.plan-wrap .anim-pulse .room-badge{animation:none!important}.plan-wrap polygon,.plan-wrap .room-badge,.plan-wrap .room-corner{transition:fill 1.5s ease,stroke 1.5s ease,fill-opacity 1.5s ease,stroke-opacity 1.5s ease!important}}
 `;
 export function ringValues(data) {
   const status=data.status,entries=(status.rule_progress||[]).filter(p=>p.stage_id===status.stage_id&&p.target>0);

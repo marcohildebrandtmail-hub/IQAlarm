@@ -1,5 +1,5 @@
-import {renderRobotSettings} from "./robots.js?v=2.11.0";
-import {bindRuleSources, SOURCE_ROLES as ROLES} from "./rule-sources.js?v=2.11.0";
+import {renderRobotSettings} from "./robots.js?v=2.11.1";
+import {bindRuleSources, SOURCE_ROLES as ROLES} from "./rule-sources.js?v=2.11.1";
 /* Native, build-free editors for independent level rules and profile actions. */
 const esc=value=>String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const icon=name=>`<ha-icon icon="mdi:${esc(name)}" aria-hidden="true"></ha-icon>`;
