@@ -37,7 +37,7 @@ test("free level conditions select entities, source count, timing and profiles, 
   await expect(page.getByLabel("Vorfeld auswerten",{exact:true})).toHaveCount(0);
   await expect(page.getByLabel("Alle Sensoren einbeziehen",{exact:true})).toHaveCount(0);
   await expect(page.getByLabel("Korrelationsfenster (Sekunden)",{exact:true})).toHaveCount(0);
-  await page.getByRole("tab",{name:"Level-Konfiguration"}).click();await page.locator('[data-stage="3"]').click();
+  await page.getByRole("tab",{name:"Level-Konfiguration"}).click();await page.locator('[data-stage="4"]').click();
   await page.getByRole("button",{name:"Regel hinzufügen",exact:true}).click();
   await page.getByLabel("Regelname",{exact:true}).fill("Zwei Außenquellen");
   await page.getByLabel("Sensoren für Bedingung 1",{exact:true}).selectOption([ids.person,ids.person2,ids.outside]);
@@ -54,13 +54,13 @@ test("free level conditions select entities, source count, timing and profiles, 
   const saved=await ws(page,"get"),rule=Object.values(saved.config.rules).find(r=>r.name==="Zwei Außenquellen");
   expect(rule.conditions[0].count).toBe(2);expect(rule.window_seconds).toBe(30);
   expect(saved.config.profiles.qa_night.rule_ids).toContain(rule.id);expect(saved.config.profiles.qa_away.rule_ids).not.toContain(rule.id);
-  await page.reload();await page.getByRole("tab",{name:"Level-Konfiguration"}).click();await page.locator('[data-stage="3"]').click();
+  await page.reload();await page.getByRole("tab",{name:"Level-Konfiguration"}).click();await page.locator('[data-stage="4"]').click();
   await expect(page.getByRole("heading",{name:"Zwei Außenquellen",exact:true})).toBeVisible();
   await page.screenshot({path:"test-results/free-level-rules.png",fullPage:true});
   await ws(page,"set_mode",{mode:"qa_night"});await state(page,ids.person,"on");
   await expect.poll(async()=>(await ws(page,"get")).status.level).toBe(2);
   await state(page,ids.outside,"on");
-  await expect.poll(async()=>(await ws(page,"get")).status.level).toBe(3);
+  await expect.poll(async()=>(await ws(page,"get")).status.level).toBe(4);
   expect((await ws(page,"get")).status.confirmed).toBe(false);
 });
 
