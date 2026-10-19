@@ -42,3 +42,10 @@ test("disarmed or disabled exceptions do not add a coverage ring",()=>{
   state.status.profile_id="night";state.config.robots.vacuum.enabled=false;
   assert.equal(ringValues(state).grade,null);
 });
+test("automatically ignored windows show risk on the baseline without any robot configuration",()=>{
+  const state=structuredClone(data);
+  Object.assign(state.config,{secure_stage_id:"secure",robots:{}});
+  Object.assign(state.status,{level:1,stage_id:"secure",profile_id:"night",ignored_windows:["window"],coverage:{current:1,target:3}});
+  assert.equal(ringValues(state).grade.kind,"coverage");
+  assert.match(statusRings(state),/Überwachungsrisiko 1 von 3/);assert.doesNotMatch(statusRings(state),/Bestätigungsgrad/);
+});

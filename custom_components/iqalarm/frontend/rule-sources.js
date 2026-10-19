@@ -1,4 +1,4 @@
-import {sensorSymbol, symbolHTML} from "./display-icons.js?v=2.10.0";
+import {sensorSymbol, symbolHTML} from "./display-icons.js?v=2.11.0";
 
 const esc=value=>String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 export const SOURCE_ROLES={perimeter_camera:"Personenerkennung außen",perimeter_sensor:"Bewegung / Sensor außen",entry_contact:"Öffnungskontakte",lock_contact:"Türschlösser",vibration_glass:"Glas / Vibration",interior_motion:"Bewegung innen",interior_mmwave:"Präsenz innen",panic:"Panik",smoke:"Rauch / Gefahr"};
@@ -35,7 +35,8 @@ export function sourceMembers(panel,condition,roomIds=null) {
     const sensor=records[id],spaces=sensor?.front_of?.length?sensor.front_of:sensor?.room_id?[sensor.room_id]:[];
     const groups=condition.roles.filter(role=>role===sensor?.role).map(role=>SOURCE_ROLES[role]||role);
     const via=[...groups.map(name=>`Gruppe: ${name}`),...(condition.sensor_ids.includes(id)?["Einzeln ausgewählt"]:[])];
-    const reason=!sensor?"Entität nicht mehr zugeordnet":!visible.has(id)?"Eingang eines zusammengeführten Fensters":sensor.enabled===false?"Sensor isoliert":sensor.sensor_kind==="window_handle"?"Nur Information · keine Alarmquelle":roomIds?.length&&!spaces.some(room=>roomIds.includes(room))?"Außerhalb der Raumbegrenzung dieser Regel":"";
+    const ignored=panel.data.status.ignored_windows?.includes(id);
+    const reason=ignored?"Für diese Scharfschaltung ignoriert":!sensor?"Entität nicht mehr zugeordnet":!visible.has(id)?"Eingang eines zusammengeführten Fensters":sensor.enabled===false?"Sensor isoliert":sensor.sensor_kind==="window_handle"?"Nur Information · keine Alarmquelle":roomIds?.length&&!spaces.some(room=>roomIds.includes(room))?"Außerhalb der Raumbegrenzung dieser Regel":"";
     const raw=panel._connected===false?null:panel.data.status.raw?.[id];
     const quarantined=Boolean(panel.data.status.quarantine?.[id]);
     let state=panel._connected===false?"Live-Verbindung unterbrochen":raw==null?"Keine Verbindung":
@@ -44,8 +45,9 @@ export function sourceMembers(panel,condition,roomIds=null) {
       sensor?.role?.startsWith("interior")?(raw?"Bewegung / Präsenz":"Ruhig"):
       sensor?.role==="lock_contact"?(raw?"Entriegelt":"Verriegelt"):
       sensor?.role==="entry_contact"?(raw?"Offen":"Geschlossen"):(raw?"Aktiv":"Inaktiv");
-    if(quarantined)state+=" · Prell-Quarantäne";
-    return {id,sensor,name:sensor?.name||id,rooms:spaces.map(room=>panel.data.config.rooms[room]?.name||room),via,reason,state,active:raw===true,fault:raw==null||quarantined};
+    if(ignored)state="Ignoriert";
+    else if(quarantined)state+=" · Prell-Quarantäne";
+    return {id,sensor,name:sensor?.name||id,rooms:spaces.map(room=>panel.data.config.rooms[room]?.name||room),via,reason,state,active:!ignored&&raw===true,fault:!ignored&&(raw==null||quarantined)};
   }).sort((a,b)=>Number(Boolean(a.reason))-Number(Boolean(b.reason))||Number(b.active)-Number(a.active)||a.name.localeCompare(b.name,"de"));
 }
 

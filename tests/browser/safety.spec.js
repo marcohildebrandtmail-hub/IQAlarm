@@ -21,6 +21,42 @@ test.afterEach(async({page})=>{
   if(original){const current=await ws(page,"get");if(current.status.active)await ws(page,"set_mode",{mode:"inactive",code:"2468"});await save(page,original);}
 });
 
+test("known-open windows stay ignored for the arming session and inactive rooms have no stage badge",async({page})=>{
+  const open="binary_sensor.qa_ventilation_open",closed="binary_sensor.qa_ventilation_closed";
+  await state(page,open,"on",{device_class:"window"});
+  await state(page,closed,"off",{device_class:"window"});
+  const data=await ws(page,"get");
+  data.config.rooms.ventilation={id:"ventilation",name:"Fenster-Ausnahme"};
+  data.config.sensors[open]={entity_id:open,role:"entry_contact",room_id:"ventilation",name:"Terrassentür"};
+  data.config.sensors[closed]={entity_id:closed,role:"entry_contact",room_id:"ventilation",name:"Zweites Fenster"};
+  data.config.rules=null;data.config.actions={};
+  data.config.settings.block_open_on_arm=true;data.config.settings.block_unavailable_on_arm=true;
+  data.config.profiles.ventilation={...data.config.profiles.armed_away,name:"Fenster-Test",sensor_ids:[open,closed],room_ids:["ventilation"],rule_ids:null,reactions_enabled:true,exit_seconds:0,entry_seconds:0};
+  const configured=await save(page,data.config),baseline=configured.config.stages.findIndex(stage=>stage.id===configured.config.secure_stage_id);
+  const card=page.locator('[data-live-key="room-ventilation"]'),label=card.locator(`[data-sensor-state-id="${open}"]`);
+  await expect(card.locator(".room-head .pill")).toHaveCount(0);
+  await expect(label).toContainText("Offen");
+  await page.getByRole("button",{name:"Fenster-Test",exact:true}).click();
+  await expect(label).toHaveText("Ignoriert");
+  await expect(card.locator(".room-head .pill")).toBeVisible();
+  await expect(page.locator("[data-risk-ring]")).toBeVisible();
+  for(const value of ["off","on"]){
+    await state(page,open,value,{device_class:"window"});
+    await expect.poll(async()=>(await ws(page,"get")).status.raw[open]).toBe(value==="on");
+    await expect(label).toHaveText("Ignoriert");
+    await expect(label).not.toHaveClass(/\bon\b|recent/);
+    expect((await ws(page,"get")).status.level).toBe(baseline);
+  }
+  await page.reload();await expect(label).toHaveText("Ignoriert");
+  await state(page,closed,"on",{device_class:"window"});
+  await expect.poll(async()=>(await ws(page,"get")).status.level).toBeGreaterThan(baseline);
+  await expect(card.locator(`[data-sensor-state-id="${closed}"]`)).toContainText("Offen");
+  await ws(page,"set_mode",{mode:"inactive",code:"2468"});
+  await expect(card.locator(".room-head .pill")).toHaveCount(0);
+  await expect(label).toContainText("Offen");
+  expect((await ws(page,"get")).status.ignored_windows).toEqual([]);
+});
+
 test("import uses binary lock values and verified boolean camera detection",async({page})=>{
   await state(page,"binary_sensor.safety_deadbolt","off",{friendly_name:"QA Türschloss",device_class:"lock"});
   await state(page,"camera.safety_person","idle",{friendly_name:"QA Personenkamera",person_detected:true});

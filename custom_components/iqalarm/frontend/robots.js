@@ -41,7 +41,8 @@ export function updateRobotStatuses(panel) {
 
 export function renderCoverage(panel) {
   const coverage=panel.data.status.coverage;if(!coverage||!panel.data.status.profile_id)return "";
-  const devices=coverage.robots.filter(device=>device.paused_sensors.length||device.fault);
-  if(!devices.length)return "";
-  return `<section class="card" data-live-key="robot-coverage" style="margin-bottom:18px"><div class="row between"><strong>Überwachung ${coverage.current?"reduziert":"prüfen"}</strong><span class="pill">Überwachungsrisiko ${coverage.current}/${coverage.target}</span></div>${devices.map(device=>`<p><strong>${esc(device.name)}</strong> · ${esc(stateText(device))}</p>`).join("")}<p>Nur die Bewegungsmelder der zugeordneten Räume sind ausgenommen. Eine gespeicherte Einbruchsbestätigung entsteht dadurch nicht.</p></section>`;
+  const devices=coverage.robots.filter(device=>device.paused_sensors.length||device.fault),windows=coverage.ignored_windows||[];
+  if(!devices.length&&!windows.length)return "";
+  const windowInfo=windows.length?`<details style="margin-top:10px"><summary>${windows.length} Fenster ignoriert</summary><p>${windows.map(window=>esc(window.name)).join(", ")}</p><p>Beim Scharfschalten bereits offen. Bleibt bis zum Ausschalten ignoriert, auch nach dem Schließen.</p></details>`:"";
+  return `<section class="card" data-live-key="robot-coverage" style="margin-bottom:18px"><div class="row between"><strong>Überwachung ${coverage.current?"reduziert":"prüfen"}</strong><span class="pill">Überwachungsrisiko ${coverage.current}/${coverage.target}</span></div>${devices.map(device=>`<p><strong>${esc(device.name)}</strong> · ${esc(stateText(device))}</p>`).join("")}${windowInfo}${devices.length?"<p>Nur die Bewegungsmelder der zugeordneten Räume sind ausgenommen. Eine gespeicherte Einbruchsbestätigung entsteht dadurch nicht.</p>":""}</section>`;
 }

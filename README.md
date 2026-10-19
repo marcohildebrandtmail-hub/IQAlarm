@@ -31,6 +31,14 @@ Beispiel: Eine Kamera meldet eine Person und hebt auf die Vorfeld-Stufe. Eine we
 
 Die höchste erfüllte Regel bestimmt die Stufe. „Sicher“ ergibt sich bei aktivem Profil automatisch, wenn keine höhere Regel erfüllt ist. Ein gehaltener bestätigter Alarm bleibt bis zum Entschärfen aktiv; eine höhere bestätigte Stufe kann ihn überlagern. Informationssignale der Fenstergriffe, ausgefallene und quarantänisierte Quellen bestätigen keinen Einbruch. Ein reines Schlossentriegeln mit Innenbewegung ersetzt keine physische Öffnung. Einzelsignale können eine bestätigungspflichtige Stufe nur über einen ausdrücklich freigegebenen Gefahrensensor erreichen.
 
+### Bereits offene Fenster beim Scharfschalten ab 2.11.0
+
+Beim Scharfschalten markiert IQAlarm bereits offene oder gekippte, überwachte Fenster automatisch als **Ignoriert**. Dafür gibt es keine zusätzliche Einstelloption und keine Bestätigungsabfrage. Die Ausnahme gilt für die gesamte Scharfschaltung: Schließen, erneutes Öffnen und Neustarts heben sie nicht auf. Erst beim Ausschalten wird sie verworfen. Beim nächsten Einschalten entscheidet wieder die dann vorhandene Fensterstellung.
+
+Ignorierte Fenster liefern keine Öffnungswarnung, Prell-Auslösung, Alarmbestätigung oder Bestätigungsgrade. Der tatsächliche Zustand bleibt für die technische Fensteransicht erhalten. In der Übersicht steht **Ignoriert**; das Überwachungsrisiko zählt automatisch einen Punkt je Fenster, zusammen mit Roboter-Ausnahmen höchstens 3/3. Kameras, Bewegungsmelder und andere Kontakte werden weiter ausgewertet. Fenster, die beim Scharfschalten geschlossen waren, bleiben normal überwacht. Bei ausgeschalteter Anlage zeigen die Raumkarten keine redundante Alarmstufen-Plakette; die Sensorzustände bleiben sichtbar.
+
+Die Erkennung nutzt zusammengeführte IQAlarm-Fenster und die Home-Assistant-Geräteklasse **window**, einschließlich einer im Entitätsregister gewählten Zuordnung. Der Name ändert diese Einordnung nicht: Eine als Fenster zugeordnete Terrassentür gilt als Fenster. Ein einzelner Kontakt mit Geräteklasse **door** wird als Tür behandelt. Türschlösser, unbekannte und ausgefallene Fenster werden nicht als bereits offene Fenster angenommen. Die vorhandene Scharfschaltprüfung für Türen/Tore und fehlende Verbindungen bleibt bestehen.
+
 ### Roboter-Ausnahmen ab 2.10.0
 
 Unter **Level-Konfiguration → LVL 1 · Sicher → Roboter hinzufügen** lassen sich pro Gerät bis zu drei Aktivitätsentitäten mit ihren aktiven Zuständen eintragen. Eine aktive Entität genügt (ODER); mehrere Meldungen desselben Roboters zählen einmal. Optional kann der Zustand aus einem Attribut gelesen werden. Als Bereich wählst du einzelne Räume oder eine Etage mit gespeicherten Raumflächen.

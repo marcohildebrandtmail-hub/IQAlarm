@@ -20,9 +20,10 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
 from .action_dispatcher import ActionDispatcher
-from .const import EVENT_TYPE, SIGNAL_UPDATE
+from .const import CONTACT_ROLES, EVENT_TYPE, SIGNAL_UPDATE, Role
 from .correlation_engine import CorrelationEngine
 from .models import Configuration, EventLog
+from .opening_types import is_window_contact
 from .store import IQAlarmStore
 from .windows import WindowTracker, related_window_information
 
@@ -107,7 +108,21 @@ class IQAlarmRuntime:
             if record and record.device_id and sensor.source_id.startswith("window:"):
                 sensor.source_id = f"device:{record.device_id}"
         self._update_windows(time.time(), seed=True)
+        self._identify_windows()
         self._update_robots(seed=True)
+
+    def _identify_windows(self, engine=None):
+        """Use existing window groups and HA device classes, including user overrides."""
+        engine = engine or self.engine
+        registry = er.async_get(self.hass)
+        known = {window.sensor_id for window in engine.config.windows.values()}
+        for key, sensor in engine.config.sensors.items():
+            if sensor.role != Role.ENTRY:
+                continue
+            state, record = self.hass.states.get(key), registry.async_get(key)
+            if is_window_contact(sensor, state, record):
+                known.add(key)
+        engine.window_contacts = known
 
     def _update_robots(self, *, seed=False, engine=None):
         engine = engine or self.engine
@@ -215,9 +230,13 @@ class IQAlarmRuntime:
         if robot_source:
             self._update_robots()
         if sensor:
-            self.engine.feed(
-                entity_id, self.active_state(sensor, event.data.get("new_state")), time.time()
-            )
+            state = event.data.get("new_state")
+            record = er.async_get(self.hass).async_get(entity_id)
+            if is_window_contact(sensor, state, record):
+                self.engine.window_contacts.add(entity_id)
+            else:
+                self.engine.window_contacts.discard(entity_id)
+            self.engine.feed(entity_id, self.active_state(sensor, state), time.time())
         if grouped:
             self._update_windows(time.time())
         self.hass.async_create_task(self.flush(), "IQAlarm sensor update")
@@ -508,6 +527,7 @@ class IQAlarmRuntime:
             await self.validate_code(code)
         async with self.lock:
             previous = (self.engine.mode, self.engine.profile_id)
+            self._identify_windows()
             self.engine.set_profile(profile_id, time.time())
             if previous != (self.engine.mode, self.engine.profile_id):
                 self.generation += 1
@@ -562,12 +582,17 @@ class IQAlarmRuntime:
             if key in replacement.sensors
             and not replacement.sensors[key].information_only
             and key not in replacement.grouped_inputs
+            and (
+                value.get("reason") != "quarantined_flapping"
+                or replacement.sensors[key].role in CONTACT_ROLES
+            )
         }
         for sensor in candidate.sensors.values():
             replacement.seed(
                 sensor.entity_id, self.active_state(sensor, self.hass.states.get(sensor.entity_id))
             )
         self._update_robots(seed=True, engine=replacement)
+        self._identify_windows(replacement)
         replacement._log(time.time(), "configuration_changed", "Konfiguration gespeichert")
         async with self.storage_lock:
             await self.store.async_save(
@@ -658,6 +683,8 @@ class IQAlarmRuntime:
     def _lock_information(self, details=None):
         result = []
         for key, tracker in self.windows.items():
+            if tracker.window.sensor_id in self.engine.ignored_windows:
+                continue
             if tracker.window.enabled and (
                 tracker.reading.get("locked") is False
                 or tracker.reading.get("state") in ("unlatched", "tilt_ready")

@@ -30,6 +30,17 @@ test("missing connections and missing locks remain explicit",()=>{
   assert.equal(setup({available:true,position:"closed"},null)._windowLabel("w"),"Geschlossen | Nicht zugeordnet");
   assert.equal(setup({available:true,position:"unknown",label:"Stellung nicht eindeutig",lock_state:"locked"})._windowLabel("w"),"Stellung nicht eindeutig | Verriegelt");
 });
+test("a window ignored for this arming session keeps that label in every physical state",()=>{
+  const panel=setup({available:true,position:"tilted",lock_state:"unlocked"});
+  panel.data.status.active=true;panel.data.status.ignored_windows=["binary_sensor.iqalarm_window_w"];
+  const sensor={entity_id:"binary_sensor.iqalarm_window_w",window_id:"w",enabled:true};
+  for(const position of ["open","tilted","closed"]){
+    panel.data.windows.w.position=position;
+    assert.equal(panel._sensorLabel(sensor,true),"Ignoriert");
+  }
+  panel.data.status.ignored_windows=[];
+  assert.equal(panel._sensorLabel(sensor,true),"Geschlossen | Entriegelt");
+});
 test("related actor stays under its window and never replaces a required input",()=>{
   const panel=setup({position:"closed",available:true,lock_state:"locked",inputs:{"lock.grip":"locked"}});
   panel.data.config.sensors["binary_sensor.actor"]={entity_id:"binary_sensor.actor",name:"<Aktor>",sensor_kind:"window_handle",role:"lock_contact"};

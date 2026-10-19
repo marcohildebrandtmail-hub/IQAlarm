@@ -67,6 +67,8 @@ class CorrelationEngine:
         self.robot_paused: set[str] = set()
         self.robot_waiting: set[str] = set()
         self.robot_recovering: set[str] = set()
+        self.window_contacts: set[str] = {window.sensor_id for window in config.windows.values()}
+        self.ignored_windows: dict[str, dict] = {}
 
     @property
     def profile(self):
@@ -199,7 +201,7 @@ class CorrelationEngine:
 
     @property
     def rule_sensors(self):
-        mask = self.robot_mask
+        mask = self.robot_mask | self.ignored_windows.keys()
         return {key: sensor for key, sensor in self.sensors.items() if key not in mask}
 
     def update_robots(self, readings, now, *, seed=False):
@@ -224,7 +226,7 @@ class CorrelationEngine:
             or waiting != self.robot_waiting
         )
         self.robot_devices, self.robot_paused, self.robot_waiting = devices, paused, waiting
-        self._discard_robot_evidence()
+        self._discard_excluded_evidence()
         if changed and not seed:
             self._log(
                 now,
@@ -235,8 +237,8 @@ class CorrelationEngine:
             self._recompute(now)
         return changed
 
-    def _discard_robot_evidence(self):
-        mask = self.robot_mask
+    def _discard_excluded_evidence(self):
+        mask = self.robot_mask | self.ignored_windows.keys()
         self.evidence = deque(
             (item for item in self.evidence if item.entity_id not in mask), maxlen=2000
         )
@@ -269,11 +271,16 @@ class CorrelationEngine:
             devices.append(
                 device | {"paused_sensors": paused, "waiting": working and not device["active"]}
             )
+        windows = [
+            {"entity_id": key, "name": self.sensors[key].name or key}
+            for key in self.ignored_windows
+        ]
         return {
-            "current": min(3, points),
+            "current": min(3, points + len(windows)),
             "target": 3,
             "paused_sensors": sorted(affected),
             "robots": devices,
+            "ignored_windows": windows,
         }
 
     def arm_blockers(self) -> list[str]:
@@ -282,7 +289,7 @@ class CorrelationEngine:
         included = [
             sensor
             for sensor in self.sensors.values()
-            if self._included(sensor, respect_robots=False)
+            if self._included(sensor, respect_robots=False, respect_ignored=False)
         ]
         if self.config.rules is not None and not included:
             return ["Profil enthält keine verwendbaren Sensoren in seinen aktiven Levelregeln"]
@@ -300,7 +307,11 @@ class CorrelationEngine:
         ):
             result.append("Profil enthält keine aktivierten Sensoren in seiner Auswahl")
         for sensor in included:
-            if sensor.entity_id in self.quarantine or sensor.entity_id in self.robot_mask:
+            if (
+                sensor.entity_id in self.quarantine
+                or sensor.entity_id in self.robot_mask
+                or sensor.entity_id in self.ignored_windows
+            ):
                 continue
             state = self.raw.get(sensor.entity_id)
             if state is None and self.config.settings.block_unavailable_on_arm:
@@ -336,12 +347,26 @@ class CorrelationEngine:
             return
         if self.reactions_enabled and profile_id is not None:
             raise ValueError("Vor einem Profilwechsel zuerst entschärfen")
-        previous_profile = self.profile_id
+        previous_profile, previous_ignored = self.profile_id, self.ignored_windows
         self.profile_id = profile_id
+        self.ignored_windows = {}
         if self.reactions_enabled and not restore:
+            self.ignored_windows = {
+                key: {
+                    "since": now,
+                    "source_id": sensor.source_id or key,
+                    "room_id": sensor.room_id,
+                }
+                for key, sensor in self.sensors.items()
+                if key in self.window_contacts
+                and sensor.role == Role.ENTRY
+                and self.raw.get(key) is True
+                and self._included(sensor, respect_ignored=False)
+            }
             blockers = self.arm_blockers()
             if blockers:
                 self.profile_id = previous_profile
+                self.ignored_windows = previous_ignored
                 raise ValueError("Scharfschalten verhindert: " + "; ".join(blockers))
         self.severity = Level.SECURE
         self.stage_id = self.baseline_stage_id
@@ -360,6 +385,7 @@ class CorrelationEngine:
         self.rule_confirmations.clear()
         self.rule_grades.clear()
         self.rule_matches = []
+        self._discard_excluded_evidence()
         if profile_id is None:
             self.quarantine.clear()
         elif self.reactions_enabled:
@@ -409,6 +435,7 @@ class CorrelationEngine:
             self.profile is None
             or evidence.entity_id in self.quarantine
             or evidence.entity_id in self.robot_mask
+            or evidence.entity_id in self.ignored_windows
         ):
             return False
         duration = (
@@ -422,10 +449,12 @@ class CorrelationEngine:
         )
         return 0 <= now - evidence.timestamp < duration
 
-    def _included(self, sensor, *, respect_robots=True) -> bool:
+    def _included(self, sensor, *, respect_robots=True, respect_ignored=True) -> bool:
         """Intersect profile scopes before blockers, evidence and correlation."""
         profile = self.profile
         if respect_robots and sensor.entity_id in self.robot_mask:
+            return False
+        if respect_ignored and sensor.entity_id in self.ignored_windows:
             return False
         if sensor.information_only or sensor.entity_id in self.grouped_inputs:
             return False
@@ -510,6 +539,10 @@ class CorrelationEngine:
             return
         old = self.raw.get(entity_id)
         self.raw[entity_id] = active
+        if entity_id in self.ignored_windows:
+            self.debouncing.pop(entity_id, None)
+            self._recompute(now)
+            return
         if entity_id not in self.robot_mask and (
             active is True
             or (old is True and active is False and sensor.activation_mode != "change")
@@ -900,6 +933,7 @@ class CorrelationEngine:
                     any(
                         e.entity_id in self.quarantine
                         or e.entity_id in self.robot_mask
+                        or e.entity_id in self.ignored_windows
                         or self.raw.get(e.entity_id) is None
                         for e in chain
                     )
@@ -1196,6 +1230,7 @@ class CorrelationEngine:
                 and not s.information_only
                 and s.entity_id not in self.grouped_inputs
                 and self.raw.get(s.entity_id) is True
+                and s.entity_id not in self.ignored_windows
             ],
             "motion": [
                 s.entity_id
@@ -1218,7 +1253,9 @@ class CorrelationEngine:
             "quarantined": [
                 s.entity_id
                 for s in self.sensors.values()
-                if s.room_id == room_id and s.entity_id in self.quarantine
+                if s.room_id == room_id
+                and s.entity_id in self.quarantine
+                and s.entity_id not in self.ignored_windows
             ],
         }
 
@@ -1281,6 +1318,7 @@ class CorrelationEngine:
             ),
             "coverage": self.coverage_status(),
             "robot_paused_sensors": sorted(self.robot_mask),
+            "ignored_windows": sorted(self.ignored_windows),
             "monitored_sensors": [
                 sensor.entity_id for sensor in self.sensors.values() if self._included(sensor)
             ],
@@ -1329,6 +1367,7 @@ class CorrelationEngine:
             "rule_confirmations": self.rule_confirmations,
             "rule_grades": self.rule_grades,
             "robot_suppressed": sorted(self.robot_mask),
+            "ignored_windows": self.ignored_windows.copy(),
             "robot_recovering": sorted(
                 self.robot_recovering
                 | {device["id"] for device in self.robot_devices if device["active"]}
@@ -1359,6 +1398,7 @@ class CorrelationEngine:
             if k in self.sensors
             and not self.sensors[k].information_only
             and k not in self.grouped_inputs
+            and (v.get("reason") != "quarantined_flapping" or self.sensors[k].role in CONTACT_ROLES)
         }
         self.last_active = {
             eid: float(t) for eid, t in data.get("last_active", {}).items() if now - float(t) <= 300
@@ -1430,7 +1470,20 @@ class CorrelationEngine:
         self.robot_recovering.update(
             key for key in data.get("robot_recovering", []) if key in self.config.robots
         )
-        self._discard_robot_evidence()
+        self.ignored_windows = {
+            key: value
+            for key, value in data.get("ignored_windows", {}).items()
+            if self.reactions_enabled
+            and key in self.sensors
+            and self.sensors[key].role == Role.ENTRY
+            and self.sensors[key].enabled
+            and key not in self.grouped_inputs
+            and isinstance(value, dict)
+            and value.get("source_id") == (self.sensors[key].source_id or key)
+            and value.get("room_id") == self.sensors[key].room_id
+        }
+        self.window_contacts.update(self.ignored_windows)
+        self._discard_excluded_evidence()
         if self.config.rules is not None:
             self.rule_confirmations = {
                 key: value

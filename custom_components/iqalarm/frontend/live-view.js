@@ -45,7 +45,7 @@ export const LIVE_VIEW_CSS=`
 export function ringValues(data) {
   const status=data.status,entries=(status.rule_progress||[]).filter(p=>p.stage_id===status.stage_id&&p.target>0);
   let grade=entries.reduce((best,item)=>!best||item.current/item.target>best.current/best.target?item:best,null);
-  if(status.profile_id&&status.stage_id===data.config.secure_stage_id&&Object.values(data.config.robots||{}).some(robot=>robot.enabled)){
+  if(status.profile_id&&status.stage_id===data.config.secure_stage_id&&(Object.values(data.config.robots||{}).some(robot=>robot.enabled)||status.ignored_windows?.length)){
     const coverage=status.coverage||{current:0,target:3};grade={...coverage,kind:"coverage"};
   }
   return {level:Math.max(0,Math.min(1,status.level/Math.max(1,data.config.stages.length-1))),grade,confirmation:grade?Math.max(0,Math.min(1,grade.current/grade.target)):0};

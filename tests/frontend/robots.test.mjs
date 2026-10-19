@@ -39,3 +39,11 @@ test("status updates patch labels without replacing an unfinished robot editor",
   p.data.status.coverage.robots[0].active=false;p.data.status.coverage.robots[0].waiting=true;
   updateRobotStatuses(p);assert.match(node.textContent,/Nachlauf/);
 });
+test("ignored windows reuse the coverage notice without adding configuration controls",()=>{
+  const p=panel();p.data.status.coverage.robots=[];
+  p.data.status.coverage.ignored_windows=[{entity_id:"window",name:"Küche <Rechts>"}];
+  const html=renderCoverage(p);
+  assert.match(html,/1 Fenster ignoriert/);assert.match(html,/Küche &lt;Rechts&gt;/);
+  assert.match(html,/auch nach dem Schließen/);assert.doesNotMatch(html,/button|input|select/);
+  p.data.status.profile_id=null;assert.equal(renderCoverage(p),"");
+});
