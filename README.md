@@ -31,11 +31,21 @@ Beispiel: Eine Kamera meldet eine Person und hebt auf die Vorfeld-Stufe. Eine we
 
 Die höchste erfüllte Regel bestimmt die Stufe. „Sicher“ ergibt sich bei aktivem Profil automatisch, wenn keine höhere Regel erfüllt ist. Ein gehaltener bestätigter Alarm bleibt bis zum Entschärfen aktiv; eine höhere bestätigte Stufe kann ihn überlagern. Informationssignale der Fenstergriffe, ausgefallene und quarantänisierte Quellen bestätigen keinen Einbruch. Ein reines Schlossentriegeln mit Innenbewegung ersetzt keine physische Öffnung. Einzelsignale können eine bestätigungspflichtige Stufe nur über einen ausdrücklich freigegebenen Gefahrensensor erreichen.
 
+### Roboter-Ausnahmen ab 2.10.0
+
+Unter **Level-Konfiguration → LVL 1 · Sicher → Roboter hinzufügen** lassen sich pro Gerät bis zu drei Aktivitätsentitäten mit ihren aktiven Zuständen eintragen. Eine aktive Entität genügt (ODER); mehrere Meldungen desselben Roboters zählen einmal. Optional kann der Zustand aus einem Attribut gelesen werden. Als Bereich wählst du einzelne Räume oder eine Etage mit gespeicherten Raumflächen.
+
+Während der Aktivität ignoriert IQAlarm dort Innenbewegungs- und Präsenzmelder. Fenster, Türkontakte und Kameras bleiben in der Auswertung. Die Rohzustände der Bewegungsmelder bleiben sichtbar, erzeugen aber keine Alarmevidenz, Bestätigung oder rote Bewegungsanzeige. Beim Ende der Aktivität muss ein noch aktiver Melder erst Ruhe melden, bevor eine neue Bewegung wieder zählen kann. Dieser Nachlauf bleibt auch nach einem Neustart erhalten. Ein bereits gehaltener echter Alarm wird durch eine Roboterfahrt nicht aufgehoben.
+
+Pro Roboter sind **1 bis 3 Risikopunkte** einstellbar. Das **Überwachungsrisiko** steigt nur für im aktuellen Profil tatsächlich ausgenommene Melder und insgesamt höchstens auf 3/3. Im Normalzustand zeigt der innere Ring diesen Wert; LVL 1 bleibt bestehen. Bei höheren Alarmstufen zeigt er weiterhin den echten Bestätigungsgrad. Das Überwachungsrisiko ist keine Einbruchsbestätigung und erfüllt keine Alarmvoraussetzung. Bei ausgeschalteter Anlage bleiben die Risikokarte und der Risikoring ausgeblendet.
+
+Fehlende oder nicht verfügbare Aktivitätsquellen werden als Störung angezeigt und öffnen keine neue Ausnahme. Fällt die Verbindung während einer Fahrt aus, bleiben noch aktive Melder bis zu ihrer nächsten Ruhemeldung im Nachlauf. Roboter-Statusentitäten dürfen keine IQAlarm-Ausgaben oder zugleich verwendete Alarmeingänge sein. Anlegen, Ändern und Entfernen erfolgen bei entschärfter Anlage.
+
 ### Raumgrafik, Originalbild und Türen ab 2.9.0
 
 Die fertige Vorschau und der Live-Grundriss richten Bildausschnitt und Seitenverhältnis an den erzeugten Raumflächen aus. Leere Ränder des hochgeladenen Bildes fallen weg. Raumgeometrie und gespeicherte Beschriftungspositionen behalten ihre Koordinaten; auch Beschriftungen am Rand werden berücksichtigt.
 
-Mit **Originalbild einblenden** lässt sich die Zeichenvorlage in der fertigen Grafik von 0 bis 100 Prozent Deckkraft unterlegen. **Bildanzeige speichern** speichert diese Einstellung je Etage. Standard ist 0 Prozent. Bild, Raumflächen und Sensorzuordnungen werden dabei nicht verändert.
+Unter **Räume & Grundriss → Fertige Raum-Grafik ansehen** lässt sich mit **Originalbild einblenden** die Zeichenvorlage von 0 bis 100 Prozent Deckkraft unterlegen. **Bildanzeige speichern** speichert diese Einstellung je Etage. Die Live-Seite zeigt das gespeicherte Ergebnis ohne Regler oder Speichern-Button. Standard ist 0 Prozent. Bild, Raumflächen und Sensorzuordnungen werden dabei nicht verändert.
 
 Unter **Räume & Grundriss → Grundriss-Assistent → Türen / Raumverbindungen** kannst du zwei Räume nacheinander im Grundriss markieren oder über „Von Raum / Zu Raum“ verbinden. Markierst du dieselben verbundenen Räume erneut, entfernst du die Verbindung; dafür gibt es außerdem einen Entfernen-Button. Maus, Touch und Tastatur werden unterstützt. Die Linien und Türmarkierungen erscheinen nur in der Bearbeitungsansicht.
 
@@ -121,7 +131,9 @@ Grundrissbilder werden als bereinigte PNG-Dateien privat unter `.iqalarm_floorpl
 
 Die Bewegungsanzeige im Live-Grundriss verwendet einen gemeinsamen 15-Sekunden-Nachlauf für Text und rote Raumfarbe. Solange ein Melder aktiv ist, bleiben beide sichtbar. Nach seiner Ruhemeldung enden sie gemeinsam nach 15 Sekunden; eine erneute Bewegung startet den Nachlauf neu. Das längere Korrelationsfenster beeinflusst diese Anzeige nicht. Bestätigte Alarme behalten ihre eigene rote Darstellung samt ausdrücklicher Beschriftung.
 
-In der schnellen Raum-Zuweisung lässt sich im Dialog **Sensor verschieben** auch der **Anzeigename** bearbeiten. **Namen speichern** ändert die Bezeichnung in IQAlarm ohne Raumwechsel; die Raumauswahl speichert Name und Zielraum zusammen. Das gilt auch für zusammengeführte Fenster. Die ursprünglichen HA-Entitätskennungen bleiben erhalten.
+In der schnellen Raum-Zuweisung öffnet ein Klick **Sensor-Einstellungen**. Dort lassen sich Anzeigename, Symbol und bei einzelnen Sensoren die **Art** ändern. **Speichern** übernimmt die Einstellungen ohne Raumwechsel; die Raumauswahl speichert sie zusammen mit dem Zielraum. Sortieren erhält die Auswahl ebenfalls. Zusammengeführte Fenster behalten ihre Fenster-Auswertung. Die ursprünglichen HA-Entitätskennungen bleiben erhalten.
+
+Mit **Art → Bewegung bei Zustandswechsel (15 s)** lässt sich beispielsweise ein Innentürkontakt als Bewegungsmelder verwenden. Sowohl Zu → Auf als auch Auf → Zu starten eine 15-sekündige Aktivität; jeder weitere echte Wechsel startet die Zeit neu. Ein dauerhaft offener Kontakt ist dabei keine Öffnungswarnung. Gleiche Meldungen, Startzustände und die Rückkehr nach einem Verbindungsfehler erzeugen keine Bewegung. Fehlende Verbindung bleibt eine Störung. Die neue Art gilt auch für Sensorgruppen, Raumkorrelationen und Roboter-Ausnahmen. Die angezeigte Aktivität endet ohne zusätzliche visuelle Nachlaufzeit.
 
 ### Profilsymbole
 

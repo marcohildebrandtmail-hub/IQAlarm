@@ -20,6 +20,38 @@ test.afterEach(async({page})=>{
   if(original){const current=await ws(page,"get");if(current.status.active)await ws(page,"set_mode",{mode:"inactive",code:"2468"});await save(page,original);}
 });
 
+test("sensor settings retain contact-as-motion interpretation when sorting, moving and reloading",async({page})=>{
+  const id="binary_sensor.inner_door_activity",other="binary_sensor.inner_door_other";
+  for(const key of [id,other])await state(page,key,"off");
+  const data=await ws(page,"get");
+  data.config.rooms.activity_room={id:"activity_room",name:"Innentür-Test"};
+  data.config.rooms.activity_target={id:"activity_target",name:"Innentür-Ziel"};
+  for(const [index,key]of [id,other].entries())data.config.sensors[key]={entity_id:key,role:"entry_contact",room_id:"activity_room",name:`Innentür ${index+1}`};
+  data.config.settings.sensor_order.activity_room=[id,other];
+  await save(page,data.config);
+  await page.getByRole("tab",{name:"Kameras & Sensoren"}).click();
+  await page.locator(`[data-sensor-id="${id}"]`).first().click();
+  const dialog=page.getByRole("dialog");
+  await expect(dialog.getByRole("heading",{name:"Sensor-Einstellungen",exact:true})).toBeVisible();
+  await dialog.getByLabel("Art",{exact:true}).selectOption("motion_change");
+  await dialog.getByLabel("Anzeigename",{exact:true}).fill("Innentür als Bewegung");
+  await dialog.getByRole("button",{name:"Nach unten",exact:true}).click();
+  await expect(dialog.getByLabel("Art",{exact:true})).toHaveValue("motion_change");
+  await expect(dialog.getByLabel("Anzeigename",{exact:true})).toHaveValue("Innentür als Bewegung");
+  await dialog.getByRole("button",{name:"Innentür-Ziel",exact:true}).click();
+  await expect(dialog).not.toBeVisible();
+  let saved=(await ws(page,"get")).config.sensors[id];
+  expect(saved.role).toBe("interior_motion");expect(saved.activation_mode).toBe("change");expect(saved.room_id).toBe("activity_target");
+  await page.reload();await page.getByRole("tab",{name:"Kameras & Sensoren"}).click();
+  await page.locator(`[data-sensor-id="${id}"]`).first().click();
+  await expect(dialog.getByLabel("Art",{exact:true})).toHaveValue("motion_change");
+  await dialog.getByLabel("Art",{exact:true}).selectOption("entry_contact");
+  await dialog.getByRole("button",{name:"Speichern",exact:true}).click();
+  await expect(dialog).not.toBeVisible();
+  saved=(await ws(page,"get")).config.sensors[id];
+  expect(saved.role).toBe("entry_contact");expect(saved.activation_mode).toBe("state");expect(saved.entity_id).toBe(id);
+});
+
 test("room entries reorder by drag and mobile buttons, persist, and delete without deleting HA",async({page})=>{
   const ids=["binary_sensor.order_a","binary_sensor.order_b","binary_sensor.order_c"];
   for(const id of ids)await state(page,id,"off");

@@ -48,6 +48,12 @@ for (const [now, motion] of [[100, true], [114.999, true], [115, false], [160, f
 test("still active motion remains visible after 15 seconds", () => {
   assert.equal(display(setup({raw: true}), 200).color, "#ef4444");
 });
+test("a completed contact pulse has no second visual hold interval",()=>{
+  const panel=setup({raw:false,last:110});
+  panel.data.config.sensors["binary_sensor.motion"].activation_mode="change";
+  const result=display(panel,111);
+  assert.equal(result.color,"#14b8a6");assert.doesNotMatch(result.label,/Bewegung/);
+});
 test("a new motion restarts the shared interval", () => {
   const panel = setup();
   assert.equal(display(panel, 115).color, "#14b8a6");

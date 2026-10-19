@@ -5,12 +5,14 @@ dependency lives here. Only distinct, non-quarantined signal sources can confirm
 one another. Full alarm is latched until disarming.
 """
 
+import math
 from collections import defaultdict, deque
 from dataclasses import asdict
 from typing import Any
 
 from .confirmations import grade_match, match_with_memory, memory_signature, valid_memory
 from .const import (
+    CHANGE_ACTIVITY_SECONDS,
     CONTACT_ROLES,
     INTERIOR_ROLES,
     MAX_EVENTS,
@@ -23,6 +25,7 @@ from .const import (
 from .grade_decay import advance_grade
 from .level_rules import RuleMatch, accepts, spaces
 from .models import Configuration, EventLog, Evidence, Profile
+from .robots import evaluate_robots
 
 
 class CorrelationEngine:
@@ -37,6 +40,8 @@ class CorrelationEngine:
         self.profile_id: str | None = None
         self.severity = Level.SECURE
         self.raw: dict[str, bool | None] = {}
+        self.change_sources: dict[str, bool | None] = {}
+        self.activity_until: dict[str, float] = {}
         self.last_active: dict[str, float] = {}
         self.edges: dict[str, deque[float]] = defaultdict(lambda: deque(maxlen=101))
         self.debouncing: dict[str, float] = {}
@@ -58,6 +63,10 @@ class CorrelationEngine:
         self.rule_matches: list[RuleMatch] = []
         self.rule_confirmations: dict[str, dict] = {}
         self.rule_grades: dict[str, dict] = {}
+        self.robot_devices: list[dict] = []
+        self.robot_paused: set[str] = set()
+        self.robot_waiting: set[str] = set()
+        self.robot_recovering: set[str] = set()
 
     @property
     def profile(self):
@@ -176,12 +185,105 @@ class CorrelationEngine:
         """Record current availability without creating synthetic intrusion evidence."""
         if entity_id in self.config.sensors:
             self.sensors[entity_id] = self.config.sensors[entity_id]
-        self.raw[entity_id] = active
+        sensor = self.sensors.get(entity_id)
+        if sensor and sensor.activation_mode == "change":
+            self.change_sources[entity_id] = active
+            self.activity_until.pop(entity_id, None)
+            self.raw[entity_id] = None if active is None else False
+        else:
+            self.raw[entity_id] = active
+
+    @property
+    def robot_mask(self):
+        return self.robot_paused | self.robot_waiting
+
+    @property
+    def rule_sensors(self):
+        mask = self.robot_mask
+        return {key: sensor for key, sensor in self.sensors.items() if key not in mask}
+
+    def update_robots(self, readings, now, *, seed=False):
+        devices = evaluate_robots(self.config, readings)
+        paused = {key for device in devices if device["active"] for key in device["sensors"]}
+        allowed = {key for device in devices for key in device["sensors"]}
+        waiting = (self.robot_waiting | (self.robot_paused - paused)) & allowed
+        waiting = {key for key in waiting if self.raw.get(key) is not False and key not in paused}
+        previous = self.robot_recovering | {
+            device["id"] for device in self.robot_devices if device["active"]
+        }
+        self.robot_recovering = {
+            device["id"]
+            for device in devices
+            if device["id"] in previous
+            and not device["active"]
+            and any(key in waiting for key in device["sensors"])
+        }
+        changed = (
+            devices != self.robot_devices
+            or paused != self.robot_paused
+            or waiting != self.robot_waiting
+        )
+        self.robot_devices, self.robot_paused, self.robot_waiting = devices, paused, waiting
+        self._discard_robot_evidence()
+        if changed and not seed:
+            self._log(
+                now,
+                "robot_coverage_changed",
+                "Roboter-Ausnahmen und Überwachungsrisiko aktualisiert",
+                confirmed=False,
+            )
+            self._recompute(now)
+        return changed
+
+    def _discard_robot_evidence(self):
+        mask = self.robot_mask
+        self.evidence = deque(
+            (item for item in self.evidence if item.entity_id not in mask), maxlen=2000
+        )
+        for key in mask:
+            self.debouncing.pop(key, None)
+            self.last_active.pop(key, None)
+        for values in (self.rule_pending, self.rule_confirmations, self.rule_grades):
+            for key, record in list(values.items()):
+                if any(item.get("entity_id") in mask for item in record.get("chain", [])):
+                    del values[key]
+        if any(item.entity_id in mask for item in self.pending_chain):
+            self.pending_until, self.pending_chain, self.pending_rule = None, [], None
+
+    def coverage_status(self):
+        devices, affected, points = [], set(), 0
+        for device in self.robot_devices:
+            included = [
+                key
+                for key in device["sensors"]
+                if self._included(self.sensors[key], respect_robots=False)
+            ]
+            working = device["active"] or (
+                device["id"] in self.robot_recovering
+                and any(key in self.robot_waiting for key in included)
+            )
+            paused = [key for key in included if working and key in self.robot_mask]
+            if working and paused:
+                points += device["risk_points"]
+                affected.update(paused)
+            devices.append(
+                device | {"paused_sensors": paused, "waiting": working and not device["active"]}
+            )
+        return {
+            "current": min(3, points),
+            "target": 3,
+            "paused_sensors": sorted(affected),
+            "robots": devices,
+        }
 
     def arm_blockers(self) -> list[str]:
         """List contact openings and unavailable inputs under the selected policy."""
         result = []
-        included = [sensor for sensor in self.sensors.values() if self._included(sensor)]
+        included = [
+            sensor
+            for sensor in self.sensors.values()
+            if self._included(sensor, respect_robots=False)
+        ]
         if self.config.rules is not None and not included:
             return ["Profil enthält keine verwendbaren Sensoren in seinen aktiven Levelregeln"]
         if (
@@ -198,7 +300,7 @@ class CorrelationEngine:
         ):
             result.append("Profil enthält keine aktivierten Sensoren in seiner Auswahl")
         for sensor in included:
-            if sensor.entity_id in self.quarantine:
+            if sensor.entity_id in self.quarantine or sensor.entity_id in self.robot_mask:
                 continue
             state = self.raw.get(sensor.entity_id)
             if state is None and self.config.settings.block_unavailable_on_arm:
@@ -303,7 +405,11 @@ class CorrelationEngine:
         return bool(spaces and contact.room_id in spaces)
 
     def _fresh(self, evidence: Evidence, now: float) -> bool:
-        if self.profile is None or evidence.entity_id in self.quarantine:
+        if (
+            self.profile is None
+            or evidence.entity_id in self.quarantine
+            or evidence.entity_id in self.robot_mask
+        ):
             return False
         duration = (
             max((r.window_seconds for r in self.active_rules()), default=0)
@@ -316,9 +422,11 @@ class CorrelationEngine:
         )
         return 0 <= now - evidence.timestamp < duration
 
-    def _included(self, sensor) -> bool:
+    def _included(self, sensor, *, respect_robots=True) -> bool:
         """Intersect profile scopes before blockers, evidence and correlation."""
         profile = self.profile
+        if respect_robots and sensor.entity_id in self.robot_mask:
+            return False
         if sensor.information_only or sensor.entity_id in self.grouped_inputs:
             return False
         if not sensor.enabled or profile is None:
@@ -372,6 +480,29 @@ class CorrelationEngine:
         return False
 
     def feed(self, entity_id: str, active: bool | None, now: float) -> None:
+        """Convert a contact's real transitions to a bounded motion activity pulse."""
+        now = self._time(now)
+        sensor = self.sensors.get(entity_id)
+        if sensor is None:
+            return
+        if sensor.activation_mode != "change":
+            self._feed_state(entity_id, active, now)
+            return
+        previous = self.change_sources.get(entity_id)
+        self.change_sources[entity_id] = active
+        if active is None or previous is None:
+            self.activity_until.pop(entity_id, None)
+            self.last_active.pop(entity_id, None)
+            self._feed_state(entity_id, None if active is None else False, now)
+            return
+        if active == previous:
+            return
+        self.activity_until[entity_id] = now + CHANGE_ACTIVITY_SECONDS
+        # A new physical edge refreshes activity, even during an existing pulse.
+        self.raw[entity_id] = False
+        self._feed_state(entity_id, True, now)
+
+    def _feed_state(self, entity_id: str, active: bool | None, now: float) -> None:
         """Handle only meaningful raw transitions; unavailable never counts as an edge."""
         now = self._time(now)
         sensor = self.sensors.get(entity_id)
@@ -379,8 +510,24 @@ class CorrelationEngine:
             return
         old = self.raw.get(entity_id)
         self.raw[entity_id] = active
-        if active is True or (old is True and active is False):
+        if entity_id not in self.robot_mask and (
+            active is True
+            or (old is True and active is False and sensor.activation_mode != "change")
+        ):
             self.last_active[entity_id] = now
+        if entity_id in self.robot_waiting and active is False:
+            self.robot_waiting.remove(entity_id)
+            self._log(
+                now,
+                "robot_coverage_changed",
+                "Bewegungsmelder nach Roboterbetrieb wieder bereit",
+                entity_id=entity_id,
+                confirmed=False,
+            )
+        if entity_id in self.robot_mask:
+            self.debouncing.pop(entity_id, None)
+            self._recompute(now)
+            return
         if not sensor.enabled:
             return
         if active is None:
@@ -751,14 +898,16 @@ class CorrelationEngine:
                 alarm = self.config.stage(rule.stage_id).requires_confirmation
                 invalid = (
                     any(
-                        e.entity_id in self.quarantine or self.raw.get(e.entity_id) is None
+                        e.entity_id in self.quarantine
+                        or e.entity_id in self.robot_mask
+                        or self.raw.get(e.entity_id) is None
                         for e in chain
                     )
                     if alarm
                     else match_with_memory(
                         self.config,
                         rule,
-                        self.sensors,
+                        self.rule_sensors,
                         self.raw,
                         list(self.evidence),
                         self.quarantine,
@@ -787,7 +936,7 @@ class CorrelationEngine:
             match = match_with_memory(
                 self.config,
                 rule,
-                self.sensors,
+                self.rule_sensors,
                 self.raw,
                 list(self.evidence),
                 self.quarantine,
@@ -831,14 +980,14 @@ class CorrelationEngine:
                 continue
             previous = self.rule_confirmations.get(rule.id)
             rising = (
-                valid_memory(self.config, rule, previous, self.sensors, self.quarantine, now)
+                valid_memory(self.config, rule, previous, self.rule_sensors, self.quarantine, now)
                 is None
             )
             if rule.confirmation_decay_seconds is not None:
                 state, proof, rising = advance_grade(
                     self.config,
                     rule,
-                    self.sensors,
+                    self.rule_sensors,
                     self.raw,
                     list(self.evidence),
                     self.quarantine,
@@ -851,7 +1000,7 @@ class CorrelationEngine:
                 proof = grade_match(
                     self.config,
                     rule,
-                    self.sensors,
+                    self.rule_sensors,
                     self.raw,
                     list(self.evidence),
                     self.quarantine,
@@ -935,9 +1084,16 @@ class CorrelationEngine:
         else:
             self.pending_until, self.pending_chain, self.pending_rule = None, [], None
 
-    def tick(self, now: float) -> None:
+    def tick(self, now: float) -> bool:
         """Advance timers even when no sensor changes state."""
         now = self._time(now)
+        activity_changed = False
+        for entity_id, deadline in list(self.activity_until.items()):
+            if now >= deadline:
+                del self.activity_until[entity_id]
+                self._feed_state(entity_id, False, now)
+                self.last_active.pop(entity_id, None)
+                activity_changed = True
         if self.arming_until is not None and now >= self.arming_until:
             self.arming_until = None
             self._log(now, "armed", "Ausgangsverzögerung abgelaufen")
@@ -964,6 +1120,7 @@ class CorrelationEngine:
             self.pending_rule = None
         self.evidence = deque((e for e in self.evidence if self._fresh(e, now)), maxlen=2000)
         self._recompute(now)
+        return activity_changed
 
     def room_status(self, room_id: str, now: float) -> dict[str, Any]:
         valid = [e for e in self.evidence if self._fresh(e, now)]
@@ -1045,6 +1202,7 @@ class CorrelationEngine:
                 for s in self.sensors.values()
                 if s.room_id == room_id
                 and s.role in INTERIOR_ROLES
+                and s.entity_id not in self.robot_mask
                 and self.raw.get(s.entity_id) is True
             ],
             "persons": [
@@ -1071,13 +1229,15 @@ class CorrelationEngine:
             if rule is None or rule.confirmation_target is None:
                 continue
             record = self.rule_confirmations.get(rule.id)
-            memory = valid_memory(self.config, rule, record, self.sensors, self.quarantine, now)
+            memory = valid_memory(
+                self.config, rule, record, self.rule_sensors, self.quarantine, now
+            )
             if memory and any(self.raw.get(e.entity_id) is None for e in memory.chain):
                 memory = None
             proof = memory or grade_match(
                 self.config,
                 rule,
-                self.sensors,
+                self.rule_sensors,
                 self.raw,
                 list(self.evidence),
                 self.quarantine,
@@ -1119,6 +1279,8 @@ class CorrelationEngine:
                 if self.evaluation_profile_id in self.config.profiles
                 else None
             ),
+            "coverage": self.coverage_status(),
+            "robot_paused_sensors": sorted(self.robot_mask),
             "monitored_sensors": [
                 sensor.entity_id for sensor in self.sensors.values() if self._included(sensor)
             ],
@@ -1156,6 +1318,8 @@ class CorrelationEngine:
             "last_profile_id": self.last_profile_id,
             "quarantine": self.quarantine,
             "last_active": self.last_active.copy(),
+            "activity_until": self.activity_until.copy(),
+            "change_sources": self.change_sources.copy(),
             "pending_until": self.pending_until,
             "arming_until": self.arming_until,
             "pending_chain": [asdict(e) for e in self.pending_chain],
@@ -1164,6 +1328,11 @@ class CorrelationEngine:
             "rule_pending": self.rule_pending,
             "rule_confirmations": self.rule_confirmations,
             "rule_grades": self.rule_grades,
+            "robot_suppressed": sorted(self.robot_mask),
+            "robot_recovering": sorted(
+                self.robot_recovering
+                | {device["id"] for device in self.robot_devices if device["active"]}
+            ),
             "events": [e.to_dict() for e in self.events],
         }
 
@@ -1194,6 +1363,23 @@ class CorrelationEngine:
         self.last_active = {
             eid: float(t) for eid, t in data.get("last_active", {}).items() if now - float(t) <= 300
         }
+        for key, sensor in self.sensors.items():
+            if sensor.activation_mode != "change":
+                continue
+            deadline = data.get("activity_until", {}).get(key)
+            source = data.get("change_sources", {}).get(key)
+            current = self.change_sources.get(key)
+            if (
+                type(deadline) in (int, float)
+                and math.isfinite(deadline)
+                and 0 < deadline - now <= CHANGE_ACTIVITY_SECONDS
+                and type(source) is bool
+                and source == current
+            ):
+                self.activity_until[key] = deadline
+                self.raw[key] = True
+            else:
+                self.last_active.pop(key, None)
         self.arming_until = data.get("arming_until")
         self.pending_until = data.get("pending_until")
         self.pending_chain = [
@@ -1229,6 +1415,22 @@ class CorrelationEngine:
         self.events = deque(
             (EventLog(**e) for e in data.get("events", [])[:MAX_EVENTS]), maxlen=MAX_EVENTS
         )
+        allowed = {
+            key
+            for robot in self.config.robots.values()
+            if robot.enabled
+            for key, sensor in self.sensors.items()
+            if sensor.role in INTERIOR_ROLES and sensor.room_id in robot.rooms(self.config)
+        }
+        self.robot_waiting.update(
+            key
+            for key in data.get("robot_suppressed", [])
+            if key in allowed and key not in self.robot_paused and self.raw.get(key) is not False
+        )
+        self.robot_recovering.update(
+            key for key in data.get("robot_recovering", []) if key in self.config.robots
+        )
+        self._discard_robot_evidence()
         if self.config.rules is not None:
             self.rule_confirmations = {
                 key: value
@@ -1345,7 +1547,7 @@ class CorrelationEngine:
                     match_with_memory(
                         self.config,
                         active[key],
-                        self.sensors,
+                        self.rule_sensors,
                         {}
                         if self.config.stage(active[key].stage_id).requires_confirmation
                         else self.raw,

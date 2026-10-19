@@ -19,6 +19,7 @@ from .const import (
     Role,
 )
 from .level_rules import LevelRule, default_rules, upgrade_level_rules
+from .robots import RobotConfig
 
 ENTITY_RE = re.compile(r"^[a-z_][a-z0-9_]*\.[a-z0-9_]+$")
 ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,100}$")
@@ -114,11 +115,16 @@ class SensorConfig:
     sensor_kind: str | None = None
     active_above: float | None = None
     icon: str | None = None
+    activation_mode: str = "state"
 
     def __post_init__(self) -> None:
         display_icon(self.icon)
         entity(self.entity_id, ALLOWED_SENSOR_DOMAINS)
         self.role = Role(self.role).value
+        if self.activation_mode not in ("state", "change"):
+            raise ValueError("Unbekannte Sensorauswertung")
+        if self.activation_mode == "change" and self.role != Role.MOTION:
+            raise ValueError("Zustandswechsel-Auswertung benötigt die Rolle Bewegung innen")
         if self.sensor_kind is None:
             self.sensor_kind = (
                 "window_handle"
@@ -734,6 +740,7 @@ class Configuration:
     secure_stage_id: str = "1"
     rules: dict[str, LevelRule] | None = field(default_factory=default_rules)
     room_connections: list[list[str]] = field(default_factory=list)
+    robots: dict[str, RobotConfig] = field(default_factory=dict)
 
     def all_sensors(self) -> dict[str, SensorConfig]:
         return self.sensors | {
@@ -787,6 +794,22 @@ class Configuration:
         }
 
     def validate(self) -> None:
+        if not isinstance(self.robots, dict) or len(self.robots) > 100:
+            raise ValueError("Maximal 100 Roboter-Ausnahmen erlaubt")
+        for key, robot in self.robots.items():
+            if not isinstance(robot, RobotConfig) or key != robot.id:
+                raise ValueError("Ungültige Roboter-Zuordnung")
+            if set(robot.room_ids) - self.rooms.keys():
+                raise ValueError("Roboter verweist auf unbekannte Räume")
+            if robot.floorplan_id is not None and robot.floorplan_id not in self.floorplans:
+                raise ValueError("Roboter verweist auf unbekannte Etage")
+            if any(
+                source.entity_id in self.all_sensors() or source.entity_id in self.window_members()
+                for source in robot.activities
+            ):
+                raise ValueError(
+                    "Roboter-Aktivität benötigt eigene Statusentitäten außerhalb der Alarmeingänge"
+                )
         if not isinstance(self.room_connections, list) or len(self.room_connections) > 500:
             raise ValueError("Maximal 500 direkte Raumverbindungen erlaubt")
         seen_connections = set()
@@ -1028,7 +1051,16 @@ class Configuration:
             raise ValueError("Ungültige Konfiguration")
         if data.get("rules") is not None and not isinstance(data["rules"], dict):
             raise ValueError("Levelregeln müssen ein Objekt sein")
-        for key in ("rooms", "sensors", "profiles", "actions", "settings", "floorplans", "windows"):
+        for key in (
+            "rooms",
+            "sensors",
+            "profiles",
+            "actions",
+            "settings",
+            "floorplans",
+            "windows",
+            "robots",
+        ):
             if key in data and not isinstance(data[key], dict):
                 raise ValueError(f"{key} muss ein Objekt sein")
         result = cls(
@@ -1058,6 +1090,9 @@ class Configuration:
             policy_version=data.get("policy_version", 2),
             secure_stage_id=data.get("secure_stage_id", "1"),
             room_connections=data.get("room_connections", []),
+            robots={
+                key: construct(RobotConfig, value) for key, value in data.get("robots", {}).items()
+            },
             rules={key: construct(LevelRule, value) for key, value in data["rules"].items()}
             if data.get("rules") is not None
             else None,

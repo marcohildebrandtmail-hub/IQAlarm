@@ -4,12 +4,13 @@ from enum import IntEnum, StrEnum
 
 DOMAIN = "iqalarm"
 NAME = "IQAlarm"
-VERSION = "2.9.0"
+VERSION = "2.10.0"
 STORAGE_VERSION = 1
 EVENT_TYPE = "iqalarm_event"
 SIGNAL_UPDATE = "iqalarm_update"
 PLATFORMS = ("alarm_control_panel", "sensor", "binary_sensor", "switch")
 MAX_EVENTS = 500
+CHANGE_ACTIVITY_SECONDS = 15
 RULE_NAMES = {
     "perimeter": "Vorfeld erkannt",
     "single": "Unbestätigtes Einzelereignis",

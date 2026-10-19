@@ -42,3 +42,14 @@ test("choosing the current room retains order and every perimeter association",a
   await panel._moveSensor("binary_sensor.shared","k");
   assert.deepEqual(panel.data.config,before);
 });
+test("room selection saves the new activity interpretation together with the sensor settings",async()=>{
+  const panel=setup();panel.data.status={active:false};
+  Object.assign(panel.data.config.sensors["binary_sensor.b"],{role:"entry_contact",sensor_kind:"generic",entry_delay:true});
+  panel.shadowRoot={getElementById(){return {close(){}};}};
+  panel._toast=()=>{};panel._render=()=>{};
+  panel._call=async(type,{config})=>({config,status:{active:false}});
+  await panel._moveSensor("binary_sensor.b","r","Innentür",1,null,false,"mdi:door-closed","motion_change");
+  const saved=panel.data.config.sensors["binary_sensor.b"];
+  assert.equal(saved.room_id,"r");assert.equal(saved.name,"Innentür");assert.equal(saved.role,"interior_motion");
+  assert.equal(saved.activation_mode,"change");assert.equal(saved.entry_delay,false);assert.equal(saved.icon,"mdi:door-closed");
+});

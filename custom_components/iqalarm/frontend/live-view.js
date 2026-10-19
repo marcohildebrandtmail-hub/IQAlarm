@@ -44,10 +44,14 @@ export const LIVE_VIEW_CSS=`
 `;
 export function ringValues(data) {
   const status=data.status,entries=(status.rule_progress||[]).filter(p=>p.stage_id===status.stage_id&&p.target>0);
-  const grade=entries.reduce((best,item)=>!best||item.current/item.target>best.current/best.target?item:best,null);
+  let grade=entries.reduce((best,item)=>!best||item.current/item.target>best.current/best.target?item:best,null);
+  if(status.profile_id&&status.stage_id===data.config.secure_stage_id&&Object.values(data.config.robots||{}).some(robot=>robot.enabled)){
+    const coverage=status.coverage||{current:0,target:3};grade={...coverage,kind:"coverage"};
+  }
   return {level:Math.max(0,Math.min(1,status.level/Math.max(1,data.config.stages.length-1))),grade,confirmation:grade?Math.max(0,Math.min(1,grade.current/grade.target)):0};
 }
 export function statusRings(data) {
   const {level,grade,confirmation}=ringValues(data),outer=2*Math.PI*61,inner=2*Math.PI*46;
-  return `<div class="level-display" data-live-key="status-rings"><div class="level-caption">${esc(data.status.stage_name)}</div><svg class="status-rings" viewBox="0 0 144 144" role="img" aria-label="Alarmstufe ${data.status.level}${grade?`, Bestätigungsgrad ${grade.current} von ${grade.target}`:""}"><circle class="ring-track" cx="72" cy="72" r="61" stroke-width="8"/><circle data-level-ring cx="72" cy="72" r="61" stroke="var(--level-color)" stroke-width="8" stroke-dasharray="${outer}" stroke-dashoffset="${outer*(1-level)}"/><circle class="ring-track" cx="72" cy="72" r="46" stroke-width="6"/><circle data-confirmation-ring cx="72" cy="72" r="46" stroke="var(--iq-accent)" stroke-width="6" stroke-dasharray="${inner}" stroke-dashoffset="${inner*(1-confirmation)}"/><text x="72" y="72">${data.status.level}</text></svg>${grade?`<small class="grade-caption">Bestätigungsgrad ${grade.current}/${grade.target}</small>`:""}</div>`;
+  const label=grade?.kind==="coverage"?"Überwachungsrisiko":"Bestätigungsgrad";
+  return `<div class="level-display" data-live-key="status-rings"><div class="level-caption">${esc(data.status.stage_name)}</div><svg class="status-rings" viewBox="0 0 144 144" role="img" aria-label="Alarmstufe ${data.status.level}${grade?`, ${label} ${grade.current} von ${grade.target}`:""}"><circle class="ring-track" cx="72" cy="72" r="61" stroke-width="8"/><circle data-level-ring cx="72" cy="72" r="61" stroke="var(--level-color)" stroke-width="8" stroke-dasharray="${outer}" stroke-dashoffset="${outer*(1-level)}"/><circle class="ring-track" cx="72" cy="72" r="46" stroke-width="6"/><circle ${grade?.kind==="coverage"?"data-risk-ring":"data-confirmation-ring"} cx="72" cy="72" r="46" stroke="${grade?.kind==="coverage"?"var(--iq-amber)":"var(--iq-accent)"}" stroke-width="6" stroke-dasharray="${inner}" stroke-dashoffset="${inner*(1-confirmation)}"/><text x="72" y="72">${data.status.level}</text></svg>${grade?`<small class="grade-caption">${label} ${grade.current}/${grade.target}</small>`:""}</div>`;
 }

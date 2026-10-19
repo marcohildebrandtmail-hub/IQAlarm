@@ -57,18 +57,27 @@ test("cropped preview and live frame follow room geometry on desktop and mobile"
   await page.screenshot({path:"test-results/cropped-floorplan-mobile.png",fullPage:true});
 });
 
-test("original image opacity previews immediately and persists through reload without moving rooms",async({page})=>{
-  const id=planIds.get(page),svg=page.locator(`#floorplan-${id}`),slider=page.getByRole("slider",{name:"Originalbild einblenden QA Grundriss"});
+test("opacity is configured only in room settings and the live page displays the saved result",async({page})=>{
+  const id=planIds.get(page),slider=page.getByRole("slider",{name:"Originalbild einblenden QA Grundriss"});
   const before=(await ws(page,"get")).config.floorplans[id];
+  await expect(slider).toHaveCount(0);
+  await expect(page.getByRole("button",{name:"Bildanzeige speichern",exact:true})).toHaveCount(0);
+  await page.getByRole("tab",{name:"Räume & Grundriss"}).click();
+  await page.locator('[data-command="toggle-graphic-preview"]').first().click();
   await expect(slider).toHaveValue("0");
   await slider.evaluate(el=>{el.value="25";el.dispatchEvent(new Event("input",{bubbles:true}));});
-  await expect(svg.locator("[data-plan-underlay]")).toHaveCSS("opacity","0.25");
+  await expect(page.locator("#floorplan [data-plan-underlay]")).toHaveCSS("opacity","0.25");
   await page.getByRole("button",{name:"Bildanzeige speichern",exact:true}).click();
   await expect.poll(async()=>(await ws(page,"get")).config.floorplans[id].image_opacity).toBe(.25);
-  await page.reload();await expect(slider).toHaveValue("25");
+  await page.reload();
+  await expect(page.locator(`#floorplan-${id} [data-plan-underlay]`)).toHaveCSS("opacity","0.25");
+  await expect(slider).toHaveCount(0);
+  await expect(page.getByRole("button",{name:"Bildanzeige speichern",exact:true})).toHaveCount(0);
   const saved=(await ws(page,"get")).config.floorplans[id];
   expect(saved.image).toBe(before.image);expect(saved.zones).toEqual(before.zones);expect(saved.labels).toEqual(before.labels);
-  await expect(svg.locator("[data-plan-underlay]")).toHaveCSS("opacity","0.25");
+  await page.getByRole("tab",{name:"Räume & Grundriss"}).click();
+  await page.locator('[data-command="toggle-graphic-preview"]').first().click();
+  await expect(slider).toHaveValue("25");
 });
 
 test("explicit doors allow direct corroboration but never a second-hop room and stay hidden live",async({page})=>{

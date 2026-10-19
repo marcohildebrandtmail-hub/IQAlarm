@@ -1,12 +1,14 @@
-import {TOPOLOGY_CSS, connectionEditor, imageControls, roomConnections, setRoomConnection} from "./floorplan-topology.js?v=2.9.0";
-import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings} from "./live-view.js?v=2.9.0";
-import {RULE_SOURCES_CSS, updateRuleSources} from "./rule-sources.js?v=2.9.0";
-import {bindIconFields, iconField, MDI_ICON, roomSymbol, sensorSymbol, symbolHTML} from "./display-icons.js?v=2.9.0";
-import {DraftJournal} from "./floorplan-drafts.js?v=2.9.0";
-import {renderLevels, renderProfiles, renderDisplaySettings, renderConfirmationGrades, openRuleDialog, readRuleForm} from "./level-configuration.js?v=2.9.0";
-import "./window-assistant.js?v=2.9.0";
-import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.9.0";
-/* IQAlarm 2.9.0 · native ES module · no CDN, framework or build required. */
+import {sensorTypeField, setSensorType} from "./sensor-types.js?v=2.10.0";
+import {openRobotDialog, readRobotForm, renderCoverage, updateRobotStatuses} from "./robots.js?v=2.10.0";
+import {TOPOLOGY_CSS, connectionEditor, imageControls, roomConnections, setRoomConnection} from "./floorplan-topology.js?v=2.10.0";
+import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings} from "./live-view.js?v=2.10.0";
+import {RULE_SOURCES_CSS, updateRuleSources} from "./rule-sources.js?v=2.10.0";
+import {bindIconFields, iconField, MDI_ICON, roomSymbol, sensorSymbol, symbolHTML} from "./display-icons.js?v=2.10.0";
+import {DraftJournal} from "./floorplan-drafts.js?v=2.10.0";
+import {renderLevels, renderProfiles, renderDisplaySettings, renderConfirmationGrades, openRuleDialog, readRuleForm} from "./level-configuration.js?v=2.10.0";
+import "./window-assistant.js?v=2.10.0";
+import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.10.0";
+/* IQAlarm 2.10.0 · native ES module · no CDN, framework or build required. */
 const WINDOW_CSS = `.window-group{padding:18px 0;border-bottom:1px solid var(--divider-color,#dce3ec)}.window-inputs{margin:14px 0 0 24px;padding-left:18px;border-left:2px solid var(--divider-color,#dce3ec)}.window-inputs code{display:block;font-size:10px;overflow-wrap:anywhere;color:var(--secondary-text-color,#64758b)}.information{border-color:color-mix(in srgb,var(--primary-color,#2986bb) 25%,transparent)}.information summary,details.banner summary{cursor:pointer;font-size:13px}.information ha-icon{color:var(--primary-color,#2986bb)}`;
 const FLOORPLAN_MOTION_HOLD_SECONDS = 15;
 const CATEGORIES={information:"Information",warning:"Warnung",alarm:"Alarm",fault:"Störung",isolated:"Isoliert"};
@@ -295,7 +297,7 @@ class IQAlarmPanel extends HTMLElement {
         if (data.available === false) { this._connection(false); return; }
         const first = !this.data; this.data = data; this._connection(true);
         if (first || this.tab === 0 || this.tab === 5) this._render();
-        else {this._updateLock();if(this.tab===2){this._updateWindowStatuses();this._updateSensorStatuses();}const live=this.shadowRoot.getElementById("live-room-status");if(live&&this.liveRoom&&this.data.config.rooms[this.liveRoom])live.innerHTML=this._roomLive(this.data.config.rooms[this.liveRoom]);}
+        else {this._updateLock();updateRobotStatuses(this);if(this.tab===2){this._updateWindowStatuses();this._updateSensorStatuses();}const live=this.shadowRoot.getElementById("live-room-status");if(live&&this.liveRoom&&this.data.config.rooms[this.liveRoom])live.innerHTML=this._roomLive(this.data.config.rooms[this.liveRoom]);}
       }, {type: "iqalarm/subscribe"});
       if (!this.isConnected || attempt !== this._connectAttempt) unsub();
       else this._unsubscribe = unsub;
@@ -332,12 +334,14 @@ class IQAlarmPanel extends HTMLElement {
   _sensorLabel(sensor,overview=false) {
     if(!sensor.enabled)return "Isoliert";
     if(sensor.window_id)return this._windowLabel(sensor.window_id);
+    if(this.data.status.robot_paused_sensors?.includes(sensor.entity_id))return "Roboter-Ausnahme · Bewegung ignoriert";
     if(this.data.status.quarantine[sensor.entity_id])return "Störung · Prell-Quarantäne";
     const raw=this.data.status.raw[sensor.entity_id];
     if(raw==null)return "Störung · Keine Verbindung";
     if(sensor.sensor_kind==="window_handle")return sensor.entity_id.startsWith("lock.")?(raw?"Entriegelt · Information":"Verriegelt"):(raw?"Griffmeldung · Information":"Griffmeldung inaktiv");
     if(sensor.sensor_kind==="door_lock"||sensor.role==="lock_contact")return raw?"Entriegelt":"Verriegelt";
     if(raw)return "Aktiv";
+    if(sensor.activation_mode==="change")return "Ruhig";
     const recentSec = this.data.config?.settings?.recent_seconds ?? 30;
     const lastActive = this.data.status?.last_active?.[sensor.entity_id];
     if(lastActive && ((Date.now() / 1000 - lastActive) <= recentSec)) return "Kürzlich";
@@ -365,8 +369,9 @@ class IQAlarmPanel extends HTMLElement {
       const isHandle=sensor.sensor_kind==="window_handle";
       const isLock=sensor.sensor_kind==="door_lock"||sensor.role==="lock_contact";
       const lastActive=this.data.status.last_active?.[eid];
-      const isRecent=!raw&&!isLock&&!isHandle&&Boolean(lastActive&&(now-lastActive<=recentSec));
-      node.classList.toggle("on",raw===true&&!isHandle);
+      const paused=this.data.status.robot_paused_sensors?.includes(eid);
+      const isRecent=sensor.activation_mode!=="change"&&!paused&&!raw&&!isLock&&!isHandle&&Boolean(lastActive&&(now-lastActive<=recentSec));
+      node.classList.toggle("on",raw===true&&!isHandle&&!paused);
       node.classList.toggle("recent",isRecent);
       const text=this._sensorLabel(sensor,true)+(!this.data.status.monitored_sensors.includes(eid)?" · nur Anzeige":"");
       if(node.textContent!==text)node.textContent=text;
@@ -460,7 +465,7 @@ class IQAlarmPanel extends HTMLElement {
     const offline = sensors.filter(x => s.raw[x.entity_id] == null).length;
     const profileButtons = `<button data-command="mode" data-mode="inactive" class="${!s.profile_id ? "active" : ""}">${icon("power")}Aus</button>` + Object.entries(c.profiles).map(([id, p]) => `<button data-command="profile-arm" data-id="${esc(id)}" class="${s.profile_id === id ? "active" : ""}">${this._profileSymbol(p)}${esc(p.name)}</button>`).join("");
     return this._head("Dein Haus im Überblick") + quarantine + information +
-      `<section class="card hero" data-live-key="hero" style="--level-color:${this._color(s.level)}">${statusRings(this.data)}<div class="hero-copy"><h2>${s.profile_name ? esc(s.profile_name) : "Anlage aus"}</h2><p>${s.active ? "Alarmreaktionen aktiv" : "Live-Status aktiv · keine Geräteaktionen"}</p><p>${s.monitored_sensors.length} Sensoren ausgewertet · Home Assistant: ${s.active ? "An" : "Aus"}</p>${s.pending_until ? `<div class="countdown">Eingangsverzögerung bis ${date(s.pending_until)}</div>` : s.arming_until ? `<div class="countdown">Scharf ab ${date(s.arming_until)}</div>` : ""}<div class="mode-buttons">${profileButtons}</div></div></section>` + renderConfirmationGrades(this) + this._floorplan(false) +
+      `<section class="card hero" data-live-key="hero" style="--level-color:${this._color(s.level)}">${statusRings(this.data)}<div class="hero-copy"><h2>${s.profile_name ? esc(s.profile_name) : "Anlage aus"}</h2><p>${s.active ? "Alarmreaktionen aktiv" : "Live-Status aktiv · keine Geräteaktionen"}</p><p>${s.monitored_sensors.length} Sensoren ausgewertet · Home Assistant: ${s.active ? "An" : "Aus"}</p>${s.pending_until ? `<div class="countdown">Eingangsverzögerung bis ${date(s.pending_until)}</div>` : s.arming_until ? `<div class="countdown">Scharf ab ${date(s.arming_until)}</div>` : ""}<div class="mode-buttons">${profileButtons}</div></div></section>` + renderConfirmationGrades(this) + renderCoverage(this) + this._floorplan(false) +
       `<div class="metrics">${[["floor-plan", rooms.length, "Räume verbunden"], ["shield-check-outline", !s.active ? sensors.length : s.monitored_sensors.length, !s.active ? "Sensoren eingerichtet" : "Sensoren im Profil"], ["window-open-variant", open, "Kontakte geöffnet"], ["connection", Object.keys(s.quarantine).length + offline, "Störungen / isoliert"]].map(([symbol, n, title]) => `<div class="card metric">${icon(symbol)}<div><strong>${n}</strong><span>${title}</span></div></div>`).join("")}</div>` +
       `<div class="section-title"><h2>Räume & Sicherheitsstatus</h2><button class="small" data-tab="1">Räume verwalten ${icon("arrow-right")}</button></div><div class="grid">${rooms.length ? rooms.map(r => this._roomLive(r)).join("") : this._empty("Hier beginnt dein Schutzkonzept", "Lege Räume an oder importiere deine Home-Assistant-Bereiche.", "floor-plan")}</div>`;
   }
@@ -480,8 +485,9 @@ class IQAlarmPanel extends HTMLElement {
       const isHandle = s.sensor_kind === "window_handle";
       const isLock = s.sensor_kind === "door_lock" || s.role === "lock_contact";
       const lastActive = this.data.status.last_active?.[s.entity_id];
-      const isRecent = !raw && !isLock && !isHandle && Boolean(lastActive && (now - lastActive <= recentSec));
-      return `<div class="sensor-line two-line"><div class="sensor-line-top"><div class="sensor-line-title">${symbolHTML(sensorSymbol(s))}<span class="sensor-name">${esc(s.name || s.entity_id)}</span></div></div><div class="sensor-line-bottom"><span class="sensor-state ${raw === true && !isHandle ? "on" : isRecent ? "recent" : ""}" data-sensor-state-id="${esc(s.entity_id)}">${esc(this._sensorLabel(s,true))}${!this.data.status.monitored_sensors.includes(s.entity_id) ? " · nur Anzeige" : ""}</span></div></div>`;
+      const paused = this.data.status.robot_paused_sensors?.includes(s.entity_id);
+      const isRecent = s.activation_mode !== "change" && !paused && !raw && !isLock && !isHandle && Boolean(lastActive && (now - lastActive <= recentSec));
+      return `<div class="sensor-line two-line"><div class="sensor-line-top"><div class="sensor-line-title">${symbolHTML(sensorSymbol(s))}<span class="sensor-name">${esc(s.name || s.entity_id)}</span></div></div><div class="sensor-line-bottom"><span class="sensor-state ${raw === true && !isHandle && !paused ? "on" : isRecent ? "recent" : ""}" data-sensor-state-id="${esc(s.entity_id)}">${esc(this._sensorLabel(s,true))}${!this.data.status.monitored_sensors.includes(s.entity_id) ? " · nur Anzeige" : ""}</span></div></div>`;
     }).join("") : `<p>Noch keine Sensoren zugeordnet.</p>`}</article>`;
   }
 
@@ -525,8 +531,9 @@ class IQAlarmPanel extends HTMLElement {
         const isHandle = s.sensor_kind === "window_handle";
         const isLock = s.sensor_kind === "door_lock" || s.role === "lock_contact";
         const lastActive = this.data.status.last_active?.[s.entity_id];
-        const isRecent = !raw && !isLock && !isHandle && Boolean(lastActive && (now - lastActive <= recentSec));
-        return `<div class="sensor-line sensor-moveable two-line" draggable="true" data-command="sensor-move-click" data-id="${esc(s.entity_id)}" data-sensor-id="${esc(s.entity_id)}" data-room-id="${esc(roomId || "")}" title="Klicken zum Bearbeiten oder Ziehen zum Sortieren und Verschieben"><div class="sensor-line-top"><div class="sensor-line-title">${symbolHTML(sensorSymbol(s))}<span class="sensor-name">${esc(s.name || s.entity_id)}</span></div><button type="button" class="icon-button sensor-move-btn" aria-label="${esc(s.name || s.entity_id)} in anderen Raum verschieben" data-command="sensor-move-click" data-id="${esc(s.entity_id)}" data-sensor-id="${esc(s.entity_id)}">${icon("cursor-move")}</button></div><div class="sensor-line-bottom"><span class="sensor-state ${raw === true && !isHandle ? "on" : isRecent ? "recent" : ""}" data-sensor-state-id="${esc(s.entity_id)}">${esc(this._sensorLabel(s, true))}${!this.data.status.monitored_sensors.includes(s.entity_id) ? " · nur Anzeige" : ""}</span></div></div>`;
+        const paused = this.data.status.robot_paused_sensors?.includes(s.entity_id);
+        const isRecent = s.activation_mode !== "change" && !paused && !raw && !isLock && !isHandle && Boolean(lastActive && (now - lastActive <= recentSec));
+        return `<div class="sensor-line sensor-moveable two-line" draggable="true" data-command="sensor-move-click" data-id="${esc(s.entity_id)}" data-sensor-id="${esc(s.entity_id)}" data-room-id="${esc(roomId || "")}" title="Klicken zum Bearbeiten oder Ziehen zum Sortieren und Verschieben"><div class="sensor-line-top"><div class="sensor-line-title">${symbolHTML(sensorSymbol(s))}<span class="sensor-name">${esc(s.name || s.entity_id)}</span></div><button type="button" class="icon-button sensor-move-btn" aria-label="${esc(s.name || s.entity_id)} in anderen Raum verschieben" data-command="sensor-move-click" data-id="${esc(s.entity_id)}" data-sensor-id="${esc(s.entity_id)}">${icon("cursor-move")}</button></div><div class="sensor-line-bottom"><span class="sensor-state ${raw === true && !isHandle && !paused ? "on" : isRecent ? "recent" : ""}" data-sensor-state-id="${esc(s.entity_id)}">${esc(this._sensorLabel(s, true))}${!this.data.status.monitored_sensors.includes(s.entity_id) ? " · nur Anzeige" : ""}</span></div></div>`;
       }).join("") : `<p class="drop-hint">${isUnassigned ? "Keine Sensoren ohne Raum." : "Keine Sensoren zugeordnet. Sensoren hierher ziehen oder anklicken."}</p>`}</div></article>`;
     };
 
@@ -565,7 +572,7 @@ class IQAlarmPanel extends HTMLElement {
       beforeId = ids[next];
       after = direction > 0;
     }
-    if (form) { this._setDisplayName(config, sensorId, form.elements.display_name.value); this._setDisplayIcon(config, sensorId, form.elements.display_icon.value); }
+    if (form) { this._setDisplayName(config, sensorId, form.elements.display_name.value); this._setDisplayIcon(config, sensorId, form.elements.display_icon.value); setSensorType(config, sensorId, form.elements.sensor_type?.value); }
     this._placeSensor(config, sensorId, roomId, beforeId, after);
     this.data = await this._call("config/save", {config, revision: form ? this._dialogRevision : this._viewRevision});
     this.shadowRoot.getElementById("editor")?.close();
@@ -592,9 +599,9 @@ class IQAlarmPanel extends HTMLElement {
 
     const unassignBtn = sensor.window_id ? "" : `<button type="button" class="room-pick-btn ${!currentRoomId ? "current" : ""}" data-command="move-sensor-target" data-sensor-id="${esc(sensorId)}" data-target-room="">${icon("close-circle-outline")}<span>Kein Raum (Nicht zugeordnet)</span>${!currentRoomId ? ' <small>(Aktuell)</small>' : ""}</button>`;
 
-    const body = `<div class="sensor-move-dialog"><div class="sensor-move-header"><label class="field">Anzeigename<input name="display_name" aria-label="Anzeigename" value="${esc(sensor.name || sensorId)}" required maxlength="${sensor.window_id ? 100 : 200}"></label>${iconField(sensor.icon, sensorSymbol({...sensor,icon:null}))}<p class="muted" style="font-size:11px"><code>${esc(sensorId)}</code></p><p style="margin-top:8px">Aktueller Raum: <strong>${esc(currentRoomName)}</strong></p></div><h3 style="margin:16px 0 10px">In welchen Raum verschieben?</h3><div class="room-pick-grid">${roomButtons}${unassignBtn}</div></div>`;
+    const body = `<div class="sensor-move-dialog"><div class="sensor-move-header"><label class="field">Anzeigename<input name="display_name" aria-label="Anzeigename" value="${esc(sensor.name || sensorId)}" required maxlength="${sensor.window_id ? 100 : 200}"></label>${iconField(sensor.icon, sensorSymbol({...sensor,icon:null}))}${sensorTypeField(sensor,esc)}<p class="muted" style="font-size:11px"><code>${esc(sensorId)}</code></p><p style="margin-top:8px">Aktueller Raum: <strong>${esc(currentRoomName)}</strong></p></div><h3 style="margin:16px 0 10px">In welchen Raum verschieben?</h3><div class="room-pick-grid">${roomButtons}${unassignBtn}</div></div>`;
 
-    this._dialog(`Sensor verschieben`, body, "sensor-move", sensorId);
+    this._dialog("Sensor-Einstellungen", body, "sensor-move", sensorId);
     const submitBtn = this.shadowRoot.querySelector('#editor [type="submit"]');
     if (submitBtn) submitBtn.textContent = "Speichern";
     const ids = this._orderedSensors(currentRoomId).map(s => s.entity_id), index = ids.indexOf(sensorId);
@@ -621,7 +628,7 @@ class IQAlarmPanel extends HTMLElement {
     record.icon = selected || null;
   }
 
-  async _moveSensor(sensorId, targetRoomId, name = null, revision = this._viewRevision, beforeId = null, after = false, displayIcon = undefined) {
+  async _moveSensor(sensorId, targetRoomId, name = null, revision = this._viewRevision, beforeId = null, after = false, displayIcon = undefined, sensorType = undefined) {
     if (this.data.status.active) {
       this._toast("Zum Ändern der Raumzuordnung zuerst entschärfen.", true);
       return;
@@ -630,6 +637,7 @@ class IQAlarmPanel extends HTMLElement {
     const alreadyAssigned = this._orderedSensors(targetRoomId).some(s => s.entity_id === sensorId);
     if (name !== null) this._setDisplayName(config, sensorId, name);
     if (displayIcon !== undefined) this._setDisplayIcon(config, sensorId, displayIcon);
+    setSensorType(config,sensorId,sensorType);
     let movedName = sensorId;
     let found = false;
 
@@ -811,11 +819,11 @@ class IQAlarmPanel extends HTMLElement {
     let contentHtml = "";
     if (activePlans.length === 1) {
       const {svg} = this._renderPlanSvg(activePlans[0], true, false, true);
-      contentHtml = svg+imageControls(activePlans[0],this._planOpacity(activePlans[0]));
+      contentHtml = svg;
     } else {
       contentHtml = `<div class="live-floorplans-grid ${this.liveStacked ? "stacked" : ""}">${activePlans.map((p, idx) => {
         const {svg, roomCount} = this._renderPlanSvg(p, true, false, idx === 0);
-        return `<div class="live-floorplan-item"><div class="row between" style="margin-bottom:6px"><h3 style="font-size:15px;font-weight:700">${esc(p.name)}</h3><span class="pill">${icon("floor-plan")}${roomCount} ${roomCount === 1 ? "Raum" : "Räume"}</span></div>${svg}${imageControls(p,this._planOpacity(p))}</div>`;
+        return `<div class="live-floorplan-item"><div class="row between" style="margin-bottom:6px"><h3 style="font-size:15px;font-weight:700">${esc(p.name)}</h3><span class="pill">${icon("floor-plan")}${roomCount} ${roomCount === 1 ? "Raum" : "Räume"}</span></div>${svg}</div>`;
       }).join("")}</div>`;
     }
     return `<section class="card" style="margin:20px 0"><div class="row between"><div class="row"><h2>Live-Grundriss</h2><span class="pill">${icon("vector-polygon")}${activePlans.length === 1 ? esc(activePlans[0].name) : `${activePlans.length} Etagen`} · ${totalRooms} ${totalRooms === 1 ? "Raum" : "Räume"}</span></div><div class="row">${layoutToggle}${filterSelect}</div></div>${contentHtml}</section>`;
@@ -1142,6 +1150,7 @@ class IQAlarmPanel extends HTMLElement {
     let motionText = "";
     const lastActive = this.data.status?.last_active || {};
     const recentMotion = roomSensors.some(sensor =>
+      !this.data.status.robot_paused_sensors?.includes(sensor.entity_id) && sensor.activation_mode !== "change" &&
       ["interior_motion", "interior_mmwave"].includes(sensor.role) &&
       raw[sensor.entity_id] === false &&
       Number.isFinite(lastActive[sensor.entity_id]) &&
@@ -2069,6 +2078,7 @@ class IQAlarmPanel extends HTMLElement {
     const command = button.dataset.command, id = button.dataset.id || button.dataset.sensorId;
     try {
       if (command === "menu") this.dispatchEvent(new CustomEvent("hass-toggle-menu", {bubbles: true, composed: true}));
+      else if(command === "robot-new" || command === "robot-edit") openRobotDialog(this,id);
       else if (command === "rule-new" || command === "rule-edit") openRuleDialog(this,id);
       else if (command === "rule-delete") this._dialog("Levelregel löschen","<p>Die Regel wird entfernt. Ihre Zuordnungen zu Alarmmodi werden bereinigt.</p>","delete-rules",id);
       else if (command === "rule-condition-add" || command === "rule-condition-remove") {
@@ -2102,7 +2112,7 @@ class IQAlarmPanel extends HTMLElement {
       else if (command === "move-sensor-target") {
         const form = this.shadowRoot.getElementById("editor-form");
         if (form?.dataset.type === "sensor-move" && form.reportValidity()) {
-          await this._moveSensor(button.dataset.sensorId, button.dataset.targetRoom, form.elements.display_name.value, this._dialogRevision, null, false, form.elements.display_icon.value);
+          await this._moveSensor(button.dataset.sensorId, button.dataset.targetRoom, form.elements.display_name.value, this._dialogRevision, null, false, form.elements.display_icon.value, form.elements.sensor_type?.value);
         }
       }
       else if (command === "room-add-sensor") {
@@ -2271,7 +2281,7 @@ class IQAlarmPanel extends HTMLElement {
         this.shadowRoot.querySelector('#editor [type="submit"]').textContent = "Grundriss löschen";
       }
       else if (command?.endsWith("-delete")) {
-        const collection = {"room-delete": "rooms", "sensor-delete": "sensors", "action-delete": "actions", "profile-delete": "profiles", "floorplan-delete":"floorplans"}[command];
+        const collection = {"room-delete": "rooms", "robot-delete": "robots", "sensor-delete": "sensors", "action-delete": "actions", "profile-delete": "profiles", "floorplan-delete":"floorplans"}[command];
         this._dialog("Eintrag entfernen", `<p>Dieser konfigurierte Eintrag wird aus IQAlarm entfernt. Home-Assistant-Entitäten bleiben erhalten.</p>`, `delete-${collection}`, id);
       } else if (command === "test") {
         button.disabled = true;
@@ -2399,6 +2409,7 @@ class IQAlarmPanel extends HTMLElement {
           const config = structuredClone(this.data.config);
           this._setDisplayName(config, id, get("display_name"));
           this._setDisplayIcon(config, id, get("display_icon"));
+          setSensorType(config,id,get("sensor_type"));
           this.data = await this._call("config/save", {config, revision: this._dialogRevision});
         } else if (type === "sensor-assistant") {
           const checkedBoxes = form.querySelectorAll('[data-candidate-check]:checked');
@@ -2518,7 +2529,9 @@ class IQAlarmPanel extends HTMLElement {
           else if (type === "sensor") {
             const entityId = (id || get("entity_id") || "").trim();
             if (!entityId) throw new Error("Bitte eine Entitäts-ID angeben.");
-            collection = "sensors"; item = {entity_id: entityId, name: get("name").trim() || entityId, icon: get("display_icon").trim() || null, role: get("role"), room_id: get("room_id") || null, front_of: fields.getAll("front_of"), source_id: get("source_id"), enabled: bool("enabled"), flap_enabled: bool("flap_enabled"), flap_threshold: num("flap_threshold"), flap_window: num("flap_window"), debounce_ms: num("debounce_ms"), entry_delay: bool("entry_delay"), immediate: bool("immediate"), attribute: get("attribute") || null, active_states: get("active_states").split(",").map(s => s.trim()).filter(Boolean), camera_entity_id: get("camera_entity_id") || null, sensor_kind:get("sensor_kind"), active_above:get("active_above")===""?null:num("active_above")};
+            collection = "sensors"; item = {entity_id: entityId, name: get("name").trim() || entityId, icon: get("display_icon").trim() || null, role: get("role"), room_id: get("room_id") || null, front_of: fields.getAll("front_of"), source_id: get("source_id"), enabled: bool("enabled"), flap_enabled: bool("flap_enabled"), flap_threshold: num("flap_threshold"), flap_window: num("flap_window"), debounce_ms: num("debounce_ms"), entry_delay: bool("entry_delay"), immediate: bool("immediate"), attribute: get("attribute") || null, active_states: get("active_states").split(",").map(s => s.trim()).filter(Boolean), camera_entity_id: get("camera_entity_id") || null, sensor_kind:get("sensor_kind"), active_above:get("active_above")===""?null:num("active_above"), activation_mode:get("role")==="interior_motion"?(this.data.config.sensors[id]?.activation_mode||"state"):"state"};
+          } else if (type === "robot") {
+            collection="robots";item=readRobotForm(form);if(id)item.id=id;
           } else if (type === "action") {
             collection = "actions"; const old = this.data.config.actions[id], kind = get("kind");
             item = {level: old?.level || this.stage, trigger: get("action_trigger") || "level_entered", kind, target: get("target"), title: get("title"), message: get("message"), duration: num("duration"), brightness: num("brightness"), critical: kind === "notify" && bool("critical"), camera_entity_id: kind === "notify" ? get("camera_entity_id") || null : null, media_player: kind === "tts" ? get("media_player") || null : null, enabled: bool("enabled"), color: kind === "light" && bool("use_color") ? [1, 3, 5].map(i => parseInt(get("color").slice(i, i + 2), 16)) : null}; if (id) item.id = id;

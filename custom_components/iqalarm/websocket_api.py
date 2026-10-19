@@ -15,7 +15,16 @@ from .compat import vol
 from .const import ALLOWED_SENSOR_DOMAINS, DOMAIN, SIGNAL_UPDATE
 from .floorplan_analysis import analyze_image
 from .level_rules import LevelRule
-from .models import Action, FloorPlan, Profile, Room, SensorConfig, WindowConfig, construct
+from .models import (
+    Action,
+    FloorPlan,
+    Profile,
+    RobotConfig,
+    Room,
+    SensorConfig,
+    WindowConfig,
+    construct,
+)
 from .sensor_discovery import discover_sensors, sensor_setup
 from .windows import capture_position, inspect_window
 
@@ -171,7 +180,7 @@ async def ws_config(hass, connection, msg) -> None:
     {
         "type": "iqalarm/crud",
         vol.Required("collection"): vol.In(
-            ["rooms", "sensors", "actions", "profiles", "floorplans", "windows", "rules"]
+            ["rooms", "sensors", "actions", "profiles", "floorplans", "windows", "rules", "robots"]
         ),
         vol.Required("operation"): vol.In(["save", "delete"]),
         vol.Required("revision"): int,
@@ -274,7 +283,15 @@ async def ws_crud(hass, connection, msg) -> None:
             del data[collection][key]
         else:
             item = dict(msg["item"])
-            if collection in ("rooms", "actions", "profiles", "floorplans", "windows", "rules"):
+            if collection in (
+                "rooms",
+                "actions",
+                "profiles",
+                "floorplans",
+                "windows",
+                "rules",
+                "robots",
+            ):
                 item.setdefault("id", uuid4().hex)
             key = item["entity_id" if collection == "sensors" else "id"]
             if collection == "profiles":
@@ -288,6 +305,7 @@ async def ws_crud(hass, connection, msg) -> None:
                     "floorplans": FloorPlan,
                     "windows": WindowConfig,
                     "rules": LevelRule,
+                    "robots": RobotConfig,
                 }[collection]
                 construct(cls, item)
             data[collection][key] = item
@@ -400,6 +418,11 @@ async def ws_test(hass, connection, msg) -> None:
 @callback
 def ws_catalog(hass, connection, msg) -> None:
     domains = ALLOWED_SENSOR_DOMAINS | {
+        "vacuum",
+        "lawn_mower",
+        "input_boolean",
+        "input_select",
+        "select",
         "sensor",
         "siren",
         "switch",

@@ -53,6 +53,8 @@ class IQAlarmRuntime:
         self.stopped = False
         self._timer_running = False
         self._saved_grade_stamp = ()
+        self._saved_activity_stamp = ()
+        self._published_activity_stamp = ()
         self._next_simulation = 0.0
         self._next_prune = 0.0
         self._failed_pins: list[float] = []
@@ -66,7 +68,11 @@ class IQAlarmRuntime:
         if state is None or state.state in ("unknown", "unavailable"):
             return None
         if sensor.entity_id.startswith("lock.") and state.state in ("locking", "unlocking"):
-            return self.engine.raw.get(sensor.entity_id)
+            return (
+                self.engine.change_sources.get(sensor.entity_id)
+                if sensor.activation_mode == "change"
+                else self.engine.raw.get(sensor.entity_id)
+            )
         if sensor.entity_id.startswith("lock.") and state.state == "jammed":
             return None
         value = state.attributes.get(sensor.attribute) if sensor.attribute else state.state
@@ -101,6 +107,21 @@ class IQAlarmRuntime:
             if record and record.device_id and sensor.source_id.startswith("window:"):
                 sensor.source_id = f"device:{record.device_id}"
         self._update_windows(time.time(), seed=True)
+        self._update_robots(seed=True)
+
+    def _update_robots(self, *, seed=False, engine=None):
+        engine = engine or self.engine
+        keys = {
+            source.entity_id
+            for robot in engine.config.robots.values()
+            for source in robot.activities
+        }
+        readings = {}
+        for key in keys:
+            state = self.hass.states.get(key)
+            if state is not None:
+                readings[key] = {"state": state.state, "attributes": state.attributes}
+        return engine.update_robots(readings, time.time(), seed=seed)
 
     def _window_states(self, window) -> dict[str, str]:
         return {
@@ -184,8 +205,15 @@ class IQAlarmRuntime:
         if self.stopped:
             return
         grouped = entity_id in self.config.window_members()
-        if sensor is None and not grouped:
+        robot_source = any(
+            source.entity_id == entity_id
+            for robot in self.config.robots.values()
+            for source in robot.activities
+        )
+        if sensor is None and not grouped and not robot_source:
             return
+        if robot_source:
+            self._update_robots()
         if sensor:
             self.engine.feed(
                 entity_id, self.active_state(sensor, event.data.get("new_state")), time.time()
@@ -200,11 +228,14 @@ class IQAlarmRuntime:
         self._timer_running = True
         try:
             windows_changed = self._update_windows(time.time())
-            self.engine.tick(time.time())
+            activity_changed = self.engine.tick(time.time())
             if (
                 self.engine._outbox
+                or activity_changed
                 or windows_changed
                 or self._grade_stamp() != self._saved_grade_stamp
+                or self._activity_stamp() != self._saved_activity_stamp
+                or self._activity_stamp() != self._published_activity_stamp
             ):
                 if self.flush_task is None or self.flush_task.done():
                     self.flush_task = self.hass.async_create_background_task(
@@ -294,15 +325,20 @@ class IQAlarmRuntime:
             )
         )
 
+    def _activity_stamp(self):
+        return tuple(sorted(self.engine.activity_until.items()))
+
     async def persist(self) -> None:
         async with self.storage_lock:
             stamp = self._grade_stamp()
+            activity_stamp = self._activity_stamp()
             await self.store.async_save(
                 config=self.config,
                 state=deepcopy(self.engine.persistent_state()),
                 outputs=deepcopy(self.dispatcher.outputs),
             )
             self._saved_grade_stamp = stamp
+            self._saved_activity_stamp = activity_stamp
 
     async def flush(self) -> None:
         events = self.engine.drain()
@@ -310,7 +346,10 @@ class IQAlarmRuntime:
         secure_event = None
         if not events:
             self.publish()
-            if self._grade_stamp() != self._saved_grade_stamp:
+            if (
+                self._grade_stamp() != self._saved_grade_stamp
+                or self._activity_stamp() != self._saved_activity_stamp
+            ):
                 await self._flush_persistence()
             return
         for event in events:
@@ -381,6 +420,7 @@ class IQAlarmRuntime:
     @callback
     def publish(self) -> None:
         async_dispatcher_send(self.hass, SIGNAL_UPDATE)
+        self._published_activity_stamp = self._activity_stamp()
 
     def report(self, kind: str, reason: str) -> None:
         event = EventLog(
@@ -496,6 +536,11 @@ class IQAlarmRuntime:
                 raise ValueError("IQAlarm-Ausgabesensoren sind keine unabhängigen Alarmeingänge")
             if record and record.device_id and sensor.source_id in ("", sensor.entity_id):
                 sensor.source_id = f"device:{record.device_id}"
+        for robot in candidate.robots.values():
+            for source in robot.activities:
+                record = registry.async_get(source.entity_id)
+                if record and record.platform == "iqalarm":
+                    raise ValueError("Roboter-Aktivität benötigt unabhängige Statusentitäten")
         for window in candidate.windows.values():
             if any(
                 (entry := registry.async_get(source)) and entry.platform == "iqalarm"
@@ -522,6 +567,7 @@ class IQAlarmRuntime:
             replacement.seed(
                 sensor.entity_id, self.active_state(sensor, self.hass.states.get(sensor.entity_id))
             )
+        self._update_robots(seed=True, engine=replacement)
         replacement._log(time.time(), "configuration_changed", "Konfiguration gespeichert")
         async with self.storage_lock:
             await self.store.async_save(
