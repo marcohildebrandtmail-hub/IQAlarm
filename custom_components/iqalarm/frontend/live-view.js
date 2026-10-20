@@ -43,6 +43,8 @@ export const LIVE_VIEW_CSS=`
 .status-rings .ring-track{stroke:var(--iq-border);stroke-linecap:butt}
 .status-rings text{fill:var(--level-color);font:750 36px system-ui;text-anchor:middle;dominant-baseline:central}
 .grade-caption{font-size:12px;color:var(--iq-muted)}
+.confirmation-context{margin-top:8px;min-width:0;overflow-wrap:anywhere}
+.confirmation-context p{margin:2px 0 0;font-size:12px;line-height:1.4}
 .plan-wrap polygon,.plan-wrap .room-badge,.plan-wrap .room-corner{transition:fill 1.5s ease,stroke 1.5s ease,fill-opacity 1.5s ease,stroke-opacity 1.5s ease}
 @media(prefers-reduced-motion:reduce){.status-rings circle{transition:none!important}.plan-wrap .anim-pulse,.plan-wrap .anim-pulse .room-badge{animation:none!important}.plan-wrap polygon,.plan-wrap .room-badge,.plan-wrap .room-corner{transition:fill 1.5s ease,stroke 1.5s ease,fill-opacity 1.5s ease,stroke-opacity 1.5s ease!important}}
 `;

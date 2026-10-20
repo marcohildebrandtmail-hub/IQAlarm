@@ -174,7 +174,7 @@ test("confirmation grade remembers three sources and requires a later opening",a
   for(const id of [ids.person,ids.person2,ids.outside])await state(page,id,"off");
   await page.getByRole("tab",{name:"Live-Status"}).click();
   const grade=page.locator(`[data-rule-grade="${parent.id}"]`);
-  await expect(grade).toContainText("Bestätigt · 3 von 3");
+  await expect(page.locator(".status-rings")).toHaveAttribute("aria-label",/Bestätigungsgrad 3 von 3/);
   await expect(grade).toContainText("Bestätigung gespeichert bis");
   await grade.scrollIntoViewIfNeeded();
   await page.screenshot({path:"test-results/confirmation-grade-live.png"});
@@ -258,7 +258,7 @@ test("outdoor motion and person detection show their own source type on the floo
 });
 
 for(const reducedMotion of ["no-preference","reduce"]){
-test(`live colors fade when the grade card disappears with reduced motion ${reducedMotion}`,async({page})=>{
+test(`live colors fade when confirmation details disappear with reduced motion ${reducedMotion}`,async({page})=>{
   await page.emulateMedia({reducedMotion});
   const panel=page.locator("iqalarm-panel");
   // Exercise the real dashboard renderer with a private in-browser snapshot.
@@ -311,12 +311,12 @@ test("live confirmation decays and is published without further sensor events",a
   await save(page,data.config);await ws(page,"set_mode",{mode:"qa_night"});
   for(const id of [ids.person,ids.person2,ids.outside])await state(page,id,"on");
   const grade=page.locator('[data-rule-grade="timer_grade"]');
-  await expect(grade).toContainText("Bestätigt · 3 von 3");
+  await expect(page.locator(".status-rings")).toHaveAttribute("aria-label",/Bestätigungsgrad 3 von 3/);
   await expect(page.locator('.status-rings')).toHaveAttribute('aria-label','Alarmstufe 2, Bestätigungsgrad 3 von 3');
   await expect(page.locator('[data-confirmation-ring]')).toHaveAttribute('stroke-dashoffset','0');
   // From here no HA state, profile, configuration or browser clock is changed.
   for(const current of [2,1,0]){
-    await expect(grade).toContainText(`Bestätigungsgrad · ${current} von 3`);
+    await expect(grade).toBeVisible();
     await expect(page.locator('.status-rings')).toHaveAttribute('aria-label',`Alarmstufe 2, Bestätigungsgrad ${current} von 3`);
   }
   await expect(grade).toContainText("Bestätigung gespeichert bis");

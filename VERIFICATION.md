@@ -1,6 +1,6 @@
 # IQAlarm · Prüfstand vom 19. Oktober 2026
 
-## Prüfumfang (Version 2.12.3)
+## Prüfumfang (Version 2.12.4)
 
 - **481 pytest-Tests** für Korrelationslogik, Nachtbetrieb, eigene Profile, Konfigurationsgrenzen, Archivierung, Repository-Metadaten und Deployment-Rollback.
 - Alle fünf geforderten Pflichtszenarien: MACO-Prellen, einzelnes Fenster, Fenster + Bewegung nach zwölf Sekunden, nächtlicher Toilettengang und Vorfeld + Fenster nach vierzig Sekunden.
@@ -57,6 +57,8 @@ Zusätzliche Prüfungen ab 2.11.1: Außenbewegung und Kamera-/Personenerkennung 
 Zusätzliche Prüfungen ab 2.12.2: Der LVL-3-Testbetrieb sperrt höhere Stufen in allen Profilen, einschließlich alter Vollalarmregeln, Gefahrensensoren, gespeicherter Alarme, laufender Verzögerungen und manueller Aktionstests. Bei 3/3 erfolgen weitere Meldungen ohne Hochstufung; ohne Meldungen sinkt der Grad schrittweise. Die Oberfläche kennzeichnet die Sperre und erhält gespeicherte Regeln und Aktionen. Bei ausgeschalteter Anlage hält eine intern bestätigte Sensorkombination die Raumfläche nach Ablauf des Bewegungstexts nicht länger rot. Zwei Browsergrößen prüfen Text und Zielfarbe nach Ablauf ohne neues Sensorereignis; lokale CSS-Prüfungen bestätigen den 1,5-Sekunden-Verlauf über echte Zwischenfarben auf erhaltenen SVG-Knoten.
 
 Zusätzliche Prüfungen ab 2.12.3: Live-Pakete liefern ihre Serverzeit mit. Der Browser richtet die Altersberechnung der Aktivitätsmeldungen an dieser Zeit aus, sodass abweichende Rechneruhren beim Wechsel von „Aktiv“ zu „Kürzlich“ keine kurze Ruhemeldung, verschwindenden Bewegungstext oder gegenläufige Farbüberblendung verursachen. Gerundete Zeitstempel, beide Richtungen des Uhrenversatzes, verzögertes Anzeigen, ungültige zukünftige Meldungen und ausgefallene Quellen sind geprüft. Browserregressionen erfassen den unmittelbaren Zustand nach dem Ausschalten auf Desktop und Mobilgerät, sowohl bei Live-Neudarstellung als auch bei Timeraktualisierung. Alarmregeln und ihre Fristen werden durch den Anzeigeausgleich nicht geändert.
+
+Zusätzliche Prüfungen ab 2.12.4: Kompakte Anzeige des Bestätigungskontexts direkt im Hero-Bereich (anstelle einer separaten Karte mit Fortschrittsbalken). Browserregressionen prüfen die Platzierung im Hero-Bereich, Stufenring-Attribute und saubere Darstellung auf Desktop und Mobilgerät.
 
 ## Veröffentlichungsstatus
 

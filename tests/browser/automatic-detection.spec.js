@@ -77,3 +77,23 @@ for(const width of [1440,390])test(`automatic LVL 3 settings save with stable st
   expect(await page.locator("iqalarm-panel").evaluate(panel=>panel.shadowRoot.querySelector(".shell").scrollWidth>panel.shadowRoot.querySelector(".shell").clientWidth)).toBe(false);
   expect(errors).toEqual([]);
 });
+
+for(const width of [1440,390])test(`confirmation uses the ring and compact source text inside the hero at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:920});
+  await page.locator("iqalarm-panel").evaluate(panel=>{
+    panel.tab=0;
+    panel.data.status={...panel.data.status,active:true,profile_id:"away",profile_name:"Abwesend",level:3,stage_id:"sensor_stage",stage_name:"Sensorauslösung",
+      raw:{"binary_sensor.motion":false},monitored_sensors:["binary_sensor.motion"],
+      rooms:{kitchen:{level:3,confirmed:false,motion:[],open:[],persons:[],quarantined:[]}},
+      rule_progress:[{rule_id:"automatic_level3:kitchen",room_id:"kitchen",name:"Automatische Erkennung · Küche",stage_id:"sensor_stage",current:1,target:3,
+        sources:[{entity_id:"binary_sensor.motion",name:"Bewegung Küche"}]}]};
+    panel._render();
+  });
+  const hero=page.locator(".hero"),context=hero.locator(".confirmation-context");
+  await expect(hero.locator(".status-rings")).toHaveAttribute("aria-label","Alarmstufe 3, Bestätigungsgrad 1 von 3");
+  await expect(context).toHaveText("Küche: Bewegung Küche");
+  await expect(page.locator("progress")).toHaveCount(0);
+  await expect(page.locator('[data-live-key="confirmation-grades"]')).toHaveCount(0);
+  expect(await context.evaluate(element=>element.getBoundingClientRect().height)).toBeLessThan(40);
+  expect(await page.locator("iqalarm-panel").evaluate(panel=>panel.shadowRoot.querySelector(".shell").scrollWidth>panel.shadowRoot.querySelector(".shell").clientWidth)).toBe(false);
+});

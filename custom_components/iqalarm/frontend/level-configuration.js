@@ -1,5 +1,5 @@
-import {renderRobotSettings} from "./robots.js?v=2.12.3";
-import {bindRuleSources, SOURCE_ROLES as ROLES} from "./rule-sources.js?v=2.12.3";
+import {renderRobotSettings} from "./robots.js?v=2.12.4";
+import {bindRuleSources, SOURCE_ROLES as ROLES} from "./rule-sources.js?v=2.12.4";
 /* Native, build-free editors for independent level rules and profile actions. */
 const esc=value=>String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const icon=name=>`<ha-icon icon="mdi:${esc(name)}" aria-hidden="true"></ha-icon>`;
@@ -147,9 +147,9 @@ export function renderDisplaySettings(panel) {
   return `<form id="display-levels-form" class="card" style="margin-top:22px"><fieldset data-config><h2>Darstellung im Live-Grundriss</h2><p>Diese Einstellungen verändern die Anzeige. Die Levelregeln bestimmen unabhängig davon die Sicherheitsauswertung.</p><div class="checks" style="margin-top:14px">${panel._checkbox("floorplan_disarmed_motion","Bewegung bei ausgeschalteter Anlage anzeigen",s.floorplan_disarmed_motion)}${panel._checkbox("floorplan_disarmed_contacts","Offene Fenster und Türen bei ausgeschalteter Anlage anzeigen",s.floorplan_disarmed_contacts)}${panel._checkbox("floorplan_disarmed_cameras","Außenerkennung bei ausgeschalteter Anlage anzeigen",s.floorplan_disarmed_cameras)}${panel._checkbox("floorplan_disarmed_animation","Animation bei ausgeschalteter Anlage",s.floorplan_disarmed_animation)}${panel._checkbox("floorplan_armed_animation","Animation bei aktiver Anlage",s.floorplan_armed_animation)}</div><div style="margin-top:16px">${panel._number("recent_seconds","Nachlaufzeit für Status „Kürzlich“ (Sekunden)",s.recent_seconds,5,300)}</div><div class="save-row"><button class="primary" type="submit">Darstellung speichern</button></div></fieldset></form>`;
 }
 
-export function renderConfirmationGrades(panel) {
+export function renderConfirmationContext(panel) {
   if (panel.data.status.active === false || panel.data.status.mode === "inactive" || panel.data.status.profile_id === null) return "";
   const entries=(panel.data.status.rule_progress||[]).filter(item=>item.stage_id===panel.data.status.stage_id);
   if(!entries.length)return "";
-  return `<section class="card" data-live-key="confirmation-grades" style="margin-bottom:18px" aria-label="Bestätigungsgrad">${entries.map(item=>`<div style="margin-bottom:12px" data-rule-grade="${esc(item.rule_id)}"><div class="row between"><strong>${esc(item.name)}</strong><span class="pill">${item.complete?"Bestätigt":"Bestätigungsgrad"} · ${item.current} von ${item.target}</span></div><progress value="${item.current}" max="${item.target}" aria-label="Bestätigungsgrad ${esc(item.name)}" style="width:100%;height:14px;margin-top:10px;accent-color:var(--iq-accent)"></progress>${item.next_level_at?`<p>Übergang zu LVL 4 um ${new Date(item.next_level_at*1000).toLocaleTimeString("de-DE")}, falls 3/3 erhalten bleibt.</p>`:""}${item.until?`<p>Bestätigung gespeichert bis ${new Date(item.until*1000).toLocaleTimeString("de-DE")}</p>`:""}<p style="font-size:12px">${item.sources.map(source=>esc(source.name||source.entity_id)).join(" · ")}</p></div>`).join("")}</section>`;
+  return `<div class="confirmation-context" data-live-key="confirmation-context">${entries.map(item=>`<p data-rule-grade="${esc(item.rule_id)}"><strong>${esc(panel.data.config.rooms?.[item.room_id]?.name||item.name)}</strong>${item.sources.length?`: ${[...new Set(item.sources.map(source=>source.name||source.entity_id))].map(esc).join(" · ")}`:""}${item.next_level_at?` · LVL 4 ab ${new Date(item.next_level_at*1000).toLocaleTimeString("de-DE")}`:""}${item.until?` · Bestätigung gespeichert bis ${new Date(item.until*1000).toLocaleTimeString("de-DE")}`:""}</p>`).join("")}</div>`;
 }
