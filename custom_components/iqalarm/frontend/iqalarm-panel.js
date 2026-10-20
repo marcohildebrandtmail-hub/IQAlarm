@@ -1,14 +1,14 @@
-import {sensorTypeField, setSensorType} from "./sensor-types.js?v=2.13.1";
-import {openRobotDialog, readRobotForm, renderCoverage, updateRobotStatuses} from "./robots.js?v=2.13.1";
-import {TOPOLOGY_CSS, connectionEditor, imageControls, roomConnections, setRoomConnection} from "./floorplan-topology.js?v=2.13.1";
-import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings} from "./live-view.js?v=2.13.1";
-import {RULE_SOURCES_CSS, updateRuleSources} from "./rule-sources.js?v=2.13.1";
-import {bindIconFields, iconField, MDI_ICON, roomSymbol, sensorSymbol, symbolHTML} from "./display-icons.js?v=2.13.1";
-import {DraftJournal} from "./floorplan-drafts.js?v=2.13.1";
-import {renderLevels, renderProfiles, renderDisplaySettings, renderConfirmationContext, openRuleDialog, readRuleForm, readAutomaticDetection, readPersonDetection} from "./level-configuration.js?v=2.13.1";
-import "./window-assistant.js?v=2.13.1";
-import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.13.1";
-/* IQAlarm 2.13.1 · native ES module · no CDN, framework or build required. */
+import {sensorTypeField, setSensorType} from "./sensor-types.js?v=2.13.2";
+import {openRobotDialog, readRobotForm, renderCoverage, updateRobotStatuses} from "./robots.js?v=2.13.2";
+import {TOPOLOGY_CSS, connectionEditor, imageControls, roomConnections, setRoomConnection} from "./floorplan-topology.js?v=2.13.2";
+import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings, triggerRows} from "./live-view.js?v=2.13.2";
+import {RULE_SOURCES_CSS, updateRuleSources} from "./rule-sources.js?v=2.13.2";
+import {bindIconFields, iconField, MDI_ICON, roomSymbol, sensorSymbol, symbolHTML} from "./display-icons.js?v=2.13.2";
+import {DraftJournal} from "./floorplan-drafts.js?v=2.13.2";
+import {renderLevels, renderProfiles, renderDisplaySettings, renderConfirmationContext, openRuleDialog, readRuleForm, readAutomaticDetection, readPersonDetection} from "./level-configuration.js?v=2.13.2";
+import "./window-assistant.js?v=2.13.2";
+import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.13.2";
+/* IQAlarm 2.13.2 · native ES module · no CDN, framework or build required. */
 const WINDOW_CSS = `.window-group{padding:18px 0;border-bottom:1px solid var(--divider-color,#dce3ec)}.window-inputs{margin:14px 0 0 24px;padding-left:18px;border-left:2px solid var(--divider-color,#dce3ec)}.window-inputs code{display:block;font-size:10px;overflow-wrap:anywhere;color:var(--secondary-text-color,#64758b)}.information{border-color:color-mix(in srgb,var(--primary-color,#2986bb) 25%,transparent)}.information summary,details.banner summary{cursor:pointer;font-size:13px}.information ha-icon{color:var(--primary-color,#2986bb)}`;
 const FLOORPLAN_MOTION_HOLD_SECONDS = 15;
 const RECOGNITION_FADE_SECONDS = 1.5;
@@ -876,7 +876,8 @@ class IQAlarmPanel extends HTMLElement {
         return `<div class="live-floorplan-item"><div class="row between" style="margin-bottom:6px"><h3 style="font-size:15px;font-weight:700">${esc(p.name)}</h3><span class="pill">${icon("floor-plan")}${roomCount} ${roomCount === 1 ? "Raum" : "Räume"}</span></div>${svg}</div>`;
       }).join("")}</div>`;
     }
-    return `<section class="card" data-live-key="live-floorplans" style="margin:20px 0"><div class="row between"><div class="row"><h2>Live-Grundriss</h2><span class="pill">${icon("vector-polygon")}${activePlans.length === 1 ? esc(activePlans[0].name) : `${activePlans.length} Etagen`} · ${totalRooms} ${totalRooms === 1 ? "Raum" : "Räume"}</span></div><div class="row">${layoutToggle}${filterSelect}</div></div>${contentHtml}</section>`;
+    const triggers=triggerRows(this.data,Date.now()/1000+(this._displayClockOffset||0));
+    return `<section class="card" data-live-key="live-floorplans" style="margin:20px 0"><div class="row between live-floorplan-header"><div class="row live-floorplan-title"><h2>Live-Grundriss</h2><span class="pill">${icon("vector-polygon")}${activePlans.length === 1 ? esc(activePlans[0].name) : `${activePlans.length} Etagen`} · ${totalRooms} ${totalRooms === 1 ? "Raum" : "Räume"}</span></div><div class="live-trigger-list" role="list" aria-label="Aktuelle Auslöser" data-live-key="live-triggers"${triggers?"":" hidden"}>${triggers}</div><div class="row live-floorplan-controls">${layoutToggle}${filterSelect}</div></div>${contentHtml}</section>`;
   }
   _floorplan(edit) {
     if (!edit) return this._liveFloorplans();
@@ -1279,6 +1280,8 @@ class IQAlarmPanel extends HTMLElement {
       if(context&&markup){const buffer=document.createElement('div');buffer.innerHTML=markup;patchNode(context,buffer.firstElementChild);}
       else if(context)context.remove();
     }
+    const triggers=this.shadowRoot.querySelector('[data-live-key="live-triggers"]');
+    if(triggers){const markup=triggerRows(this.data,Date.now()/1000+(this._displayClockOffset||0));patchHTML(triggers,markup);triggers.hidden=!markup;}
     this._refreshFloorplanStatuses();
     this._scheduleRecognitionRefresh();
   }

@@ -45,9 +45,46 @@ export const LIVE_VIEW_CSS=`
 .grade-caption{font-size:12px;color:var(--iq-muted)}
 .confirmation-context{margin-top:8px;min-width:0;overflow-wrap:anywhere}
 .confirmation-context p{margin:2px 0 0;font-size:12px;line-height:1.4}
+.live-floorplan-title,.live-floorplan-controls{flex:0 0 auto;max-width:100%}
+.live-trigger-list{flex:1 1 180px;min-width:0;display:grid;gap:3px}
+.live-trigger-list[hidden]{display:none}
+.live-trigger-item{display:flex;justify-content:center;gap:6px;min-width:0;font-size:12px;line-height:1.35}
+.live-trigger-name{min-width:0;overflow-wrap:anywhere}
+.live-trigger-timer{flex:none;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--iq-muted)}
+@media(max-width:700px){.live-trigger-list{order:3;flex-basis:100%}.live-trigger-item{justify-content:flex-start}}
 .plan-wrap polygon,.plan-wrap .room-badge,.plan-wrap .room-corner{transition:fill var(--room-fade-duration,1.5s) ease,stroke var(--room-fade-duration,1.5s) ease,fill-opacity var(--room-fade-duration,1.5s) ease,stroke-opacity var(--room-fade-duration,1.5s) ease}
 @media(prefers-reduced-motion:reduce){.status-rings circle{transition:none!important}.plan-wrap .anim-pulse,.plan-wrap .anim-pulse .room-badge{animation:none!important}.plan-wrap polygon,.plan-wrap .room-badge,.plan-wrap .room-corner{transition:fill var(--room-fade-duration,1.5s) ease,stroke var(--room-fade-duration,1.5s) ease,fill-opacity var(--room-fade-duration,1.5s) ease,stroke-opacity var(--room-fade-duration,1.5s) ease!important}}
 `;
+
+export function liveTriggers(data,now) {
+  const status=data.status;
+  if(!status.active)return [];
+  const entries=new Map();
+  for(const [room,details] of Object.entries(status.rooms||{}))for(const item of details.recognitions||[]){
+    if(["unavailable","flapping"].includes(item.event))continue;
+    if(item.expires_at!=null&&(!Number.isFinite(item.expires_at)||item.expires_at<=now))continue;
+    for(const source of item.sources||[]){
+      const id=source.entity_id;
+      if(!id||status.raw?.[id]==null||status.quarantine?.[id]||status.ignored_windows?.includes(id)||status.robot_paused_sensors?.includes(id))continue;
+      const previous=entries.get(id),timestamp=Number.isFinite(source.timestamp)?source.timestamp:0;
+      const expires=previous?(previous.expires_at==null||item.expires_at==null?null:Math.max(previous.expires_at,item.expires_at)):item.expires_at??null;
+      const current={entity_id:id,timestamp,expires_at:expires,
+        name:source.name||data.config.sensors?.[id]?.name||id,
+        room:data.config.rooms?.[source.room_id||room]?.name||""};
+      entries.set(id,previous&&previous.timestamp>timestamp?{...previous,expires_at:expires}:current);
+    }
+  }
+  return [...entries.values()].sort((a,b)=>b.timestamp-a.timestamp||a.entity_id.localeCompare(b.entity_id)).slice(0,3);
+}
+
+export function triggerRows(data,now) {
+  return liveTriggers(data,now).map(item=>{
+    const seconds=item.expires_at==null?null:Math.max(0,Math.ceil(item.expires_at-now));
+    const timer=seconds==null?(data.status.raw[item.entity_id]===true?"Aktiv":"Bis Ausschalten"):
+      `noch ${String(Math.floor(seconds/60)).padStart(2,"0")}:${String(seconds%60).padStart(2,"0")}`;
+    return `<div class="live-trigger-item" role="listitem" data-live-key="live-trigger:${esc(item.entity_id)}" data-live-trigger="${esc(item.entity_id)}"><span class="live-trigger-name">${esc([item.room,item.name].filter(Boolean).join(" · "))}</span><span class="live-trigger-timer">${esc(timer)}</span></div>`;
+  }).join("");
+}
 export function ringValues(data) {
   const status=data.status;
   const isInactive = status.active === false || status.mode === "inactive" || status.profile_id === null;

@@ -17,6 +17,37 @@ test.beforeEach(async({page})=>{
   await page.waitForFunction(()=>customElements.get("iqalarm-panel"));
 });
 
+for(const width of [1440,390])test(`floorplan header shows three latest triggers with a live countdown at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:844});
+  await page.locator('iqalarm-panel').evaluate(panel=>{
+    const plan={id:'eg',name:'Erdgeschoss',width:400,height:300,image:null,zones:{yard:[[.1,.1],[.9,.1],[.9,.9],[.1,.9]]}};
+    const now=Date.now()/1000;
+    const sensors={},raw={},recognitions=[];
+    for(const [index,name] of ['Alte Bewegung','Person Haustür','Bewegung Garagenhof','Person Büroseite'].entries()){
+      const id=`binary_sensor.trigger_${index}`;
+      sensors[id]={entity_id:id,name,room_id:'yard',role:index%2?'perimeter_camera':'perimeter_sensor',enabled:true};raw[id]=false;
+      recognitions.push({stage_id:'outside',level:2,confirmed:false,event:'active',expires_at:now+102,sources:[{entity_id:id,name,role:sensors[id].role,room_id:'yard',timestamp:now-10+index}]});
+    }
+    panel.tab=0;panel._connected=true;panel.catalog={entities:[],areas:[]};
+    panel.data={config:{secure_stage_id:'secure',stages:[{id:'off',name:'Aus',color:'#ffffff'},{id:'secure',name:'Sicher',color:'#60b720'},{id:'outside',name:'Bewegung Außen',color:'#0000ff'}],
+      profiles:{},robots:{},actions:{},rules:{},rooms:{yard:{id:'yard',name:'Garagenhof'}},windows:{},floorplans:{eg:plan},settings:{recent_seconds:30,floorplan_armed_animation:false},sensors},
+      information:[],windows:{},window_details:{},status:{active:true,profile_id:'away',profile_name:'Abwesend',level:2,stage_id:'outside',stage_name:'Bewegung Außen',raw,last_active:{},quarantine:{},
+        monitored_sensors:Object.keys(sensors),rule_progress:[],rooms:{yard:{level:2,confirmed:false,motion:[],open:[],persons:[],quarantined:[],recognitions}}}};
+    panel._render();
+  });
+  const list=page.getByRole('list',{name:'Aktuelle Auslöser',exact:true});
+  await expect(list.getByRole('listitem')).toHaveCount(3);
+  await expect(list.locator('.live-trigger-name')).toHaveText(['Garagenhof · Person Büroseite','Garagenhof · Bewegung Garagenhof','Garagenhof · Person Haustür']);
+  await expect(list.locator('.live-trigger-timer').first()).toHaveText('noch 01:42');
+  const layout=await list.evaluate(node=>({inHeader:node.parentElement.classList.contains('live-floorplan-header'),overflows:node.getRootNode().host.shadowRoot.querySelector('.shell').scrollWidth>innerWidth}));
+  expect(layout).toEqual({inHeader:true,overflows:false});
+  await page.clock.fastForward(1000);
+  await expect(list.locator('.live-trigger-timer').first()).toHaveText('noch 01:41');
+  await page.clock.fastForward(101000);
+  await expect(list).toBeHidden();
+  await expect(list.getByRole('listitem')).toHaveCount(0);
+});
+
 for(const width of [1440,390])test(`armed recognition fades to turquoise at the same deadline as its level at ${width}px`,async({page})=>{
   await page.setViewportSize({width,height:844});
   await page.clock.resume();
