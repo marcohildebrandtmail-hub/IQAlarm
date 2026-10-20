@@ -17,6 +17,36 @@ test.beforeEach(async({page})=>{
   await page.waitForFunction(()=>customElements.get("iqalarm-panel"));
 });
 
+for(const width of [1440,390])test(`armed recognition fades to turquoise at the same deadline as its level at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:844});
+  await page.clock.resume();
+  await page.locator('iqalarm-panel').evaluate(panel=>{
+    const plan={id:'eg',name:'Erdgeschoss',width:400,height:300,image:null,zones:{hall:[[.1,.1],[.9,.1],[.9,.9],[.1,.9]]}};
+    const now=Date.now()/1000;
+    panel.tab=0;panel._connected=true;panel.catalog={entities:[],areas:[]};
+    panel.data={config:{secure_stage_id:'secure',stages:[{id:'off',name:'Aus',color:'#ffffff'},{id:'secure',name:'Sicher',color:'#60b720'},{id:'outside',name:'Bewegung Außen',color:'#0000ff'}],
+      profiles:{},robots:{},actions:{},rules:{},rooms:{hall:{id:'hall',name:'Garagenhof'}},windows:{},floorplans:{eg:plan},settings:{recent_seconds:30,floorplan_armed_animation:false},
+      sensors:{'binary_sensor.motion':{entity_id:'binary_sensor.motion',name:'Bewegung',room_id:'hall',role:'perimeter_sensor',enabled:true}}},information:[],windows:{},window_details:{},
+      status:{active:true,profile_id:'away',profile_name:'Abwesend',level:2,stage_id:'outside',stage_name:'Bewegung Außen',raw:{'binary_sensor.motion':false},last_active:{'binary_sensor.motion':now-100},quarantine:{},
+        monitored_sensors:['binary_sensor.motion'],rule_progress:[],rooms:{hall:{level:2,confirmed:false,motion:[],open:[],persons:[],quarantined:[],
+          recognitions:[{stage_id:'outside',level:2,confirmed:false,event:'active',expires_at:now+4,sources:[{entity_id:'binary_sensor.motion',role:'perimeter_sensor'}]}]}}}};
+    panel._render();
+    panel.__heldShape=panel.shadowRoot.querySelector('g[data-room="hall"]:not([data-label-room]) polygon:nth-of-type(2)');
+  });
+  const shape=page.locator('g[data-room="hall"]:not([data-label-room]) polygon').nth(1),label=page.locator('[data-label-room="hall"]'),ring=page.locator('.status-rings');
+  await expect(label).toContainText('Bewegung erkannt');
+  await expect(ring).toHaveAttribute('aria-label','Alarmstufe 2');
+  await expect(shape).toHaveCSS('fill','rgb(245, 158, 11)');
+  await expect.poll(()=>shape.evaluate(node=>getComputedStyle(node).fill),{timeout:3500,intervals:[60]}).not.toBe('rgb(245, 158, 11)');
+  expect(await shape.evaluate(node=>getComputedStyle(node).fill)).not.toBe('rgb(20, 184, 166)');
+  await expect(label).toContainText('Bewegung erkannt');
+  await expect(ring).toHaveAttribute('aria-label','Alarmstufe 2');
+  await expect(ring).toHaveAttribute('aria-label','Alarmstufe 1',{timeout:2200});
+  await expect(label).not.toContainText('Bewegung erkannt');
+  await expect(shape).toHaveCSS('fill','rgb(20, 184, 166)');
+  expect(await page.locator('iqalarm-panel').evaluate(panel=>panel.__heldShape===panel.shadowRoot.querySelector('g[data-room="hall"]:not([data-label-room]) polygon:nth-of-type(2)'))).toBe(true);
+});
+
 for(const width of [1440,390])test(`disarmed correlation cannot retain a red floorplan after motion expires at ${width}px`,async({page})=>{
   await page.setViewportSize({width,height:844});
   await page.locator("iqalarm-panel").evaluate(panel=>{

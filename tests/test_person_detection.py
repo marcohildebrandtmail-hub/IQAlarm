@@ -50,6 +50,28 @@ def test_motion_triggers_level_two_without_grade(cameras):
     assert progress(cameras) is None
 
 
+def test_outdoor_map_recognition_uses_the_actual_rule_deadline(cameras):
+    report(cameras, 101, kind="motion")
+    recognition = cameras.room_status("front", 103)["recognitions"]
+    assert recognition[0]["expires_at"] == 281
+    assert recognition[0]["sources"][0]["role"] == "perimeter_sensor"
+    assert cameras.room_status("garden", 103)["recognitions"] == []
+    cameras.tick(280.9)
+    assert cameras.level == 2
+    assert cameras.room_status("front", 280.9)["recognitions"][0]["expires_at"] == 281
+    cameras.tick(281)
+    assert cameras.level == 1
+    assert cameras.room_status("front", 281)["recognitions"] == []
+
+
+def test_active_motion_has_no_predicted_expiry_and_disarmed_has_no_level_context(cameras):
+    entity = "binary_sensor.front_motion"
+    cameras.feed(entity, True, 101)
+    assert cameras.room_status("front", 101)["recognitions"][0]["expires_at"] is None
+    cameras.set_profile(None, 110)
+    assert cameras.room_status("front", 110)["recognitions"] == []
+
+
 def test_defaults_apply_without_first_saving_new_settings(cameras):
     cameras.config.person_detection = None
     report(cameras, 101)

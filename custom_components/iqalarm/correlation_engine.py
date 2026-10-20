@@ -1562,6 +1562,70 @@ class CorrelationEngine:
                 local.append(found)
         return local
 
+    def _recognition_until(self, match, now):
+        """Publish the same proof deadline that determines the displayed stage."""
+        if self.held_alarm and self.held_alarm["rule"] == match.rule_id:
+            return None
+        if match.rule_id in (AUTO_RULE, DETECTED_RULE):
+            state = self.automatic_states.get(match.room_id, {})
+            deadline = state.get("next_decay")
+            if deadline is not None:
+                if match.rule_id == DETECTED_RULE:
+                    return deadline
+                return (
+                    deadline
+                    + max(0, state.get("grade", 0) - 1)
+                    * self.config.automatic_detection.quiet_seconds
+                )
+        person = self.config.person_detection_settings
+        state = self.person_states.get(match.room_id, {})
+        if person and match.stage_id == person.stage_id and state.get("grade"):
+            return state["next_decay"] + (state["grade"] - 1) * person.quiet_seconds
+        rule = self.rule_definition(match.rule_id)
+        if not rule:
+            return None
+        record = self.rule_confirmations.get(rule.id)
+        if valid_memory(self.config, rule, record, self.rule_sensors, self.quarantine, now):
+            return record["until"]
+        if any(c.event == "unavailable" for c in rule.conditions):
+            return None
+        if (
+            len(rule.conditions) == 1
+            and rule.conditions[0].count == 1
+            and rule.conditions[0].event == "active"
+            and not match.confirmed
+            and not rule.prerequisite_rule_id
+            and any(self.raw.get(e.entity_id) is True for e in match.chain)
+        ):
+            return None
+        deadlines = [
+            item.timestamp
+            + min(rule.window_seconds, condition.max_age_seconds or rule.window_seconds)
+            for item in match.chain
+            for condition in rule.conditions
+            if accepts(rule, condition, self.sensors[item.entity_id])
+        ]
+        if rule.prerequisite_rule_id:
+            record = self.rule_confirmations.get(rule.prerequisite_rule_id)
+            if record:
+                deadlines.append(record["until"])
+        return min(deadlines) if deadlines else None
+
+    def _room_recognitions(self, matches, now):
+        baseline = self.config.stage_rank(self.baseline_stage_id)
+        return [
+            {
+                "stage_id": match.stage_id,
+                "level": self.config.stage_rank(match.stage_id),
+                "confirmed": match.confirmed,
+                "event": self.rule_definition(match.rule_id).conditions[0].event,
+                "expires_at": self._recognition_until(match, now),
+                "sources": [asdict(e) for e in match.chain],
+            }
+            for match in matches
+            if self.config.stage_rank(match.stage_id) > baseline
+        ]
+
     def room_status(self, room_id: str, now: float) -> dict[str, Any]:
         valid = [e for e in self.evidence if self._fresh(e, now)]
         contacts = any(
@@ -1616,6 +1680,15 @@ class CorrelationEngine:
             )
             perimeter = any(any(e.role in PERIMETER_ROLES for e in m.chain) for m in local)
         return {
+            **(
+                {
+                    "recognitions": self._room_recognitions(local, now)
+                    if self.reactions_enabled
+                    else []
+                }
+                if self.config.rules is not None
+                else {}
+            ),
             "detection": self._automatic_progress(room_id),
             "level": max(ranks)
             if self.config.rules is not None

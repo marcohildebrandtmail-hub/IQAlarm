@@ -1,16 +1,17 @@
-import {sensorTypeField, setSensorType} from "./sensor-types.js?v=2.13.0";
-import {openRobotDialog, readRobotForm, renderCoverage, updateRobotStatuses} from "./robots.js?v=2.13.0";
-import {TOPOLOGY_CSS, connectionEditor, imageControls, roomConnections, setRoomConnection} from "./floorplan-topology.js?v=2.13.0";
-import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings} from "./live-view.js?v=2.13.0";
-import {RULE_SOURCES_CSS, updateRuleSources} from "./rule-sources.js?v=2.13.0";
-import {bindIconFields, iconField, MDI_ICON, roomSymbol, sensorSymbol, symbolHTML} from "./display-icons.js?v=2.13.0";
-import {DraftJournal} from "./floorplan-drafts.js?v=2.13.0";
-import {renderLevels, renderProfiles, renderDisplaySettings, renderConfirmationContext, openRuleDialog, readRuleForm, readAutomaticDetection, readPersonDetection} from "./level-configuration.js?v=2.13.0";
-import "./window-assistant.js?v=2.13.0";
-import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.13.0";
-/* IQAlarm 2.13.0 · native ES module · no CDN, framework or build required. */
+import {sensorTypeField, setSensorType} from "./sensor-types.js?v=2.13.1";
+import {openRobotDialog, readRobotForm, renderCoverage, updateRobotStatuses} from "./robots.js?v=2.13.1";
+import {TOPOLOGY_CSS, connectionEditor, imageControls, roomConnections, setRoomConnection} from "./floorplan-topology.js?v=2.13.1";
+import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings} from "./live-view.js?v=2.13.1";
+import {RULE_SOURCES_CSS, updateRuleSources} from "./rule-sources.js?v=2.13.1";
+import {bindIconFields, iconField, MDI_ICON, roomSymbol, sensorSymbol, symbolHTML} from "./display-icons.js?v=2.13.1";
+import {DraftJournal} from "./floorplan-drafts.js?v=2.13.1";
+import {renderLevels, renderProfiles, renderDisplaySettings, renderConfirmationContext, openRuleDialog, readRuleForm, readAutomaticDetection, readPersonDetection} from "./level-configuration.js?v=2.13.1";
+import "./window-assistant.js?v=2.13.1";
+import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.13.1";
+/* IQAlarm 2.13.1 · native ES module · no CDN, framework or build required. */
 const WINDOW_CSS = `.window-group{padding:18px 0;border-bottom:1px solid var(--divider-color,#dce3ec)}.window-inputs{margin:14px 0 0 24px;padding-left:18px;border-left:2px solid var(--divider-color,#dce3ec)}.window-inputs code{display:block;font-size:10px;overflow-wrap:anywhere;color:var(--secondary-text-color,#64758b)}.information{border-color:color-mix(in srgb,var(--primary-color,#2986bb) 25%,transparent)}.information summary,details.banner summary{cursor:pointer;font-size:13px}.information ha-icon{color:var(--primary-color,#2986bb)}`;
 const FLOORPLAN_MOTION_HOLD_SECONDS = 15;
+const RECOGNITION_FADE_SECONDS = 1.5;
 const CATEGORIES={information:"Information",warning:"Warnung",alarm:"Alarm",fault:"Störung",isolated:"Isoliert"};
 const RULES = {perimeter: "Vorfeld-Erkennung", single: "Unbestätigter Einzelsensor", motion: "Unbestätigte Innenbewegung", fault: "Sensor nicht verfügbar", flapping: "Sensor-Prellen", perimeter_contact: "Vorfeld + Öffnung", contact_motion: "Öffnung + Bewegung", multi_contact: "Zwei Öffnungen im selben Raum / freigegebenen Weg", multi_motion: "Zwei unabhängige Bewegungsmelder im selben Raum / freigegebenen Weg", immediate: "Freigegebene Einzelauslösung / Gefahr"};
 const UNCONFIRMED_RULES = ["perimeter", "single", "motion", "fault", "flapping"];
@@ -261,12 +262,13 @@ class IQAlarmPanel extends HTMLElement {
     this._statusTimer = setInterval(() => {
       if (this.isConnected && this.data && (this.tab === 0 || this.tab === 2 || this.shadowRoot?.getElementById("live-room-status"))) {
         this._updateSensorStatuses();
-        if (this.tab === 0) this._refreshFloorplanStatuses();
+        if (this.tab === 0) this._refreshRecognitionDisplay();
       }
     }, 1000);
   }
   disconnectedCallback() {
     clearInterval(this._statusTimer);
+    clearTimeout(this._recognitionTimer);
     this._storeDraft();
     clearTimeout(this._draftPersistTimer);
     window.removeEventListener("pagehide", this._saveDraftOnLeave);
@@ -460,6 +462,7 @@ class IQAlarmPanel extends HTMLElement {
     if (this.tab === 2) this._renderCatalog(this.shadowRoot.getElementById("sensor-search")?.value || "");
     const live = this.shadowRoot.getElementById("live-room-status");
     if (live && this.liveRoom && this.data.config.rooms[this.liveRoom]) live.innerHTML = this._roomLive(this.data.config.rooms[this.liveRoom]);
+    this._scheduleRecognitionRefresh();
   }
 
   _updateLock() {
@@ -484,7 +487,8 @@ class IQAlarmPanel extends HTMLElement {
   }
 
   _dashboard() {
-    const {status: s, config: c} = this.data, sensors = this._displaySensors().filter(x => x.enabled), rooms = this._orderedRooms();
+    const displayData=this._recognitionDisplayData();
+    const {status: s, config: c} = displayData, sensors = this._displaySensors().filter(x => x.enabled), rooms = this._orderedRooms();
     const quarantineItems=Object.entries(s.quarantine).filter(([id])=>!s.ignored_windows?.includes(id));
     const quarantine=quarantineItems.length?`<details class="banner"><summary>Störung: Prell-Schutz bei ${quarantineItems.length} Sensoren aktiv</summary>${quarantineItems.map(([id])=>`<div class="sensor-line"><span class="sensor-name">${esc(this._sensorRecord(id)?.name||id)} · temporäre Prell-Quarantäne</span><button class="small" data-command="clear-quarantine" data-id="${esc(id)}">Quarantäne aufheben</button></div>`).join("")}</details>`:"";
     const information=s.active&&(this.data.information||[]).length?`<details class="card information" data-category="information" style="margin-bottom:18px"><summary>${icon("information-outline")} Information · ${(this.data.information||[]).length} Fenstergriffe: Potenziell unsicher</summary>${this.data.information.map(item=>`<div class="sensor-line"><span class="sensor-name">${esc(item.name)}</span><span>Entriegelt · Potenziell unsicher</span></div>`).join("")}</details>`:"";
@@ -492,7 +496,7 @@ class IQAlarmPanel extends HTMLElement {
     const offline = sensors.filter(x => s.raw[x.entity_id] == null && !s.ignored_windows?.includes(x.entity_id)).length;
     const profileButtons = `<button data-command="mode" data-mode="inactive" class="${!s.profile_id ? "active" : ""}">${icon("power")}Aus</button>` + Object.entries(c.profiles).map(([id, p]) => `<button data-command="profile-arm" data-id="${esc(id)}" class="${s.profile_id === id ? "active" : ""}">${this._profileSymbol(p)}${esc(p.name)}</button>`).join("");
     return this._head("Dein Haus im Überblick") + quarantine + information +
-      `<section class="card hero" data-live-key="hero" style="--level-color:${this._color(s.active && s.profile_id ? s.level : 0)}">${statusRings(this.data)}<div class="hero-copy"><h2>${s.profile_name ? esc(s.profile_name) : "Anlage aus"}</h2><p>${s.active ? "Alarmreaktionen aktiv" : "Live-Status aktiv · keine Geräteaktionen"}</p><p>${s.monitored_sensors.length} Sensoren ausgewertet · Home Assistant: ${s.active ? "An" : "Aus"}</p>${s.pending_until ? `<div class="countdown">Eingangsverzögerung bis ${date(s.pending_until)}</div>` : s.arming_until ? `<div class="countdown">Scharf ab ${date(s.arming_until)}</div>` : ""}${renderConfirmationContext(this)}<div class="mode-buttons">${profileButtons}</div></div></section>` + renderCoverage(this) + this._floorplan(false) +
+      `<section class="card hero" data-live-key="hero" style="--level-color:${this._color(s.active && s.profile_id ? s.level : 0)}">${statusRings(displayData)}<div class="hero-copy"><h2>${s.profile_name ? esc(s.profile_name) : "Anlage aus"}</h2><p>${s.active ? "Alarmreaktionen aktiv" : "Live-Status aktiv · keine Geräteaktionen"}</p><p>${s.monitored_sensors.length} Sensoren ausgewertet · Home Assistant: ${s.active ? "An" : "Aus"}</p>${s.pending_until ? `<div class="countdown">Eingangsverzögerung bis ${date(s.pending_until)}</div>` : s.arming_until ? `<div class="countdown">Scharf ab ${date(s.arming_until)}</div>` : ""}${renderConfirmationContext({data:displayData})}<div class="mode-buttons">${profileButtons}</div></div></section>` + renderCoverage(this) + this._floorplan(false) +
       `<div class="metrics">${[["floor-plan", rooms.length, "Räume verbunden"], ["shield-check-outline", !s.active ? sensors.length : s.monitored_sensors.length, !s.active ? "Sensoren eingerichtet" : "Sensoren im Profil"], ["window-open-variant", open, "Kontakte geöffnet"], ["connection", quarantineItems.length + offline, "Störungen / isoliert"]].map(([symbol, n, title]) => `<div class="card metric">${icon(symbol)}<div><strong>${n}</strong><span>${title}</span></div></div>`).join("")}</div>` +
       `<div class="section-title"><h2>Räume & Sicherheitsstatus</h2><button class="small" data-tab="1">Räume verwalten ${icon("arrow-right")}</button></div><div class="grid">${rooms.length ? rooms.map(r => this._roomLive(r)).join("") : this._empty("Hier beginnt dein Schutzkonzept", "Lege Räume an oder importiere deine Home-Assistant-Bereiche.", "floor-plan")}</div>`;
   }
@@ -1228,6 +1232,57 @@ class IQAlarmPanel extends HTMLElement {
     };
   }
 
+  _armedRoomRecognition(room, now=Date.now()/1000) {
+    const status=this.data.status;
+    if(!status.active)return null;
+    const at=now+(this._displayClockOffset||0);
+    const entries=(status.rooms?.[room]?.recognitions||[]).filter(item=>item.expires_at==null||item.expires_at>at);
+    const level=Math.max(0,...entries.map(item=>item.level));
+    const matches=entries.filter(item=>item.level===level);
+    if(!matches.length)return null;
+    return {...matches[0],confirmed:matches.some(item=>item.confirmed),
+      expires_at:matches.some(item=>item.expires_at==null)?null:Math.max(...matches.map(item=>item.expires_at)),
+      faults:matches.some(item=>["unavailable","flapping"].includes(item.event)),
+      sources:matches.filter(item=>!["unavailable","flapping"].includes(item.event)).flatMap(item=>item.sources)};
+  }
+
+  _recognitionDisplayData(now=Date.now()/1000) {
+    const status=this.data.status,rooms=Object.values(status.rooms||{});
+    if(!status.active||!rooms.length||!rooms.every(room=>Object.hasOwn(room,"recognitions")))return this.data;
+    const remaining=Object.keys(status.rooms).map(room=>this._armedRoomRecognition(room,now)).filter(Boolean);
+    const baseline=this.data.config.stages.findIndex(stage=>stage.id===this.data.config.secure_stage_id);
+    if(status.confirmed||!rooms.some(room=>room.recognitions.some(item=>item.level===status.level)))return this.data;
+    const level=Math.max(baseline,...remaining.map(item=>item.level));
+    if(level===status.level||level<0)return this.data;
+    const stage=this.data.config.stages[level];
+    return {...this.data,status:{...status,level,stage_id:stage.id,stage_name:stage.name,stage_color:stage.color}};
+  }
+
+  _scheduleRecognitionRefresh() {
+    clearTimeout(this._recognitionTimer);
+    if(!this.isConnected||this.tab!==0||!this.data?.status.active)return;
+    const now=Date.now()/1000+(this._displayClockOffset||0);
+    const deadlines=Object.values(this.data.status.rooms||{}).flatMap(room=>(room.recognitions||[])
+      .filter(item=>Number.isFinite(item.expires_at)).flatMap(item=>[item.expires_at-RECOGNITION_FADE_SECONDS,item.expires_at]))
+      .filter(at=>at>now+.001);
+    if(deadlines.length)this._recognitionTimer=setTimeout(()=>this._refreshRecognitionDisplay(),Math.max(1,(Math.min(...deadlines)-now)*1000+2));
+  }
+
+  _refreshRecognitionDisplay() {
+    if(this.tab!==0||!this.data)return;
+    const data=this._recognitionDisplayData(),hero=this.shadowRoot.querySelector('.hero');
+    if(hero){
+      const rings=hero.querySelector('[data-live-key="status-rings"]');
+      if(rings){const buffer=document.createElement('div');buffer.innerHTML=statusRings(data);patchNode(rings,buffer.firstElementChild);}
+      hero.style.setProperty('--level-color',this._color(data.status.active?data.status.level:0));
+      const context=hero.querySelector('[data-live-key="confirmation-context"]'),markup=renderConfirmationContext({data});
+      if(context&&markup){const buffer=document.createElement('div');buffer.innerHTML=markup;patchNode(context,buffer.firstElementChild);}
+      else if(context)context.remove();
+    }
+    this._refreshFloorplanStatuses();
+    this._scheduleRecognitionRefresh();
+  }
+
   _roomPresentation(room, now = Date.now() / 1000) {
     const info = this._getRoomStatusLines(room, now);
     const status = this.data.status?.rooms?.[room] || {};
@@ -1238,15 +1293,32 @@ class IQAlarmPanel extends HTMLElement {
     const showLock = isArmed || (settings.floorplan_disarmed_locks ?? false);
     const showCamera = isArmed || (settings.floorplan_disarmed_cameras ?? true);
 
-    const hasBreach = Boolean((status.confirmed && isArmed) || (showMotion && info.motionText));
+    const recognition=this._armedRoomRecognition(room,now);
+    const timed=isArmed&&Object.hasOwn(status,"recognitions");
+    if(timed){
+      const roles=new Set((recognition?.sources||[]).map(source=>source.role));
+      info.cameraText=roles.has("perimeter_camera")?(info.cameraText||"Person"):"";
+      info.perimeterMotionText=roles.has("perimeter_sensor")?"Bewegung erkannt":"";
+      info.motionText=roles.has("interior_motion")||roles.has("interior_mmwave")?"Bewegung":"";
+      info.contactText=roles.has("entry_contact")||roles.has("vibration_glass")?(info.contactText||"Öffnung erkannt"):"";
+      info.lockText=roles.has("lock_contact")?(info.lockText||"Schlossbetätigung"):"";
+      info.quarantineText=recognition?.faults?(info.quarantineText||"Sensorstörung"):"";
+    }
+
+    const confirmed=timed?recognition?.confirmed:status.confirmed&&isArmed;
+    const hasBreach = Boolean(confirmed || (showMotion && info.motionText));
     const hasWarning = Boolean((showCamera && (info.cameraText || info.perimeterMotionText)) || (showContact && info.contactText) || (showLock && info.lockText) || info.quarantineText);
     const activeAlert = hasBreach || hasWarning;
-    const shouldAnimate = activeAlert && (isArmed ? (settings.floorplan_armed_animation ?? true) : (settings.floorplan_disarmed_animation ?? false));
+    const remaining=recognition?.expires_at==null?null:Math.max(0,recognition.expires_at-now-(this._displayClockOffset||0));
+    const fading=remaining!==null&&remaining<=RECOGNITION_FADE_SECONDS;
+    const shouldAnimate = activeAlert && !fading && (isArmed ? (settings.floorplan_armed_animation ?? true) : (settings.floorplan_disarmed_animation ?? false));
     const animClass = shouldAnimate ? " anim-pulse" : "";
-    const color = hasBreach ? "#ef4444" : (hasWarning ? "#f59e0b" : "#14b8a6");
+    const fallback=fading?this._armedRoomRecognition(room,now+remaining+.00001):null;
+    const fallbackColor=!fallback?"#14b8a6":fallback.confirmed||fallback.sources.some(source=>["interior_motion","interior_mmwave"].includes(source.role))?"#ef4444":"#f59e0b";
+    const color = fading?fallbackColor:hasBreach ? "#ef4444" : (hasWarning ? "#f59e0b" : "#14b8a6");
     const fillId = hasBreach ? "alert" : (hasWarning ? "warn" : "ok");
     const subLines = [];
-    if (status.confirmed && isArmed) subLines.push({text:"Bestätigter Alarm",kind:"confirmed"});
+    if (confirmed) subLines.push({text:"Bestätigter Alarm",kind:"confirmed"});
     if (info.cameraText && showCamera) subLines.push({text: info.cameraText, kind: "camera"});
     if (info.perimeterMotionText && showCamera) subLines.push({text: info.perimeterMotionText, kind: "perimeter-motion"});
     if (info.contactText && showContact) subLines.push({text: info.contactText, kind: "contact"});
@@ -1254,7 +1326,8 @@ class IQAlarmPanel extends HTMLElement {
     if (info.informationText) subLines.push({text:info.informationText,kind:"information"});
     if (info.motionText && showMotion) subLines.push({text: info.motionText, kind: "motion"});
     if (info.quarantineText) subLines.push({text: info.quarantineText, kind: "quarantine"});
-    return {info, isArmed, hasBreach, activeAlert, animClass, color, fillId, subLines};
+    return {info, isArmed, hasBreach, activeAlert, animClass, color, fillId, subLines,
+      fadeSeconds:timed?(fading?remaining:recognition?RECOGNITION_FADE_SECONDS:0):RECOGNITION_FADE_SECONDS};
   }
 
   _refreshFloorplanStatuses() {
@@ -1289,7 +1362,7 @@ class IQAlarmPanel extends HTMLElement {
     const base = Math.max(plan.width,plan.height)*scale;
     const ptsAttr = points.map(([x,y]) => `${Math.round(x*plan.width*10)/10},${Math.round(y*plan.height*10)/10}`).join(" ");
     const corners = graphic ? points.map(([x,y]) => `<circle class="room-corner" cx="${Math.round(x*plan.width*10)/10}" cy="${Math.round(y*plan.height*10)/10}" r="${Math.max(2.2,base*.0035)}" fill="${color}" fill-opacity=".85"/>`).join("") : "";
-    return `<g data-room="${esc(room)}" role="button" tabindex="0" aria-label="${esc([roomName,...presentation.subLines.map(line => line.text)].join(": "))}"><polygon class="room-glow${animClass}" points="${ptsAttr}" fill="${color}" fill-opacity="${activeAlert ? ".26" : ".14"}" stroke="${color}" stroke-width="${activeAlert ? 8 : 5}" stroke-opacity=".28" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><polygon points="${ptsAttr}" fill="${color}" fill-opacity=".15" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><polygon class="room-inner" points="${ptsAttr}" fill="none" stroke="#e2f1ff" stroke-opacity=".32" stroke-width="1" stroke-dasharray="5 4" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>${corners}</g>`;
+    return `<g data-room="${esc(room)}" style="--room-fade-duration:${presentation.fadeSeconds??1.5}s" role="button" tabindex="0" aria-label="${esc([roomName,...presentation.subLines.map(line => line.text)].join(": "))}"><polygon class="room-glow${animClass}" points="${ptsAttr}" fill="${color}" fill-opacity="${activeAlert ? ".26" : ".14"}" stroke="${color}" stroke-width="${activeAlert ? 8 : 5}" stroke-opacity=".28" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><polygon points="${ptsAttr}" fill="${color}" fill-opacity=".15" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><polygon class="room-inner" points="${ptsAttr}" fill="none" stroke="#e2f1ff" stroke-opacity=".32" stroke-width="1" stroke-dasharray="5 4" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>${corners}</g>`;
   }
 
   _zoneLabelSVG(plan,room,points,graphic = false,scale = 1,presentation = this._roomPresentation(room)) {
@@ -1324,7 +1397,7 @@ class IQAlarmPanel extends HTMLElement {
       return `<tspan x="${cx}" dy="${Math.round(lineSpacing*10)/10}" font-size="${Math.round(subSize*10)/10}" class="${fillClass}">${esc(l.text)}</tspan>`;
     }).join("");
 
-    return `<g class="room-label-group${isPositioning ? " active-positioning" : ""}${animClass}" data-label-room="${esc(room)}" data-room="${esc(room)}" data-cx="${cx}" data-cy="${cy}" tabindex="0" role="button" aria-label="Beschriftung ${esc(roomName)} verschieben"><rect class="room-badge" x="${Math.round((cx-badgeW/2)*10)/10}" y="${Math.round((cy-badgeH/2)*10)/10}" width="${Math.round(badgeW)}" height="${Math.round(badgeH)}" rx="${Math.round(rx*10)/10}" fill="#091322e8" stroke="${color}" stroke-width="${isPositioning ? "3" : "1.5"}" vector-effect="non-scaling-stroke"/><text x="${cx}" y="${firstLineY}" text-anchor="middle" font-size="${Math.round(fontSize*10)/10}">${esc(roomName)}${tspans}</text></g>`;
+    return `<g style="--room-fade-duration:${presentation.fadeSeconds??1.5}s" class="room-label-group${isPositioning ? " active-positioning" : ""}${animClass}" data-label-room="${esc(room)}" data-room="${esc(room)}" data-cx="${cx}" data-cy="${cy}" tabindex="0" role="button" aria-label="Beschriftung ${esc(roomName)} verschieben"><rect class="room-badge" x="${Math.round((cx-badgeW/2)*10)/10}" y="${Math.round((cy-badgeH/2)*10)/10}" width="${Math.round(badgeW)}" height="${Math.round(badgeH)}" rx="${Math.round(rx*10)/10}" fill="#091322e8" stroke="${color}" stroke-width="${isPositioning ? "3" : "1.5"}" vector-effect="non-scaling-stroke"/><text x="${cx}" y="${firstLineY}" text-anchor="middle" font-size="${Math.round(fontSize*10)/10}">${esc(roomName)}${tspans}</text></g>`;
   }
   async _loadPlan(plan) {
     const key = `${plan.id}/${plan.image}`; if (this.imageLoading.has(key)) return;

@@ -25,6 +25,64 @@ function setup({raw = false, last = 100, confirmed = false, visible = true, acti
 }
 const plan = {width: 100, height: 100, zones: {tv: [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9]]}};
 
+function timedPanel({role="perimeter_sensor",until=280}={}) {
+  const panel=setup({active:true});
+  panel.data.config.secure_stage_id="secure";
+  panel.data.config.stages=[{id:"off",name:"Aus"},{id:"secure",name:"Sicher"},{id:"outside",name:"Außen"},{id:"inside",name:"Innen"}];
+  panel.data.status.level=2;
+  panel.data.status.stage_id="outside";
+  panel.data.status.rooms.tv.recognitions=[{level:2,stage_id:"outside",expires_at:until,confirmed:false,event:"active",sources:[{entity_id:"binary_sensor.motion",role}]}];
+  return panel;
+}
+
+test("armed floorplan follows level evidence beyond sensor recent time and fades before expiry",()=>{
+  const panel=timedPanel();
+  const held=display(panel,200);
+  assert.equal(held.color,"#f59e0b");
+  assert.match(held.label,/Bewegung erkannt/);
+  assert.equal(panel._recognitionDisplayData(200).status.level,2);
+  const fading=panel._roomPresentation("tv",278.6);
+  assert.equal(fading.color,"#14b8a6");
+  assert.ok(Math.abs(fading.fadeSeconds-1.4)<.0001);
+  assert.match(display(panel,278.6).label,/Bewegung erkannt/);
+  assert.equal(panel._recognitionDisplayData(278.6).status.level,2);
+  assert.equal(panel._recognitionDisplayData(280).status.level,1);
+  assert.doesNotMatch(display(panel,280).label,/Bewegung/);
+  assert.equal(panel._roomPresentation("tv",280).fadeSeconds,0);
+});
+
+test("armed interior movement and person labels use the original trigger role",()=>{
+  assert.match(display(timedPanel({role:"perimeter_camera"}),200).label,/Person/);
+  const motion=display(timedPanel({role:"interior_motion"}),200);
+  assert.match(motion.label,/Bewegung/);
+  assert.equal(motion.color,"#ef4444");
+});
+
+test("one expired room cannot clear another room or its global level",()=>{
+  const panel=timedPanel({until:150});
+  panel.data.status.rooms.other={recognitions:[{level:2,stage_id:"outside",expires_at:200,sources:[]}]};
+  assert.equal(display(panel,151).color,"#14b8a6");
+  assert.equal(panel._recognitionDisplayData(151).status.level,2);
+  assert.equal(panel._recognitionDisplayData(200).status.level,1);
+});
+
+test("expiry falls back to a remaining lower stage in the same room",()=>{
+  const panel=timedPanel();
+  panel.data.status.level=3;
+  panel.data.status.rooms.tv.recognitions.push({level:3,stage_id:"inside",expires_at:150,sources:[{role:"interior_motion"}]});
+  assert.equal(panel._roomPresentation("tv",149).color,"#f59e0b");
+  assert.ok(panel._roomPresentation("tv",149).subLines.some(line=>line.text==="Bewegung"));
+  assert.equal(panel._recognitionDisplayData(151).status.level,2);
+  assert.match(display(panel,151).label,/Bewegung erkannt/);
+});
+
+test("disarmed floorplan ignores stored alarm deadlines and keeps its short live activity",()=>{
+  const panel=timedPanel();panel.data.status.active=false;
+  assert.equal(display(panel,114).color,"#ef4444");
+  assert.equal(display(panel,115).color,"#14b8a6");
+  assert.doesNotMatch(display(panel,200).label,/Bewegung/);
+});
+
 function display(panel, now) {
   const shared = panel._roomPresentation("tv", now);
   return {
