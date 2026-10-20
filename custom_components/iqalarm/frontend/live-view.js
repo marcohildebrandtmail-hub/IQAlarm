@@ -45,6 +45,11 @@ export const LIVE_VIEW_CSS=`
 .grade-caption{font-size:12px;color:var(--iq-muted)}
 .confirmation-context{margin-top:8px;min-width:0;overflow-wrap:anywhere}
 .confirmation-context p{margin:2px 0 0;font-size:12px;line-height:1.4}
+.hero .hero-copy{flex:1}
+.hero-coverage{flex:0 1 280px;min-width:0;max-width:100%;margin-left:auto;align-self:flex-start;font-size:12px}
+.hero-coverage>.row{align-items:flex-start;gap:8px;flex-direction:column}
+.hero .hero-coverage .pill{display:inline-flex;margin-left:0;align-self:auto}
+@media(max-width:700px){.hero-coverage{flex-basis:100%;margin-left:0}}
 .live-floorplan-title,.live-floorplan-controls{flex:0 0 auto;max-width:100%}
 .live-trigger-list{flex:1 1 180px;min-width:0;display:grid;gap:3px}
 .live-trigger-list[hidden]{display:none}
@@ -66,12 +71,13 @@ export function liveTriggers(data,now) {
     for(const source of item.sources||[]){
       const id=source.entity_id;
       if(!id||status.raw?.[id]==null||status.quarantine?.[id]||status.ignored_windows?.includes(id)||status.robot_paused_sensors?.includes(id))continue;
-      const previous=entries.get(id),timestamp=Number.isFinite(source.timestamp)?source.timestamp:0;
+      const identity=item.report_id||id;
+      const previous=entries.get(identity),timestamp=Number.isFinite(source.timestamp)?source.timestamp:0;
       const expires=previous?(previous.expires_at==null||item.expires_at==null?null:Math.max(previous.expires_at,item.expires_at)):item.expires_at??null;
-      const current={entity_id:id,timestamp,expires_at:expires,
+      const current={key:identity,entity_id:id,timestamp,expires_at:expires,
         name:source.name||data.config.sensors?.[id]?.name||id,
         room:data.config.rooms?.[source.room_id||room]?.name||""};
-      entries.set(id,previous&&previous.timestamp>timestamp?{...previous,expires_at:expires}:current);
+      entries.set(identity,previous&&previous.timestamp>timestamp?{...previous,expires_at:expires}:current);
     }
   }
   return [...entries.values()].sort((a,b)=>b.timestamp-a.timestamp||a.entity_id.localeCompare(b.entity_id)).slice(0,3);
@@ -82,8 +88,20 @@ export function triggerRows(data,now) {
     const seconds=item.expires_at==null?null:Math.max(0,Math.ceil(item.expires_at-now));
     const timer=seconds==null?(data.status.raw[item.entity_id]===true?"Aktiv":"Bis Ausschalten"):
       `noch ${String(Math.floor(seconds/60)).padStart(2,"0")}:${String(seconds%60).padStart(2,"0")}`;
-    return `<div class="live-trigger-item" role="listitem" data-live-key="live-trigger:${esc(item.entity_id)}" data-live-trigger="${esc(item.entity_id)}"><span class="live-trigger-name">${esc([item.room,item.name].filter(Boolean).join(" · "))}</span><span class="live-trigger-timer">${esc(timer)}</span></div>`;
+    return `<div class="live-trigger-item" role="listitem" data-live-key="live-trigger:${esc(item.key)}" data-live-trigger="${esc(item.entity_id)}"><span class="live-trigger-name">${esc([item.room,item.name].filter(Boolean).join(" · "))}</span><span class="live-trigger-timer">${esc(timer)}</span></div>`;
   }).join("");
+}
+export function projectPersonProgress(progress,now) {
+  return (progress||[]).flatMap(item=>{
+    if(!item.person_reports)return [item];
+    const reports=item.person_reports.filter(report=>report.expires_at==null||report.expires_at>now);
+    const current=(item.thresholds||[1,2,3]).filter(threshold=>reports.length>=threshold).length;
+    if(!current)return [];
+    const deadlines=reports.map(report=>report.expires_at).filter(Number.isFinite);
+    return [{...item,current,complete:current===item.target,person_reports:reports,
+      next_decay:deadlines.length?Math.min(...deadlines):null,
+      sources:reports.map(({expires_at,...source})=>source)}];
+  });
 }
 export function ringValues(data) {
   const status=data.status;

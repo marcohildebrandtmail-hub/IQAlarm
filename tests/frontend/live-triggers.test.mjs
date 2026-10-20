@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {liveTriggers,triggerRows} from "../../custom_components/iqalarm/frontend/live-view.js";
+import {liveTriggers,triggerRows,projectPersonProgress} from "../../custom_components/iqalarm/frontend/live-view.js";
 
 function setup() {
   const data={config:{rooms:{yard:{name:"Garagenhof"},office:{name:"Garten Büroseite"}},sensors:{}},status:{active:true,raw:{},rooms:{yard:{recognitions:[]},office:{recognitions:[]}}}};
@@ -55,4 +55,28 @@ test("source names are escaped and multiple proofs retain their shared longest l
   assert.equal(liveTriggers(data,100)[0].expires_at,150);
   const html=triggerRows(data,100);
   assert.match(html,/&lt;img/);assert.doesNotMatch(html,/<img/);
+});
+
+test("every counted person report has the same expiry in the timer and the ring",()=>{
+  const {data,add}=setup();
+  add("office_person",100,162,"office");add("terrace_person",110,172,"yard");
+  const reports=[{entity_id:"office_person",expires_at:162},{entity_id:"terrace_person",expires_at:172}];
+  const progress=[{current:2,target:3,thresholds:[1,2,3],person_reports:reports}];
+  assert.equal(projectPersonProgress(progress,120)[0].current,2);
+  assert.equal(liveTriggers(data,120).length,2);
+  assert.equal(projectPersonProgress(progress,162)[0].current,1);
+  assert.deepEqual(liveTriggers(data,162).map(item=>item.entity_id),["terrace_person"]);
+  assert.deepEqual(projectPersonProgress(progress,172),[]);
+  assert.deepEqual(liveTriggers(data,172),[]);
+});
+
+test("repeat reports from one camera retain their individual timers",()=>{
+  const {data,add}=setup();add("camera",100,162);add("camera",110,172);
+  data.status.rooms.yard.recognitions[0].report_id="camera:100";
+  data.status.rooms.yard.recognitions[1].report_id="camera:110";
+  const entries=liveTriggers(data,120);
+  assert.equal(entries.length,2);
+  assert.match(triggerRows(data,120),/noch 00:42/);
+  assert.match(triggerRows(data,120),/noch 00:52/);
+  assert.equal(liveTriggers(data,162).length,1);
 });

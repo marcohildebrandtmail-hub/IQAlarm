@@ -169,6 +169,8 @@ class RuleMatch:
     chain: list["Evidence"]
     confirmed: bool
     room_id: str | None = None
+    perimeter_report: bool = False
+    expires_at: float | None = None
 
 
 def match_rule(

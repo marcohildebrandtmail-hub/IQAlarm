@@ -20,7 +20,7 @@ from .const import (
     Role,
 )
 from .level_rules import LevelRule, default_rules, upgrade_level_rules
-from .person_detection import PersonDetection
+from .person_detection import PersonDetection, managed_person_rule
 from .robots import RobotConfig
 
 ENTITY_RE = re.compile(r"^[a-z_][a-z0-9_]*\.[a-z0-9_]+$")
@@ -978,6 +978,14 @@ class Configuration:
                     raise ValueError("Ungültige Levelregel")
                 if key != rule.id or rule.stage_id not in stage_ids:
                     raise ValueError("Regel verweist auf eine unbekannte Alarmstufe")
+                person_settings = self.person_detection_settings
+                if (
+                    managed_person_rule(rule, person_settings, self.person_detection is not None)
+                    and rule.delay_seconds >= person_settings.quiet_seconds
+                ):
+                    raise ValueError(
+                        "Die Auslöseverzögerung muss kürzer als die gemeinsame Meldegültigkeit sein"
+                    )
                 if rule.stage_id in (baseline.id, secure.id):
                     raise ValueError(
                         "Deaktiviert und Sicher ergeben sich automatisch ohne Sensorregel"

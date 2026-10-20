@@ -46,6 +46,22 @@ for(const width of [1440,390])test(`person report thresholds and decay save sepa
   expect(saved.profiles.away.rule_ids).toEqual(['motion']);
   expect(saved.actions).toEqual({});
   expect(await page.locator('iqalarm-panel').evaluate(panel=>panel.shadowRoot.querySelector('.shell').scrollWidth>panel.shadowRoot.querySelector('.shell').clientWidth)).toBe(false);
+  await page.locator('iqalarm-panel').evaluate(panel=>{
+    panel.data.config.rules.perimeter={id:'perimeter',name:'Außenmeldung',stage_id:'outside',enabled:true,window_seconds:180,delay_seconds:0,entry_only:false,ordered:false,room_ids:null,paths:[],confirmation_target:null,prerequisite_rule_id:null,
+      conditions:[{sensor_ids:[],roles:['perimeter_camera','perimeter_sensor'],event:'active',count:1,max_age_seconds:10}]};
+    panel._render();
+  });
+  await page.getByRole('button',{name:'Außenmeldung bearbeiten',exact:true}).click();
+  const editor=page.locator('#editor-form');
+  await expect(editor.locator('[name="rule_window"]')).toHaveValue('90');
+  await expect(editor.locator('[name="rule_window"]')).toHaveAttribute('readonly','');
+  await expect(editor.locator('[name="age_0"]')).toHaveCount(0);
+  await expect(editor.locator('[name="rule_grade_enabled"]')).toHaveCount(0);
+  await expect(editor.locator('[name="count_0"]')).toHaveAttribute('readonly','');
+  await editor.getByRole('button',{name:'Speichern',exact:true}).click();
+  const coupled=await page.locator('iqalarm-panel').evaluate(panel=>panel.__savedConfig.rules.perimeter);
+  expect(coupled.window_seconds).toBe(90);
+  expect(coupled.conditions[0].max_age_seconds).toBeNull();
 });
 
 test('LVL 2 person reports charge the existing inner ring without a second bar',async({page})=>{

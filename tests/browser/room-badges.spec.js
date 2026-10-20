@@ -17,6 +17,63 @@ test.beforeEach(async({page})=>{
   await page.waitForFunction(()=>customElements.get("iqalarm-panel"));
 });
 
+for(const width of [1440,390])test(`coverage details sit inside the status field instead of a separate card at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:844});
+  await page.locator('iqalarm-panel').evaluate(panel=>{
+    panel.tab=0;panel._connected=true;panel.catalog={entities:[],areas:[]};
+    panel.data={config:{secure_stage_id:'secure',stages:[{id:'off',name:'Aus',color:'#fff'},{id:'secure',name:'Sicher',color:'#60b720'},{id:'outside',name:'Bewegung Außen',color:'#0000ff'}],
+      profiles:Object.fromEntries(['Zuhause','Nacht','Abwesend','Urlaub','Besuch'].map((name,index)=>[`mode${index}`,{name}])),robots:{},actions:{},rules:{},rooms:{},windows:{},floorplans:{},settings:{},sensors:{}},
+      information:[],windows:{},window_details:{},status:{active:true,profile_id:'mode2',profile_name:'Abwesend',level:2,stage_id:'outside',stage_name:'Bewegung Außen',raw:{},last_active:{},quarantine:{},ignored_windows:['window'],monitored_sensors:[],rooms:{},rule_progress:[],
+        coverage:{current:1,target:3,robots:[],ignored_windows:[{entity_id:'window',name:'Küchenfenster'}]}}};
+    panel._render();
+  });
+  const coverage=page.locator('[data-live-key="robot-coverage"]');
+  await expect(page.locator('.hero [data-live-key="robot-coverage"]')).toHaveCount(1);
+  await expect(page.locator('#main > [data-live-key="robot-coverage"]')).toHaveCount(0);
+  await expect(coverage.locator('.pill')).toBeVisible();
+  await expect(coverage).toContainText('Überwachung reduziert');
+  const bounds=await coverage.evaluate(node=>{
+    const rect=node.getBoundingClientRect(),copy=node.parentElement.querySelector('.hero-copy').getBoundingClientRect(),hero=node.parentElement.getBoundingClientRect();
+    return {inside:rect.left>=hero.left&&rect.right<=hero.right&&rect.top>=hero.top&&rect.bottom<=hero.bottom,rightOfCopy:rect.left>=copy.right,overflow:node.getRootNode().host.shadowRoot.querySelector('.shell').scrollWidth>innerWidth};
+  });
+  expect(bounds.inside).toBe(true);expect(bounds.overflow).toBe(false);
+  if(width===1440)expect(bounds.rightOfCopy).toBe(true);
+  await coverage.getByText('1 Fenster ignoriert',{exact:true}).click();
+  await expect(coverage.getByText('Küchenfenster',{exact:true})).toBeVisible();
+  await page.locator('iqalarm-panel').evaluate(panel=>panel._render());
+  await expect(coverage.locator('details')).toHaveAttribute('open','');
+});
+
+for(const width of [1440,390])test(`person timers and shared grade expire together without a backend refresh at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:844});
+  await page.locator('iqalarm-panel').evaluate(panel=>{
+    const now=Date.now()/1000;
+    const reports=[{entity_id:'binary_sensor.office_person',name:'Person Büro',room_id:'office',role:'perimeter_camera',timestamp:now-12,expires_at:now+50},
+      {entity_id:'binary_sensor.terrace_person',name:'Person Garten',room_id:'terrace',role:'perimeter_camera',timestamp:now-2,expires_at:now+60}];
+    const sensors=Object.fromEntries(reports.map(({expires_at,...source})=>[source.entity_id,{...source,enabled:true}]));
+    const rooms=Object.fromEntries(reports.map(report=>[report.room_id,{level:2,confirmed:false,motion:[],open:[],persons:[],quarantined:[],recognitions:[{
+      stage_id:'outside',level:2,confirmed:false,event:'active',report_id:`${report.entity_id}:${report.timestamp}`,expires_at:report.expires_at,sources:[report]}]}]));
+    panel.tab=0;panel._connected=true;panel.catalog={entities:[],areas:[]};
+    panel.data={config:{secure_stage_id:'secure',stages:[{id:'off',name:'Aus',color:'#ffffff'},{id:'secure',name:'Sicher',color:'#60b720'},{id:'outside',name:'Bewegung Außen',color:'#0000ff'}],
+      profiles:{},robots:{},actions:{},rules:{},rooms:{office:{id:'office',name:'Garten Büroseite'},terrace:{id:'terrace',name:'Terrasse'}},windows:{},floorplans:{},settings:{floorplan_armed_animation:false},sensors},
+      information:[],windows:{},window_details:{},status:{active:true,profile_id:'away',profile_name:'Abwesend',level:2,stage_id:'outside',stage_name:'Bewegung Außen',raw:Object.fromEntries(reports.map(r=>[r.entity_id,false])),last_active:{},quarantine:{},monitored_sensors:Object.keys(sensors),rooms,
+      rule_progress:[{rule_id:'person:global',name:'Personenerkennung außen',stage_id:'outside',room_id:null,current:2,target:3,thresholds:[1,2,3],person_reports:reports,sources:reports}]}};
+    panel._render();
+  });
+  const ring=page.locator('.status-rings'),list=page.getByRole('list',{name:'Aktuelle Auslöser',exact:true});
+  await expect(ring).toHaveAttribute('aria-label','Alarmstufe 2, Bestätigungsgrad 2 von 3');
+  await expect(list.getByRole('listitem')).toHaveCount(2);
+  await expect(list.locator('.live-trigger-timer')).toHaveText(['noch 01:00','noch 00:50']);
+  await page.clock.fastForward(50000);
+  await expect(ring).toHaveAttribute('aria-label','Alarmstufe 2, Bestätigungsgrad 1 von 3');
+  await expect(list.getByRole('listitem')).toHaveCount(1);
+  await expect(list).toContainText('Terrasse · Person Garten');
+  await expect(list.locator('.live-trigger-timer')).toHaveText('noch 00:10');
+  await page.clock.fastForward(10000);
+  await expect(ring).toHaveAttribute('aria-label','Alarmstufe 1');
+  await expect(list).toBeHidden();
+});
+
 for(const width of [1440,390])test(`floorplan header shows three latest triggers with a live countdown at ${width}px`,async({page})=>{
   await page.setViewportSize({width,height:844});
   await page.locator('iqalarm-panel').evaluate(panel=>{

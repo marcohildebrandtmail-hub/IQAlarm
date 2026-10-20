@@ -1,9 +1,10 @@
 # IQAlarm · Prüfstand vom 20. Oktober 2026
 
-## Prüfumfang (Version 2.13.2)
+## Prüfumfang (Version 2.13.3)
 
-- **505 pytest-Tests** für Korrelationslogik, Nachtbetrieb, eigene Profile, Konfigurationsgrenzen, Archivierung, Repository-Metadaten und Deployment-Rollback.
-- **101 Node.js-Frontend-Tests** für Grundrissinteraktion, Live-Auslöserliste, Countdown-Timer, Bewegungsausblendung, Raumübergänge, Statussynchronisation und Fensterassistent.
+- **508 pytest-Tests** für Korrelationslogik, Nachtbetrieb, eigene Profile, Konfigurationsgrenzen, Archivierung, Repository-Metadaten und Deployment-Rollback.
+- **103 Node.js-Frontend-Tests** für Grundrissinteraktion, Live-Auslöserliste, Countdown-Timer, Bewegungsausblendung, Raumübergänge, Statussynchronisation und Fensterassistent.
+- Einheitliche Meldegültigkeit für Außenmeldungen (Schema 2): Jede Außenmeldung (Personenerkennung & Vorfeld) besitzt eine einheitliche Lebensdauer für Alarmstufe, Bestätigungsgrad im Ring, Grundrissdarstellung und Countdown-Timer.
 - Live-Auslöserliste im Grundrisskopf: Anzeige der bis zu 3 aktuellsten Auslöserquellen mit Live-Countdown (`noch MM:SS`), Aktiv-Status bzw. Gehalten-Kennzeichnung.
 - Synchronisierte Erkennungsdauer auf dem Grundriss: Stufen- und Raumaktivitäten folgen exakt den berechneten Regelfristen (`_recognition_until`), faden weich (`--room-fade-duration`) und fallen bei Ablauf präzise auf verbleibende niedrigere Raumstufen zurück.
 - Alle fünf geforderten Pflichtszenarien: MACO-Prellen, einzelnes Fenster, Fenster + Bewegung nach zwölf Sekunden, nächtlicher Toilettengang und Vorfeld + Fenster nach vierzig Sekunden.

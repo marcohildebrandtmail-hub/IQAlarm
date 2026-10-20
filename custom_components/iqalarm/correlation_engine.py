@@ -7,7 +7,7 @@ one another. Full alarm is latched until disarming.
 
 import math
 from collections import defaultdict, deque
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from typing import Any
 
 from .automatic_detection import AUTO_RULE, DETECTED_RULE, advance_detection
@@ -26,7 +26,7 @@ from .const import (
 from .grade_decay import advance_grade
 from .level_rules import RuleMatch, accepts, spaces
 from .models import Configuration, EventLog, Evidence, Profile
-from .person_detection import advance_person_detection
+from .person_detection import advance_person_detection, managed_person_rule
 from .robots import evaluate_robots
 
 
@@ -67,6 +67,7 @@ class CorrelationEngine:
         self.rule_grades: dict[str, dict] = {}
         self.automatic_states: dict[str, dict] = {}
         self.person_states: dict[str, dict] = {}
+        self._person_managed_ids: set[str] = set()
         self.robot_devices: list[dict] = []
         self.robot_paused: set[str] = set()
         self.robot_waiting: set[str] = set()
@@ -154,7 +155,17 @@ class CorrelationEngine:
             ]
             if profile.automatic_detection:
                 rules.extend(self.automatic_rules.values())
-        return [rule for rule in rules if self.stage_allowed(rule.stage_id)]
+        return [self._effective_rule(rule) for rule in rules if self.stage_allowed(rule.stage_id)]
+
+    def _effective_rule(self, rule):
+        settings = self.config.person_detection_settings
+        if managed_person_rule(rule, settings, self.config.person_detection is not None):
+            return replace(
+                rule,
+                window_seconds=settings.quiet_seconds,
+                conditions=[replace(rule.conditions[0], max_age_seconds=None)],
+            )
+        return rule
 
     @property
     def automatic_rules(self):
@@ -177,7 +188,8 @@ class CorrelationEngine:
     def rule_definition(self, rule_id):
         if self.config.automatic_detection and rule_id in (AUTO_RULE, DETECTED_RULE):
             return self.automatic_rules[rule_id]
-        return (self.config.rules or {}).get(rule_id)
+        rule = (self.config.rules or {}).get(rule_id)
+        return self._effective_rule(rule) if rule is not None else None
 
     def _automatic_included(self, sensor):
         if not self.reactions_enabled:
@@ -763,6 +775,8 @@ class CorrelationEngine:
                 return
         if not active:
             self.debouncing.pop(entity_id, None)
+            if sensor.role in PERIMETER_ROLES and self.config.person_detection_settings:
+                self._recompute(now)
             return
         if entity_id in self.quarantine or not self._enabled(sensor):
             return
@@ -1300,130 +1314,101 @@ class CorrelationEngine:
 
     def _recompute_person_detection(self, now: float) -> None:
         settings = self.config.person_detection_settings
+        self._person_managed_ids = set()
         if not settings or not self.reactions_enabled or self.arming_until is not None:
             self.person_states.clear()
             return
-        # Existing custom confirmation rules retain their own proof and timing.
-        # Unsaved defaults apply to the standard perimeter rule. Saving the
-        # dedicated settings also enables simple custom LVL-2 trigger rules.
-        active_rules = [
-            rule
-            for rule in self.active_rules()
-            if rule.stage_id == settings.stage_id
-            and rule.confirmation_target is None
-            and rule.prerequisite_rule_id is None
-            and len(rule.conditions) == 1
-            and rule.conditions[0].event == "active"
-            and rule.conditions[0].count == 1
-            and (self.config.person_detection is not None or rule.id == "perimeter")
+        rules = [
+            r
+            for r in self.active_rules()
+            if managed_person_rule(r, settings, self.config.person_detection is not None)
         ]
-        active_ids = {rule.id for rule in active_rules}
-        states = {}
-        for room in self.config.rooms:
-            matches = [
-                match for match in self._room_rule_matches(room, now) if match.rule_id in active_ids
-            ]
-            rules = [self.rule_definition(match.rule_id) for match in matches]
-            sensors = {
-                key: sensor
-                for key, sensor in self.rule_sensors.items()
-                if sensor.role == Role.PERIMETER_CAMERA
-                and room in spaces(sensor)
-                and self.raw.get(key) is not None
-                and key not in self.quarantine
-                and any(
-                    condition.event == "active" and accepts(rule, condition, sensor)
-                    for rule in rules
-                    if rule is not None
-                    for condition in rule.conditions
+        self._person_managed_ids = {r.id for r in rules}
+        allowed = {
+            key: sensor
+            for key, sensor in self.rule_sensors.items()
+            if sensor.role in PERIMETER_ROLES
+            and sensor.enabled
+            and not sensor.information_only
+            and key not in self.grouped_inputs
+            and any(accepts(rule, rule.conditions[0], sensor) for rule in rules)
+        }
+        admitted = {m.rule_id for m in self.rule_matches if m.rule_id in self._person_managed_ids}
+        evidence = [
+            e
+            for e in self.evidence
+            if e.entity_id in allowed
+            and e.role in PERIMETER_ROLES
+            and e.entity_id not in self.quarantine
+            and any(
+                r.id in admitted and accepts(r, r.conditions[0], allowed[e.entity_id])
+                for r in rules
+            )
+        ]
+        context = {
+            "profile": self.profile_id,
+            "revision": self.config.revision,
+            "settings": asdict(settings),
+            "rules": [asdict(r) for r in rules],
+            "sensors": {key: asdict(sensor) for key, sensor in allowed.items()},
+        }
+        raw = {key: value for key, value in self.raw.items() if key not in self.quarantine}
+        state = advance_person_detection(
+            settings,
+            evidence,
+            allowed,
+            raw,
+            self.last_active,
+            now,
+            self.person_states.get("global"),
+            context,
+        )
+        self.person_states = {"global": state}
+        # These signals now have a single authoritative lifetime. The old
+        # independent rule window must not keep an expired report alive.
+        self.rule_matches[:] = [
+            m
+            for m in self.rule_matches
+            if m.rule_id not in self._person_managed_ids
+            or not all(e.role in PERIMETER_ROLES for e in m.chain)
+        ]
+        for report in state["reports"]:
+            sensor = allowed[report["entity_id"]]
+            rule = next(r for r in rules if accepts(r, r.conditions[0], sensor))
+            item = Evidence(**{k: v for k, v in report.items() if k != "expires_at"})
+            self.rule_matches.append(
+                RuleMatch(
+                    rule.id,
+                    settings.stage_id,
+                    [item],
+                    False,
+                    perimeter_report=True,
+                    expires_at=report["expires_at"],
                 )
-            }
-            # Keep the admitted scope while the counter decays, even after the
-            # ordinary rule's shorter display window has elapsed.
-            allowed = {
-                key: sensor
-                for key, sensor in self.rule_sensors.items()
-                if sensor.role == Role.PERIMETER_CAMERA
-                and room in spaces(sensor)
-                and sensor.enabled
-                and not sensor.information_only
-                and key not in self.grouped_inputs
-                and self.raw.get(key) is not None
-                and key not in self.quarantine
-                and any(
-                    c.event == "active" and accepts(r, c, sensor)
-                    for r in active_rules
-                    for c in r.conditions
-                )
-            }
-            context = {
-                "profile": self.profile_id,
-                "revision": self.config.revision,
-                "settings": asdict(settings),
-                "rules": [asdict(r) for r in active_rules],
-                "sensors": {key: asdict(s) for key, s in allowed.items()},
-            }
-            evidence = [
-                e
-                for e in self.evidence
-                if e.entity_id in sensors
-                and e.entity_id in allowed
-                and e.role == Role.PERIMETER_CAMERA
-                and room in spaces(sensors[e.entity_id])
-                and 0 <= now - e.timestamp < settings.quiet_seconds
-            ]
-            previous = self.person_states.get(room)
-            if not previous and not evidence:
-                continue
-            state = advance_person_detection(settings, evidence, allowed, now, previous, context)
-            states[room] = state
-            if state["grade"] and state["chain"] and active_rules:
-                # Preserve LVL 2 while its camera counter is still above zero.
-                # These repeated reports remain unconfirmed display evidence.
-                rule = next(
-                    (
-                        r
-                        for r in active_rules
-                        if any(
-                            accepts(r, c, allowed[e["entity_id"]])
-                            for c in r.conditions
-                            for e in state["chain"]
-                        )
-                    ),
-                    None,
-                )
-                if rule:
-                    self.rule_matches.append(
-                        RuleMatch(
-                            rule.id,
-                            settings.stage_id,
-                            [Evidence(**e) for e in state["chain"]],
-                            False,
-                            room,
-                        )
-                    )
-        self.person_states = states
+            )
 
     def _person_progress(self):
         settings = self.config.person_detection_settings
-        if not settings or not self.reactions_enabled:
+        state = self.person_states.get("global", {})
+        if not settings or not self.reactions_enabled or not state.get("grade"):
             return []
+        reports = [r for r in state["reports"] if r["role"] == Role.PERIMETER_CAMERA]
         return [
             {
-                "rule_id": f"person:{room}",
+                "rule_id": "person:global",
                 "name": "Personenerkennung außen",
                 "stage_id": settings.stage_id,
-                "room_id": room,
+                "room_id": None,
                 "current": state["grade"],
                 "target": 3,
+                "thresholds": settings.thresholds,
                 "complete": state["grade"] == 3,
                 "remembered": False,
                 "next_decay": state["next_decay"],
                 "until": None,
-                "sources": state["chain"],
+                "person_reports": reports,
+                "sources": [{k: v for k, v in r.items() if k != "expires_at"} for r in reports],
             }
-            for room, state in self.person_states.items()
-            if state["grade"]
         ]
 
     def _recompute_automatic(self, now: float) -> list[RuleMatch]:
@@ -1553,6 +1538,10 @@ class CorrelationEngine:
                 search_budget=budget,
             )
             if found:
+                if rule.id in self._person_managed_ids and all(
+                    e.role in PERIMETER_ROLES for e in found.chain
+                ):
+                    continue
                 if self._automatic_prerequisite(rule) and not any(
                     any(room in spaces(self.sensors[item.entity_id]) for item in found.chain)
                     and any(item.timestamp >= at for item in found.chain)
@@ -1564,6 +1553,8 @@ class CorrelationEngine:
 
     def _recognition_until(self, match, now):
         """Publish the same proof deadline that determines the displayed stage."""
+        if match.perimeter_report:
+            return match.expires_at
         if self.held_alarm and self.held_alarm["rule"] == match.rule_id:
             return None
         if match.rule_id in (AUTO_RULE, DETECTED_RULE):
@@ -1577,10 +1568,6 @@ class CorrelationEngine:
                     + max(0, state.get("grade", 0) - 1)
                     * self.config.automatic_detection.quiet_seconds
                 )
-        person = self.config.person_detection_settings
-        state = self.person_states.get(match.room_id, {})
-        if person and match.stage_id == person.stage_id and state.get("grade"):
-            return state["next_decay"] + (state["grade"] - 1) * person.quiet_seconds
         rule = self.rule_definition(match.rule_id)
         if not rule:
             return None
@@ -1620,6 +1607,9 @@ class CorrelationEngine:
                 "confirmed": match.confirmed,
                 "event": self.rule_definition(match.rule_id).conditions[0].event,
                 "expires_at": self._recognition_until(match, now),
+                "report_id": f"{match.chain[0].entity_id}:{match.chain[0].timestamp}"
+                if match.perimeter_report
+                else None,
                 "sources": [asdict(e) for e in match.chain],
             }
             for match in matches
@@ -1902,7 +1892,7 @@ class CorrelationEngine:
             {
                 key: value
                 for key, value in saved_person.items()
-                if key in self.config.rooms and isinstance(value, dict)
+                if key == "global" and isinstance(value, dict)
             }
             if isinstance(saved_person, dict)
             else {}
