@@ -26,6 +26,7 @@ from .const import (
 from .grade_decay import advance_grade
 from .level_rules import RuleMatch, accepts, spaces
 from .models import Configuration, EventLog, Evidence, Profile
+from .person_detection import advance_person_detection
 from .robots import evaluate_robots
 
 
@@ -65,6 +66,7 @@ class CorrelationEngine:
         self.rule_confirmations: dict[str, dict] = {}
         self.rule_grades: dict[str, dict] = {}
         self.automatic_states: dict[str, dict] = {}
+        self.person_states: dict[str, dict] = {}
         self.robot_devices: list[dict] = []
         self.robot_paused: set[str] = set()
         self.robot_waiting: set[str] = set()
@@ -380,6 +382,7 @@ class CorrelationEngine:
             self.rule_confirmations,
             self.rule_grades,
             self.automatic_states,
+            self.person_states,
         ):
             for key, record in list(values.items()):
                 if any(item.get("entity_id") in mask for item in record.get("chain", [])):
@@ -520,6 +523,7 @@ class CorrelationEngine:
         self.rule_confirmations.clear()
         self.rule_grades.clear()
         self.automatic_states.clear()
+        self.person_states.clear()
         self.rule_matches = []
         self._discard_excluded_evidence()
         if profile_id is None:
@@ -1208,6 +1212,7 @@ class CorrelationEngine:
                 )
         matches.extend(self._recompute_automatic(now) if self.arming_until is None else [])
         self.rule_matches = matches
+        self._recompute_person_detection(now)
         baseline_rank = self.config.stage_rank(self.baseline_stage_id)
         eligible = (
             [m for m in matches if m.confirmed]
@@ -1292,6 +1297,134 @@ class CorrelationEngine:
         self.evidence = deque((e for e in self.evidence if self._fresh(e, now)), maxlen=2000)
         self._recompute(now)
         return activity_changed
+
+    def _recompute_person_detection(self, now: float) -> None:
+        settings = self.config.person_detection_settings
+        if not settings or not self.reactions_enabled or self.arming_until is not None:
+            self.person_states.clear()
+            return
+        # Existing custom confirmation rules retain their own proof and timing.
+        # Unsaved defaults apply to the standard perimeter rule. Saving the
+        # dedicated settings also enables simple custom LVL-2 trigger rules.
+        active_rules = [
+            rule
+            for rule in self.active_rules()
+            if rule.stage_id == settings.stage_id
+            and rule.confirmation_target is None
+            and rule.prerequisite_rule_id is None
+            and len(rule.conditions) == 1
+            and rule.conditions[0].event == "active"
+            and rule.conditions[0].count == 1
+            and (self.config.person_detection is not None or rule.id == "perimeter")
+        ]
+        active_ids = {rule.id for rule in active_rules}
+        states = {}
+        for room in self.config.rooms:
+            matches = [
+                match for match in self._room_rule_matches(room, now) if match.rule_id in active_ids
+            ]
+            rules = [self.rule_definition(match.rule_id) for match in matches]
+            sensors = {
+                key: sensor
+                for key, sensor in self.rule_sensors.items()
+                if sensor.role == Role.PERIMETER_CAMERA
+                and room in spaces(sensor)
+                and self.raw.get(key) is not None
+                and key not in self.quarantine
+                and any(
+                    condition.event == "active" and accepts(rule, condition, sensor)
+                    for rule in rules
+                    if rule is not None
+                    for condition in rule.conditions
+                )
+            }
+            # Keep the admitted scope while the counter decays, even after the
+            # ordinary rule's shorter display window has elapsed.
+            allowed = {
+                key: sensor
+                for key, sensor in self.rule_sensors.items()
+                if sensor.role == Role.PERIMETER_CAMERA
+                and room in spaces(sensor)
+                and sensor.enabled
+                and not sensor.information_only
+                and key not in self.grouped_inputs
+                and self.raw.get(key) is not None
+                and key not in self.quarantine
+                and any(
+                    c.event == "active" and accepts(r, c, sensor)
+                    for r in active_rules
+                    for c in r.conditions
+                )
+            }
+            context = {
+                "profile": self.profile_id,
+                "revision": self.config.revision,
+                "settings": asdict(settings),
+                "rules": [asdict(r) for r in active_rules],
+                "sensors": {key: asdict(s) for key, s in allowed.items()},
+            }
+            evidence = [
+                e
+                for e in self.evidence
+                if e.entity_id in sensors
+                and e.entity_id in allowed
+                and e.role == Role.PERIMETER_CAMERA
+                and room in spaces(sensors[e.entity_id])
+                and 0 <= now - e.timestamp < settings.quiet_seconds
+            ]
+            previous = self.person_states.get(room)
+            if not previous and not evidence:
+                continue
+            state = advance_person_detection(settings, evidence, allowed, now, previous, context)
+            states[room] = state
+            if state["grade"] and state["chain"] and active_rules:
+                # Preserve LVL 2 while its camera counter is still above zero.
+                # These repeated reports remain unconfirmed display evidence.
+                rule = next(
+                    (
+                        r
+                        for r in active_rules
+                        if any(
+                            accepts(r, c, allowed[e["entity_id"]])
+                            for c in r.conditions
+                            for e in state["chain"]
+                        )
+                    ),
+                    None,
+                )
+                if rule:
+                    self.rule_matches.append(
+                        RuleMatch(
+                            rule.id,
+                            settings.stage_id,
+                            [Evidence(**e) for e in state["chain"]],
+                            False,
+                            room,
+                        )
+                    )
+        self.person_states = states
+
+    def _person_progress(self):
+        settings = self.config.person_detection_settings
+        if not settings or not self.reactions_enabled:
+            return []
+        return [
+            {
+                "rule_id": f"person:{room}",
+                "name": "Personenerkennung außen",
+                "stage_id": settings.stage_id,
+                "room_id": room,
+                "current": state["grade"],
+                "target": 3,
+                "complete": state["grade"] == 3,
+                "remembered": False,
+                "next_decay": state["next_decay"],
+                "until": None,
+                "sources": state["chain"],
+            }
+            for room, state in self.person_states.items()
+            if state["grade"]
+        ]
 
     def _recompute_automatic(self, now: float) -> list[RuleMatch]:
         settings = self.config.automatic_detection
@@ -1599,11 +1732,15 @@ class CorrelationEngine:
                 "until": record["until"] if memory else None,
                 "sources": [asdict(e) for e in proof.chain] if proof else [],
             }
-        return list(progress.values()) + [
-            progress
-            for room in self.automatic_states
-            if (progress := self._automatic_progress(room)) is not None
-        ]
+        return (
+            list(progress.values())
+            + self._person_progress()
+            + [
+                progress
+                for room in self.automatic_states
+                if (progress := self._automatic_progress(room)) is not None
+            ]
+        )
 
     def snapshot(self, now: float) -> dict:
         is_active = bool(self.reactions_enabled and self.profile_id)
@@ -1675,6 +1812,7 @@ class CorrelationEngine:
             "rule_confirmations": self.rule_confirmations,
             "rule_grades": self.rule_grades,
             "automatic_states": self.automatic_states,
+            "person_states": self.person_states,
             "robot_suppressed": sorted(self.robot_mask),
             "ignored_windows": self.ignored_windows.copy(),
             "robot_recovering": sorted(
@@ -1686,6 +1824,16 @@ class CorrelationEngine:
 
     def restore(self, data: dict, now: float) -> None:
         """Restore evidence only within its original window; never replay actions."""
+        saved_person = data.get("person_states", {})
+        self.person_states = (
+            {
+                key: value
+                for key, value in saved_person.items()
+                if key in self.config.rooms and isinstance(value, dict)
+            }
+            if isinstance(saved_person, dict)
+            else {}
+        )
         self.profile_id = data.get("profile_id")
         self.automatic_states = (
             data.get("automatic_states", {})

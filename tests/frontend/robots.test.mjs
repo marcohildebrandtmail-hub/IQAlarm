@@ -11,6 +11,7 @@ test("robot settings belong to the secure baseline and retain configurable scope
   const p=panel(),html=renderLevels(p);
   assert.match(html,/Roboter & Überwachungsrisiko/);assert.match(html,/Küche · 1 Aktivitätsentitäten · 1\/3 Risikopunkte/);
   assert.match(html,/data-command="robot-edit"/);assert.match(html,/data-command="robot-delete"/);
+  p._number=(name,label,value)=>`<label>${label}<input name="${name}" value="${value}"></label>`;
   p.stage="2";assert.doesNotMatch(renderLevels(p),/robot-new/);
   p.stage="0";assert.doesNotMatch(renderLevels(p),/robot-new/);
 });

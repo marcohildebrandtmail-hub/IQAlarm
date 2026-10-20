@@ -20,6 +20,7 @@ from .const import (
     Role,
 )
 from .level_rules import LevelRule, default_rules, upgrade_level_rules
+from .person_detection import PersonDetection
 from .robots import RobotConfig
 
 ENTITY_RE = re.compile(r"^[a-z_][a-z0-9_]*\.[a-z0-9_]+$")
@@ -745,6 +746,27 @@ class Configuration:
     room_connections: list[list[str]] = field(default_factory=list)
     robots: dict[str, RobotConfig] = field(default_factory=dict)
     automatic_detection: AutomaticDetection | None = None
+    person_detection: PersonDetection | None = None
+
+    @property
+    def person_detection_settings(self) -> PersonDetection | None:
+        """Use one report per step by default on a usable LVL 2."""
+        if self.person_detection is not None:
+            return self.person_detection
+        if self.rules is None or len(self.stages) < 3:
+            return None
+        stage = self.stages[2]
+        if (
+            self.stage_rank(stage.id) <= self.stage_rank(self.secure_stage_id)
+            or stage.requires_confirmation
+            or (
+                self.automatic_detection
+                and stage.id
+                in (self.automatic_detection.stage_id, self.automatic_detection.next_stage_id)
+            )
+        ):
+            return None
+        return PersonDetection(stage_id=stage.id)
 
     def all_sensors(self) -> dict[str, SensorConfig]:
         return self.sensors | {
@@ -798,6 +820,23 @@ class Configuration:
         }
 
     def validate(self) -> None:
+        if self.person_detection is not None:
+            detection = self.person_detection
+            if not isinstance(detection, PersonDetection) or self.rules is None:
+                raise ValueError("Ungültige Personenerkennung")
+            stage = self.stage(detection.stage_id)
+            if (
+                self.stage_rank(stage.id) <= self.stage_rank(self.secure_stage_id)
+                or stage.requires_confirmation
+                or (
+                    self.automatic_detection
+                    and stage.id
+                    in (self.automatic_detection.stage_id, self.automatic_detection.next_stage_id)
+                )
+            ):
+                raise ValueError(
+                    "Personenerkennung benötigt eine eigene Voralarmstufe oberhalb Sicher"
+                )
         if self.automatic_detection is not None:
             detection = self.automatic_detection
             if not isinstance(detection, AutomaticDetection) or self.rules is None:
@@ -1120,6 +1159,9 @@ class Configuration:
             },
             automatic_detection=construct(AutomaticDetection, data["automatic_detection"])
             if data.get("automatic_detection") is not None
+            else None,
+            person_detection=construct(PersonDetection, data["person_detection"])
+            if data.get("person_detection") is not None
             else None,
             rules={key: construct(LevelRule, value) for key, value in data["rules"].items()}
             if data.get("rules") is not None

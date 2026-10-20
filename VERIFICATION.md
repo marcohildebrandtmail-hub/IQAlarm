@@ -1,8 +1,8 @@
-# IQAlarm · Prüfstand vom 19. Oktober 2026
+# IQAlarm · Prüfstand vom 20. Oktober 2026
 
-## Prüfumfang (Version 2.12.4)
+## Prüfumfang (Version 2.13.0)
 
-- **481 pytest-Tests** für Korrelationslogik, Nachtbetrieb, eigene Profile, Konfigurationsgrenzen, Archivierung, Repository-Metadaten und Deployment-Rollback.
+- **503 pytest-Tests** für Korrelationslogik, Nachtbetrieb, eigene Profile, Konfigurationsgrenzen, Archivierung, Repository-Metadaten und Deployment-Rollback.
 - Alle fünf geforderten Pflichtszenarien: MACO-Prellen, einzelnes Fenster, Fenster + Bewegung nach zwölf Sekunden, nächtlicher Toilettengang und Vorfeld + Fenster nach vierzig Sekunden.
 - Neue Sicherheitsregressionen: gerichtete Bestätigungswege, unzugeordnete Kameras, reine Außenbewegung, Schlossentriegelung ohne Öffnung, höherer Alarm trotz gehaltener Stufe und abgelehnte unabhängige Räume. Mehrfachkontakt-/Bewegungsregeln verlangen ausdrückliche Freigabe und räumliche Beziehung.
 - Echter Core: langsamer Lichtdienst blockiert keine andere Sirene; langsames Abschalten blockiert keinen Eingangstimer; eigene Alarm-Ausgänge werden nach Reload bis zum ursprünglichen Ablauf wieder aufgenommen.
@@ -59,6 +59,8 @@ Zusätzliche Prüfungen ab 2.12.2: Der LVL-3-Testbetrieb sperrt höhere Stufen i
 Zusätzliche Prüfungen ab 2.12.3: Live-Pakete liefern ihre Serverzeit mit. Der Browser richtet die Altersberechnung der Aktivitätsmeldungen an dieser Zeit aus, sodass abweichende Rechneruhren beim Wechsel von „Aktiv“ zu „Kürzlich“ keine kurze Ruhemeldung, verschwindenden Bewegungstext oder gegenläufige Farbüberblendung verursachen. Gerundete Zeitstempel, beide Richtungen des Uhrenversatzes, verzögertes Anzeigen, ungültige zukünftige Meldungen und ausgefallene Quellen sind geprüft. Browserregressionen erfassen den unmittelbaren Zustand nach dem Ausschalten auf Desktop und Mobilgerät, sowohl bei Live-Neudarstellung als auch bei Timeraktualisierung. Alarmregeln und ihre Fristen werden durch den Anzeigeausgleich nicht geändert.
 
 Zusätzliche Prüfungen ab 2.12.4: Kompakte Anzeige des Bestätigungskontexts direkt im Hero-Bereich (anstelle einer separaten Karte mit Fortschrittsbalken). Browserregressionen prüfen die Platzierung im Hero-Bereich, Stufenring-Attribute und saubere Darstellung auf Desktop und Mobilgerät.
+
+Zusätzliche Prüfungen ab 2.13.0: Eigenständige Personenerkennung für Außenkameras in Stufe 2 mit anpassbaren Bestätigungsschwellen, Abklingzeiten und räumlicher Korrelation. Eigene Regressionstests prüfen Schwellenwerte, Quellenzuordnung, Zeitgrenzen, Vorfeld-Entkopplung und das nahtlose Laden der Konfiguration. Browserfälle decken Formularvalidierung, Speicherung und die Visualisierung im inneren Statusring ab.
 
 ## Veröffentlichungsstatus
 

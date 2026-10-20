@@ -30,6 +30,40 @@ test.beforeEach(async({page})=>{
   });
 });
 
+for(const width of [1440,390])test(`person report thresholds and decay save separately from outdoor motion at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:920});
+  await page.locator('[data-stage="outside"]').first().click();
+  const form=page.locator('#person-detection-form');
+  for(const n of [1,2,3])await expect(form.locator(`[name="person_threshold_${n}"]`)).toHaveValue(String(n));
+  await expect(form.locator('[name="person_quiet"]')).toHaveValue('60');
+  await expect(form).toContainText('Bewegungsmelder außen lösen diese Stufe ohne Bestätigungsgrad aus.');
+  for(const n of [1,2,3])await form.locator(`[name="person_threshold_${n}"]`).fill(String(n*2));
+  await form.locator('[name="person_quiet"]').fill('90');
+  await form.getByRole('button',{name:'Personenerkennung speichern',exact:true}).click();
+  const saved=await page.locator('iqalarm-panel').evaluate(panel=>panel.__savedConfig);
+  expect(saved.person_detection).toEqual({stage_id:'outside',thresholds:[2,4,6],quiet_seconds:90});
+  expect(saved.automatic_detection).toBeNull();
+  expect(saved.profiles.away.rule_ids).toEqual(['motion']);
+  expect(saved.actions).toEqual({});
+  expect(await page.locator('iqalarm-panel').evaluate(panel=>panel.shadowRoot.querySelector('.shell').scrollWidth>panel.shadowRoot.querySelector('.shell').clientWidth)).toBe(false);
+});
+
+test('LVL 2 person reports charge the existing inner ring without a second bar',async({page})=>{
+  for(const current of [0,1,2,3,2,1,0]){
+    await page.locator('iqalarm-panel').evaluate((panel,current)=>{
+      panel.tab=0;
+      panel.data={...panel.data,status:{...panel.data.status,active:true,mode:'active',profile_id:'away',profile_name:'Abwesend',stage_id:'outside',level:2,stage_name:'Außen',rule_progress:current?[{rule_id:'person:kitchen',name:'Personenerkennung außen',stage_id:'outside',room_id:'kitchen',current,target:3,sources:[{entity_id:'binary_sensor.person',name:'Person Haustür'}]}]:[]}};
+      panel._render();
+    },current);
+    const ring=page.locator('[data-confirmation-ring]');
+    const offset=Number(await ring.getAttribute('stroke-dashoffset'));
+    const circumference=Number(await ring.getAttribute('stroke-dasharray'));
+    expect(offset).toBeCloseTo(circumference*(1-current/3),5);
+    await expect(page.locator('progress')).toHaveCount(0);
+    await expect(page.locator('[data-live-key="confirmation-grades"]')).toHaveCount(0);
+  }
+});
+
 for(const width of [1440,390])test(`automatic LVL 3 settings save with stable stage IDs and separate mode scope at ${width}px`,async({page})=>{
   await page.setViewportSize({width,height:920});
   const errors=[];page.on("pageerror",error=>errors.push(error.message));
