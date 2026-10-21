@@ -6,11 +6,16 @@ import pytest
 from iqalarm_core.correlation_engine import CorrelationEngine
 from iqalarm_core.level_rules import LevelRule, RuleCondition
 from iqalarm_core.models import Configuration, SensorConfig
+from iqalarm_core.models import Settings as ScenarioSettings
 
 
 @pytest.fixture
 def graded(config):
-    config = Configuration(rooms=deepcopy(config.rooms), sensors=deepcopy(config.sensors))
+    config = Configuration(
+        settings=ScenarioSettings(startup_delay_seconds=0),
+        rooms=deepcopy(config.rooms),
+        sensors=deepcopy(config.sensors),
+    )
     for name in ("two", "three"):
         sensor = SensorConfig(f"binary_sensor.{name}", "perimeter_camera", front_of=["living"])
         config.sensors[sensor.entity_id] = sensor

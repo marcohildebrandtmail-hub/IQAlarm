@@ -12,6 +12,7 @@ from iqalarm_core.models import (
     Settings,
     construct,
 )
+from iqalarm_core.models import Settings as ScenarioSettings
 
 
 @pytest.mark.parametrize(
@@ -27,6 +28,7 @@ from iqalarm_core.models import (
 def test_loud_actions_cannot_bypass_silent_stages(kind, target, level):
     with pytest.raises(ValueError):
         config = Configuration(
+            settings=ScenarioSettings(startup_delay_seconds=0),
             actions={
                 "a": Action(
                     "a",
@@ -35,7 +37,7 @@ def test_loud_actions_cannot_bypass_silent_stages(kind, target, level):
                     target,
                     media_player="media_player.speaker" if kind == "tts" else None,
                 )
-            }
+            },
         )
         config.validate()
 
@@ -43,7 +45,8 @@ def test_loud_actions_cannot_bypass_silent_stages(kind, target, level):
 def test_critical_notification_cannot_bypass_silent_stage():
     with pytest.raises(ValueError):
         Configuration(
-            actions={"a": Action("a", "2", "notify", "notify.phone", critical=True)}
+            settings=ScenarioSettings(startup_delay_seconds=0),
+            actions={"a": Action("a", "2", "notify", "notify.phone", critical=True)},
         ).validate()
 
 
@@ -117,7 +120,7 @@ def test_room_cannot_reference_itself():
 
 def test_settings_reject_invalid_simulation():
     with pytest.raises(ValueError):
-        Settings(simulation_lights=["switch.siren"])
+        Settings(startup_delay_seconds=0, simulation_lights=["switch.siren"])
 
 
 def test_numeric_sensor_settings_require_integer():
@@ -126,7 +129,7 @@ def test_numeric_sensor_settings_require_integer():
 
 
 def test_settings_quiet_disarmed_defaults_and_validation():
-    s = Settings()
+    s = Settings(startup_delay_seconds=0)
     assert s.quiet_disarmed_floorplan is True
     assert s.quiet_disarmed_locks is True
     assert s.recent_seconds == 30
@@ -137,34 +140,34 @@ def test_settings_quiet_disarmed_defaults_and_validation():
     assert s.floorplan_disarmed_animation is False
     assert s.floorplan_armed_animation is True
     with pytest.raises(ValueError):
-        Settings(quiet_disarmed_floorplan="yes")  # type: ignore[arg-type]
+        Settings(startup_delay_seconds=0, quiet_disarmed_floorplan="yes")  # type: ignore[arg-type]
     with pytest.raises(ValueError):
-        Settings(quiet_disarmed_locks="no")  # type: ignore[arg-type]
+        Settings(startup_delay_seconds=0, quiet_disarmed_locks="no")  # type: ignore[arg-type]
     with pytest.raises(ValueError):
-        Settings(floorplan_disarmed_motion="invalid")  # type: ignore[arg-type]
+        Settings(startup_delay_seconds=0, floorplan_disarmed_motion="invalid")  # type: ignore[arg-type]
     with pytest.raises(ValueError):
-        Settings(floorplan_disarmed_locks="invalid")  # type: ignore[arg-type]
+        Settings(startup_delay_seconds=0, floorplan_disarmed_locks="invalid")  # type: ignore[arg-type]
     with pytest.raises(ValueError):
-        Settings(floorplan_armed_animation="invalid")  # type: ignore[arg-type]
+        Settings(startup_delay_seconds=0, floorplan_armed_animation="invalid")  # type: ignore[arg-type]
     with pytest.raises(ValueError):
-        Settings(recent_seconds=3)
+        Settings(startup_delay_seconds=0, recent_seconds=3)
     with pytest.raises(ValueError):
-        Settings(recent_seconds=400)
+        Settings(startup_delay_seconds=0, recent_seconds=400)
     with pytest.raises(ValueError):
-        Settings(recent_seconds=30.5)  # type: ignore[arg-type]
+        Settings(startup_delay_seconds=0, recent_seconds=30.5)  # type: ignore[arg-type]
 
 
 def test_settings_room_order_validation():
-    s = Settings()
+    s = Settings(startup_delay_seconds=0)
     assert s.room_order == []
-    s2 = Settings(room_order=["living", "kitchen"])
+    s2 = Settings(startup_delay_seconds=0, room_order=["living", "kitchen"])
     assert s2.room_order == ["living", "kitchen"]
     with pytest.raises(ValueError, match="Liste"):
-        Settings(room_order="living")  # type: ignore[arg-type]
+        Settings(startup_delay_seconds=0, room_order="living")  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="Raum-IDs"):
-        Settings(room_order=[123])  # type: ignore[list-item]
+        Settings(startup_delay_seconds=0, room_order=[123])  # type: ignore[list-item]
     with pytest.raises(ValueError, match="Maximal 250"):
-        Settings(room_order=[f"room_{i}" for i in range(251)])
+        Settings(startup_delay_seconds=0, room_order=[f"room_{i}" for i in range(251)])
 
 
 def test_configuration_validates_and_prunes_room_order(config):
@@ -200,4 +203,4 @@ def test_sensor_order_roundtrip_deduplicates_and_prunes_removed_or_moved_sensors
 )
 def test_invalid_sensor_order_is_rejected(order):
     with pytest.raises(ValueError):
-        Settings(sensor_order=order)
+        Settings(startup_delay_seconds=0, sensor_order=order)

@@ -115,6 +115,7 @@ def evaluate_robots(config, readings):
             for key, sensor in config.all_sensors().items()
             if sensor.enabled
             and sensor.role in INTERIOR_ROLES
+            and sensor.sensor_kind != "light_switch"
             and sensor.room_id in rooms
             and key not in grouped
         ]

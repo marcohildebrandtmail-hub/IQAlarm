@@ -6,10 +6,12 @@ import pytest
 from safety_support import local_runtime, models
 
 
-def test_level_three_test_ceiling_blocks_high_actions_and_manual_tests(tmp_path):
+@pytest.mark.parametrize("ceiling", ["3", "4"])
+def test_test_ceiling_blocks_high_actions_and_manual_tests(tmp_path, ceiling):
     async def scenario():
         config = models.Configuration(
-            automatic_detection=models.AutomaticDetection(),
+            settings=models.Settings(startup_delay_seconds=0),
+            automatic_detection=models.AutomaticDetection(test_stage_id=ceiling),
             rooms={"r": models.Room("r", "Raum")},
             sensors={
                 "binary_sensor.motion": models.SensorConfig(
@@ -25,7 +27,7 @@ def test_level_three_test_ceiling_blocks_high_actions_and_manual_tests(tmp_path)
         }
         runtime = local_runtime(tmp_path, config)
         runtime.engine.set_profile("armed_away", 100)
-        for stage in ("4", "5"):
+        for stage in (key for key in ("4", "5") if int(key) > int(ceiling)):
             for dry_run in (True, False):
                 with pytest.raises(ValueError, match="Testbetrieb deaktiviert"):
                     await runtime.test_level(stage, dry_run=dry_run, profile_id="armed_away")
@@ -45,6 +47,10 @@ def test_level_three_test_ceiling_blocks_high_actions_and_manual_tests(tmp_path)
         plan = await runtime.test_level("3", dry_run=False, profile_id="armed_away")
         assert [action["id"] for action in plan] == ["3"]
         assert [call[2]["message"] for call in runtime.hass.services.calls] == ["3"]
+        if ceiling == "4":
+            plan = await runtime.test_level("4", dry_run=False, profile_id="armed_away")
+            assert [action["id"] for action in plan] == ["4"]
+            assert [call[2]["message"] for call in runtime.hass.services.calls] == ["3", "4"]
 
     asyncio.run(scenario())
 

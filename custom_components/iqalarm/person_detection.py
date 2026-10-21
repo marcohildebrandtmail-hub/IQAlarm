@@ -41,11 +41,64 @@ def managed_person_rule(rule, settings, configured):
     )
 
 
-def advance_person_detection(settings, evidence, sensors, raw, last_active, now, previous, context):
+def motion_confirmation(reports, room_connections):
+    """Use at most three independent motion sources from directly related rooms.
+
+    A shared physical device counts once. All selected rooms must match directly;
+    a path through another room never invents a connection between its ends.
+    Unrelated groups contribute their best grade, never the sum of their grades.
+    """
+    rooms = {}
+
+    def lifetime(report):
+        return (report["expires_at"] is None, report["expires_at"] or 0, report["timestamp"])
+
+    for report in reports:
+        room = report["room_id"]
+        if report["role"] == Role.PERIMETER_SENSOR and room:
+            room_sources = rooms.setdefault(room, {})
+            source = report["source_id"] or report["entity_id"]
+            if source not in room_sources or lifetime(report) > lifetime(room_sources[source]):
+                room_sources[source] = report
+    neighbors = {room: set() for room in rooms}
+    for a, b in room_connections:
+        if a in rooms and b in rooms and a != b:
+            neighbors[a].add(b)
+            neighbors[b].add(a)
+
+    def sources(*ids):
+        combined = {}
+        for room in ids:
+            combined.update(rooms[room])
+        return list(combined.values())[:3]
+
+    best = []
+    for a in sorted(rooms):
+        candidates = sources(a)
+        if len(candidates) == 3:
+            return candidates
+        if len(candidates) > len(best):
+            best = candidates
+        for b in sorted(room for room in neighbors[a] if room > a):
+            candidates = sources(a, b)
+            if len(candidates) == 3:
+                return candidates
+            if len(candidates) > len(best):
+                best = candidates
+            for c in sorted(room for room in neighbors[a] & neighbors[b] if room > b):
+                candidates = sources(a, b, c)
+                if len(candidates) == 3:
+                    return candidates
+    return best if len(best) >= 2 else []
+
+
+def advance_person_detection(
+    settings, evidence, sensors, raw, last_active, now, previous, context, *, room_connections=()
+):
     """Each report has one lifetime, used by level, grade, map and countdown.
 
-    Separate reports from one camera can add to the display grade. They never
-    become independent physical sources or a full-alarm confirmation memory.
+    Camera reports and independent, directly related motion sources add to the
+    display grade. Neither creates a full-alarm confirmation memory.
     """
     from .models import Evidence
 
@@ -128,13 +181,19 @@ def advance_person_detection(settings, evidence, sensors, raw, last_active, now,
     )[:2000]
     seen = {key: max(incoming.get(key, -1), seen.get(key, -1)) for key in sensors}
     persons = [r for r in live if r["role"] == Role.PERIMETER_CAMERA]
-    deadlines = [r["expires_at"] for r in persons if r["expires_at"] is not None]
+    motion = motion_confirmation(live, room_connections)
+    camera_grade = sum(len(persons) >= threshold for threshold in settings.thresholds)
+    motion_grade = max(0, len(motion) - 1)
+    deadlines = [r["expires_at"] for r in persons + motion if r["expires_at"] is not None]
     return {
         "schema": 2,
         "context": context,
         "reports": live,
         "seen": seen,
         "chain": [{k: v for k, v in r.items() if k != "expires_at"} for r in live],
-        "grade": sum(len(persons) >= threshold for threshold in settings.thresholds),
+        "grade": min(3, camera_grade + motion_grade),
+        "camera_grade": camera_grade,
+        "motion_grade": motion_grade,
+        "motion_sources": motion,
         "next_decay": min(deadlines, default=None),
     }

@@ -5,10 +5,15 @@ from copy import deepcopy
 import pytest
 from iqalarm_core.correlation_engine import CorrelationEngine
 from iqalarm_core.models import Configuration, FloorPlan
+from iqalarm_core.models import Settings as ScenarioSettings
 
 
 def connected_engine(config, pairs):
-    configuration = Configuration(rooms=deepcopy(config.rooms), sensors=deepcopy(config.sensors))
+    configuration = Configuration(
+        settings=ScenarioSettings(startup_delay_seconds=0),
+        rooms=deepcopy(config.rooms),
+        sensors=deepcopy(config.sensors),
+    )
     configuration.room_connections = pairs
     engine = CorrelationEngine(configuration)
     for key in engine.sensors:

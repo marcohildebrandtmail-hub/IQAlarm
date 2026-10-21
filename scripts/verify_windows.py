@@ -114,6 +114,7 @@ async def verify_windows(hass, entry, admin_token, user_token, calls):
                 "room_id": "living",
             }
             hass.states.async_set("lock.fenstergriff_pruefung", "unlocked")
+            data["settings"]["startup_delay_seconds"] = 0
             data["settings"]["block_unavailable_on_arm"] = False
             data["settings"]["block_open_on_arm"] = False
             saved = await request(

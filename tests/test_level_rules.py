@@ -6,11 +6,16 @@ import pytest
 from iqalarm_core.correlation_engine import CorrelationEngine
 from iqalarm_core.level_rules import LevelRule, RuleCondition
 from iqalarm_core.models import Action, AlarmStage, Configuration, SensorConfig
+from iqalarm_core.models import Settings as ScenarioSettings
 
 
 @pytest.fixture
 def free(config):
-    config = Configuration(rooms=deepcopy(config.rooms), sensors=deepcopy(config.sensors))
+    config = Configuration(
+        settings=ScenarioSettings(startup_delay_seconds=0),
+        rooms=deepcopy(config.rooms),
+        sensors=deepcopy(config.sensors),
+    )
     config.sensors["binary_sensor.person2"] = SensorConfig(
         "binary_sensor.person2", "perimeter_camera", front_of=["living"]
     )

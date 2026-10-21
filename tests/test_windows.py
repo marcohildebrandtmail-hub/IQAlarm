@@ -5,6 +5,7 @@ from copy import deepcopy
 import pytest
 from iqalarm_core.correlation_engine import CorrelationEngine
 from iqalarm_core.models import Configuration, Room, SensorConfig, WindowConfig
+from iqalarm_core.models import Settings as ScenarioSettings
 from iqalarm_core.windows import (
     WindowTracker,
     capture_position,
@@ -27,7 +28,11 @@ def test_related_actor_requires_unique_physical_window_owner(case):
     actor = SensorConfig(
         "binary_sensor.actor", "lock_contact", "living", sensor_kind="window_handle"
     )
-    config = Configuration(windows={"w": window}, sensors={actor.entity_id: actor})
+    config = Configuration(
+        settings=ScenarioSettings(startup_delay_seconds=0),
+        windows={"w": window},
+        sensors={actor.entity_id: actor},
+    )
     devices = {
         "lock.grip": "hardware",
         "binary_sensor.grip": "hardware",
@@ -300,7 +305,9 @@ def test_window_roundtrip_and_validation(config, window):
 @pytest.mark.parametrize("bad", ["unknown", "unavailable"])
 def test_faults_cannot_be_calibrated_as_normal_positions(window, bad):
     data = Configuration(
-        rooms={"living": Room("living", "Wohnzimmer")}, windows={"living": window}
+        settings=ScenarioSettings(startup_delay_seconds=0),
+        rooms={"living": Room("living", "Wohnzimmer")},
+        windows={"living": window},
     ).to_dict()
     data["windows"]["living"]["mappings"][0]["values"]["binary_sensor.contact"] = bad
     with pytest.raises(ValueError, match="Keine Verbindung"):

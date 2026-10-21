@@ -11,6 +11,7 @@ from copy import deepcopy
 from datetime import timedelta
 from pathlib import Path
 
+import voluptuous as vol
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP, EVENT_STATE_CHANGED
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
@@ -20,8 +21,10 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
 from .action_dispatcher import ActionDispatcher
+from .button_inputs import event_time, press_types
 from .const import CONTACT_ROLES, EVENT_TYPE, SIGNAL_UPDATE, Role
 from .correlation_engine import CorrelationEngine
+from .external_monitor import ExternalMonitor
 from .models import Configuration, EventLog
 from .opening_types import is_window_contact
 from .store import IQAlarmStore
@@ -36,6 +39,7 @@ class IQAlarmRuntime:
         self.entry = entry
         self.store = IQAlarmStore(hass)
         self.engine = CorrelationEngine(Configuration())
+        self.external = ExternalMonitor(self)
         self.dispatcher = ActionDispatcher(hass, self)
         self.generation = 0
         self.queue: asyncio.Queue[tuple[EventLog, int]] = asyncio.Queue(maxsize=200)
@@ -60,12 +64,22 @@ class IQAlarmRuntime:
         self._next_prune = 0.0
         self._failed_pins: list[float] = []
         self.windows: dict[str, WindowTracker] = {}
+        self._press_seen: dict[str, float] = {}
+        self._button_cancels: list[Callable] = []
 
     @property
     def config(self) -> Configuration:
         return self.engine.config
 
     def active_state(self, sensor, state) -> bool | None:
+        if sensor.device_trigger:
+            return False
+        if sensor.activation_mode == "press":
+            # An event's timestamp is not a persistent active state. Unknown
+            # means no press yet, while unavailable is a real connection fault.
+            return None if state is None or state.state == "unavailable" else False
+        if sensor.entity_id.startswith(("light.", "switch.")):
+            return False
         if state is None or state.state in ("unknown", "unavailable"):
             return None
         if sensor.entity_id.startswith("lock.") and state.state in ("locking", "unlocking"):
@@ -94,12 +108,22 @@ class IQAlarmRuntime:
         return any(val_lower == str(s).lower() for s in sensor.active_states)
 
     def seed(self) -> None:
+        now = time.time()
+        self._press_seen = {
+            sensor.entity_id: max(now, event_time(self.hass.states.get(sensor.entity_id)) or now)
+            for sensor in self.config.sensors.values()
+            if sensor.activation_mode == "press"
+        }
         for sensor in self.config.sensors.values():
             self.engine.seed(
                 sensor.entity_id, self.active_state(sensor, self.hass.states.get(sensor.entity_id))
             )
         self.windows = {key: WindowTracker(window) for key, window in self.config.windows.items()}
         registry = er.async_get(self.hass)
+        for sensor in self.config.sensors.values():
+            record = registry.async_get(sensor.entity_id)
+            if sensor.sensor_kind == "light_switch" and record and record.device_id:
+                sensor.source_id = f"device:{record.device_id}"
         for window in self.config.windows.values():
             record = (
                 registry.async_get(window.contact_entity_id) if window.contact_entity_id else None
@@ -199,7 +223,10 @@ class IQAlarmRuntime:
         self.seed()
         if self.store.state:
             self.engine.restore(self.store.state, time.time())
+        self.external.restore(self.store.state.get("external_monitor", {}))
+        self.external.reconcile()
         await self.dispatcher.initialize()
+        await self._attach_button_triggers()
         self.cancels.append(self.hass.bus.async_listen(EVENT_STATE_CHANGED, self._state_changed))
         self.cancels.append(
             async_track_time_interval(self.hass, self._tick, timedelta(milliseconds=100))
@@ -212,6 +239,7 @@ class IQAlarmRuntime:
             self._action_worker(urgent=True), "IQAlarm confirmed actions"
         )
         await self.flush()
+        await self.persist()
 
     @callback
     def _state_changed(self, event) -> None:
@@ -231,6 +259,24 @@ class IQAlarmRuntime:
             self._update_robots()
         if sensor:
             state = event.data.get("new_state")
+            if sensor.device_trigger:
+                return  # This source is exclusively fed by the device action callback.
+            if sensor.activation_mode == "press":
+                now = time.time()
+                self.engine.feed(entity_id, self.active_state(sensor, state), now)
+                stamp = event_time(state)
+                previous = self._press_seen.get(entity_id, now)
+                self._press_seen[entity_id] = max(previous, stamp or previous)
+                if (
+                    stamp is not None
+                    and stamp > previous
+                    and state.attributes.get("event_type") in sensor.active_states
+                    and state.attributes.get("event_type")
+                    in press_types(state.attributes.get("event_types"))
+                ):
+                    self.engine.feed_press(entity_id, now)
+                self.hass.async_create_task(self.flush(), "IQAlarm button update")
+                return
             record = er.async_get(self.hass).async_get(entity_id)
             if is_window_contact(sensor, state, record):
                 self.engine.window_contacts.add(entity_id)
@@ -241,6 +287,46 @@ class IQAlarmRuntime:
             self._update_windows(time.time())
         self.hass.async_create_task(self.flush(), "IQAlarm sensor update")
 
+    async def _attach_button_triggers(self):
+        for cancel in self._button_cancels:
+            cancel()
+        self._button_cancels.clear()
+        selected = [s for s in self.config.sensors.values() if s.enabled and s.device_trigger]
+        if not selected:
+            return
+        from homeassistant.components.device_automation import trigger as device_trigger
+
+        for sensor in selected:
+
+            async def pressed(variables, context=None, *, source=sensor.entity_id):
+                if not self.stopped:
+                    self.engine.feed_press(source, time.time())
+                    await self.flush()
+
+            try:
+                config = await device_trigger.async_validate_trigger_config(
+                    self.hass, sensor.device_trigger
+                )
+                remove = await device_trigger.async_attach_trigger(
+                    self.hass,
+                    config,
+                    pressed,
+                    {
+                        "domain": "iqalarm",
+                        "name": sensor.name or sensor.entity_id,
+                        "home_assistant_start": False,
+                        "variables": {},
+                        "trigger_data": {"id": sensor.entity_id, "idx": "0", "alias": None},
+                    },
+                )
+                self._button_cancels.append(remove)
+            except (HomeAssistantError, ValueError, KeyError, vol.Invalid) as error:
+                self.engine.feed(sensor.entity_id, None, time.time())
+                self.report(
+                    "runtime_error",
+                    f"Tastenauslöser nicht verfügbar: {sensor.name or sensor.entity_id}: {error}",
+                )
+
     async def _tick(self, now) -> None:
         if self.stopped or self._timer_running:
             return
@@ -248,6 +334,7 @@ class IQAlarmRuntime:
         try:
             windows_changed = self._update_windows(time.time())
             activity_changed = self.engine.tick(time.time())
+            self.external.reconcile()
             if (
                 self.engine._outbox
                 or activity_changed
@@ -294,10 +381,16 @@ class IQAlarmRuntime:
         if self.stopped:
             return
         self.stopped = True
+        if self.external.task:
+            self.external.task.cancel()
+            await asyncio.gather(self.external.task, return_exceptions=True)
         self.generation += 1
         for cancel in self.cancels:
             cancel()
         self.cancels.clear()
+        for cancel in self._button_cancels:
+            cancel()
+        self._button_cancels.clear()
         if self.worker:
             self.worker.cancel()
             await asyncio.gather(self.worker, return_exceptions=True)
@@ -358,13 +451,17 @@ class IQAlarmRuntime:
             activity_stamp = self._activity_stamp()
             await self.store.async_save(
                 config=self.config,
-                state=deepcopy(self.engine.persistent_state()),
+                state={
+                    **deepcopy(self.engine.persistent_state()),
+                    "external_monitor": deepcopy(self.external.state),
+                },
                 outputs=deepcopy(self.dispatcher.outputs),
             )
             self._saved_grade_stamp = stamp
             self._saved_activity_stamp = activity_stamp
 
     async def flush(self) -> None:
+        self.external.reconcile()
         events = self.engine.drain()
         generation = self.generation
         secure_event = None
@@ -383,12 +480,18 @@ class IQAlarmRuntime:
                 and event.reactions_enabled
                 and event.stage_id == self.engine.baseline_stage_id
                 and event.kind
-                in {"mode_changed", "level_changed", "level_expired", "confirmation_changed"}
+                in {
+                    "mode_changed",
+                    "level_changed",
+                    "level_expired",
+                    "confirmation_changed",
+                }
             ):
                 secure_event = event
                 continue
             if (
-                event.kind in ("level_changed", "confirmation_changed", "rule_confirmation")
+                event.kind
+                in ("level_changed", "confirmation_changed", "rule_confirmation", "grade_reached")
                 and event.stage_id != self.engine.baseline_stage_id
             ) or event.kind == "quarantined_flapping":
                 if not event.reactions_enabled:
@@ -401,14 +504,18 @@ class IQAlarmRuntime:
                     )
                 else:
                     queue.put_nowait((event, generation))
-        if self.engine.secure and (
-            secure_event is not None
-            or (
-                self.dispatcher.outputs
-                and any(
-                    event.stage_id == self.engine.baseline_stage_id
-                    and event.kind in {"level_expired", "confirmation_changed"}
-                    for event in events
+        if (
+            self.engine.reactions_enabled
+            and self.engine.secure
+            and (
+                secure_event is not None
+                or (
+                    self.dispatcher.outputs
+                    and any(
+                        event.stage_id == self.engine.baseline_stage_id
+                        and event.kind in {"level_expired", "confirmation_changed"}
+                        for event in events
+                    )
                 )
             )
         ):
@@ -527,19 +634,46 @@ class IQAlarmRuntime:
             raise ValueError("Kein Profil mit freigegebenen Aktionen vorhanden")
         await self.set_profile(key)
 
+    async def arm_ha_mode(self, mode: str, code: str | None = None) -> None:
+        """Native mode buttons select only their explicitly associated profile."""
+        key = (self.config.ha_profile_ids or {}).get(mode)
+        profile = self.config.profiles.get(key)
+        if not profile or not profile.reactions_enabled:
+            raise ValueError("Für diesen HA-Modus ein aktives IQAlarm-Profil festlegen")
+        await self.set_profile(key, code)
+
     async def set_profile(self, profile_id: str | None, code: str | None = None) -> None:
         if profile_id is None:
             await self.validate_code(code)
         async with self.lock:
+            was_active = self.engine.reactions_enabled
+            previous_profile_id = self.engine.profile_id
             previous = (self.engine.mode, self.engine.profile_id)
             self._identify_windows()
             self.engine.set_profile(profile_id, time.time())
-            if previous != (self.engine.mode, self.engine.profile_id):
+            changed = previous != (self.engine.mode, self.engine.profile_id)
+            if changed:
                 self.generation += 1
             generation = self.generation
             await self.flush()
-        if not self.engine.reactions_enabled:
+        if changed and not self.engine.reactions_enabled:
             await self.dispatcher.cleanup(force=True, generation=generation)
+            if was_active and generation == self.generation and not self.engine.reactions_enabled:
+                profile = self.config.profiles.get(previous_profile_id)
+                stage = self.config.stages[0]
+                event = EventLog(
+                    time.time(),
+                    "disarmed",
+                    0,
+                    "inactive",
+                    "Anlage deaktiviert",
+                    profile_id=previous_profile_id,
+                    profile_name=profile.name if profile else "",
+                    stage_id=stage.id,
+                    stage_name=stage.name,
+                    reactions_enabled=False,
+                )
+                await self.dispatcher.dispatch(event, generation)
             await self.persist()
 
     async def update_config(self, data: dict, revision: int) -> None:
@@ -602,12 +736,16 @@ class IQAlarmRuntime:
         async with self.storage_lock:
             await self.store.async_save(
                 config=candidate,
-                state=deepcopy(replacement.persistent_state()),
+                state={
+                    **deepcopy(replacement.persistent_state()),
+                    "external_monitor": deepcopy(self.external.state),
+                },
                 outputs=deepcopy(self.dispatcher.outputs),
             )
         self.engine = replacement
         self.seed()
         self.generation += 1
+        await self._attach_button_triggers()
         for event in replacement.drain():
             self.hass.bus.async_fire(EVENT_TYPE, event.to_dict())
         self.publish()
@@ -631,6 +769,10 @@ class IQAlarmRuntime:
         if profile_id is not None and profile_id not in self.config.profiles:
             raise ValueError("Unbekanntes Alarmprofil")
         profile_id = profile_id or self.engine.evaluation_profile_id
+        if stage == self.config.stages[0].id and profile_id is None:
+            profile_id = self.engine.last_profile_id or next(
+                (key for key, p in self.config.profiles.items() if p.reactions_enabled), None
+            )
         profile = self.config.profiles.get(profile_id)
         event = EventLog(
             time.time(),
@@ -642,7 +784,18 @@ class IQAlarmRuntime:
             profile_name=profile.name if profile else "",
             stage_id=stage,
             stage_name="Diagnose" if stage == "diagnostic" else self.config.stage(stage).name,
-            confirmed=stage != "diagnostic" and self.config.stage(stage).requires_confirmation,
+            confirmed=stage != "diagnostic"
+            and (
+                self.config.stage(stage).requires_confirmation
+                or bool(
+                    self.config.alarm_escalation
+                    and stage
+                    in (
+                        self.config.alarm_escalation.stage_id,
+                        self.config.alarm_escalation.next_stage_id,
+                    )
+                )
+            ),
             reactions_enabled=bool(profile and profile.reactions_enabled),
         )
         result = await self.dispatcher.dispatch(
@@ -660,6 +813,7 @@ class IQAlarmRuntime:
         return {
             "available": True,
             "status": self.engine.snapshot(time.time()),
+            "external_monitor": self.external.public(),
             "config": self.config.to_dict(),
             "pin_required": bool(self.entry.data.get("pin_hash")),
             "windows": {key: tracker.reading for key, tracker in self.windows.items()},

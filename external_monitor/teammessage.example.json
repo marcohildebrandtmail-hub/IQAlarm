@@ -1,0 +1,15 @@
+{
+  "enabled": false,
+  "test_mode": true,
+  "active_from": null,
+  "token": "REPLACE_IN_PROTECTED_SERVER_FILE",
+  "systems": {
+    "REPLACE_WITH_SYSTEM_ID": {
+      "team_id": null,
+      "teamlist_email": "",
+      "sender_email": "",
+      "keyword": "",
+      "recipients": []
+    }
+  }
+}

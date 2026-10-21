@@ -161,6 +161,17 @@ class ActionDispatcher:
         if stage != "diagnostic" and not self.runtime.engine.stage_allowed(stage):
             return []
         profile = self.runtime.config.profiles.get(event.profile_id)
+        disarmed = (
+            event.kind == "disarmed"
+            and stage == self.runtime.config.stages[0].id
+            and event.mode == "inactive"
+            and not event.reactions_enabled
+            and profile is not None
+            and profile.reactions_enabled
+        )
+        if event.kind == "disarmed" and not disarmed:
+            return []
+        off_test = event.kind == "test" and stage == self.runtime.config.stages[0].id
         actions = [
             a
             for a in self.runtime.config.actions.values()
@@ -169,7 +180,13 @@ class ActionDispatcher:
             and (
                 event.kind == "test"
                 or a.trigger
-                == ("rule_confirmed" if event.kind == "rule_confirmation" else "level_entered")
+                == (
+                    f"grade_{event.confirmation_grade}"
+                    if event.kind == "grade_reached"
+                    else "rule_confirmed"
+                    if event.kind == "rule_confirmation"
+                    else "level_entered"
+                )
             )
             and (
                 (a.profile_ids is None or event.profile_id in a.profile_ids)
@@ -183,7 +200,20 @@ class ActionDispatcher:
                 action
                 for action in actions
                 if not (action.kind in {"siren", "switch", "script", "tts"} or action.critical)
-                or (event.confirmed and configured_stage.allow_loud)
+                or (
+                    event.confirmed
+                    and (
+                        configured_stage.allow_loud
+                        or (
+                            self.runtime.config.alarm_escalation
+                            and stage
+                            in (
+                                self.runtime.config.alarm_escalation.stage_id,
+                                self.runtime.config.alarm_escalation.next_stage_id,
+                            )
+                        )
+                    )
+                )
             ]
         plan = [{"id": a.id, "kind": a.kind, "target": a.target, "level": a.level} for a in actions]
         cameras = set()
@@ -206,11 +236,23 @@ class ActionDispatcher:
                     plan.append({"kind": "record", "target": camera, "automatic": True})
         if dry_run:
             return plan
+        if off_test and self.runtime.engine.reactions_enabled:
+            raise ValueError(
+                "Deaktivierungsaktionen können nur bei ausgeschalteter Anlage getestet werden"
+            )
         allowed = (
             bool(profile and profile.reactions_enabled)
             if event.kind == "test"
+            else not self.runtime.engine.reactions_enabled
+            if disarmed
             else event.reactions_enabled and self.runtime.engine.reactions_enabled
         )
+        if (
+            self.runtime.engine.arming_until is not None
+            and event.kind != "test"
+            and stage != self.runtime.engine.baseline_stage_id
+        ):
+            return []
         if not allowed:
             if event.kind == "test":
                 raise ValueError("Dieses Profil erlaubt nur Beobachtung; kein realer Aktionstest")
@@ -246,6 +288,7 @@ class ActionDispatcher:
                             if generation == self.runtime.generation and (
                                 event.kind == "test"
                                 or stage == "diagnostic"
+                                or (disarmed and not self.runtime.engine.reactions_enabled)
                                 or self.runtime.engine.stage_id == event.stage_id
                             ):
                                 await self.execute(
@@ -253,7 +296,7 @@ class ActionDispatcher:
                                     variables,
                                     generation,
                                     expected_stage=None
-                                    if event.kind == "test" or stage == "diagnostic"
+                                    if event.kind == "test" or stage == "diagnostic" or disarmed
                                     else event.stage_id,
                                 )
                     else:

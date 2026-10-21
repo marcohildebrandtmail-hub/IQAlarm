@@ -7,6 +7,7 @@ from types import SimpleNamespace as NS
 import pytest
 from iqalarm_core.correlation_engine import CorrelationEngine
 from iqalarm_core.models import Configuration, Room, SensorConfig, WindowConfig
+from iqalarm_core.models import Settings as ScenarioSettings
 
 WINDOW = "binary_sensor.iqalarm_window_w"
 
@@ -26,6 +27,7 @@ def window_config(key, source):
 
 def make_engine(opened=True, exit_seconds=0):
     config = Configuration(
+        settings=ScenarioSettings(startup_delay_seconds=0),
         rooms={"living": Room("living", "Wohnzimmer")},
         windows={"w": window_config("w", "binary_sensor.raw")},
         sensors={
@@ -41,6 +43,7 @@ def make_engine(opened=True, exit_seconds=0):
     for profile in config.profiles.values():
         profile.entry_seconds = 0
         profile.exit_seconds = exit_seconds
+    config.settings.startup_delay_seconds = exit_seconds
     engine = CorrelationEngine(config)
     for key in engine.sensors:
         engine.seed(key, opened if key == WINDOW else False)

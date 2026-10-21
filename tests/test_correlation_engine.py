@@ -184,7 +184,7 @@ def test_disarm_cancels_entry_delay_and_quarantine(engine):
 
 
 def test_exit_delay_ignores_movement_then_checks_open_door(engine):
-    engine.config.profiles["armed_away"].exit_seconds = 30
+    engine.config.settings.startup_delay_seconds = 30
     engine.set_mode("armed_away", 100)
     engine.feed("binary_sensor.window", True, 101)
     assert engine.level == Level.SECURE

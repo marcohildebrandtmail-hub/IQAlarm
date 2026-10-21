@@ -1,10 +1,77 @@
 # IQAlarm
 
+
+### Version 2.15.0 · Aufräumen der Oberfläche
+
+Die 13 vereinbarten Änderungen stehen in [AUFRAEUMPLAN.md](AUFRAEUMPLAN.md).
+Informationen und Bedienzeile stehen unter dem Live-Grundriss, Statistiken am
+Seitenende. Die separaten Raumkacheln entfallen. Doppelte Werkzeuge im
+Grundriss-Assistenten sind zusammengeführt; die bisherigen Anzeige- und
+Animationswerte bleiben gespeichert, ihre Schalter werden nicht mehr angeboten.
+Die Nachlaufzeit für „Kürzlich“ steht unter „Kameras & Sensoren“.
+
+Beim Hinzufügen eines Sensors gibt es vier Felder: Sensor in Home Assistant,
+Name in IQAlarm, „Behandeln als“ und Raum/Außenbereich. Name und Raum werden aus
+den verfügbaren HA-Angaben vorbelegt. Signalformat und physische Quellenkennung
+werden übernommen; technische Schutzwerte verwenden die Standards. Neue Sensoren
+bekommen kein Einzelauslösungs-Override. Eine reine Streaming-Kamera ohne bekannte
+Personenerkennung wird nicht als Personen-Sensor eingerichtet.
+
+Unter LVL 1 gibt es eine globale Startverzögerung von standardmäßig 60 Sekunden
+(0–600 Sekunden). Der vorhandene rote Ring zeigt den Fortschritt. Währenddessen
+wird keine Alarmkette aufgebaut; danach werden weiterhin aktive Quellen bewertet.
+Beim Aktivieren konfigurierte LVL-1-Aktionen können das Haus sofort vorbereiten;
+sie werden am Ende der Verzögerung nicht erneut ausgeführt.
+Die bisherigen profilbezogenen Ausgangszeiten werden nicht mehr zusätzlich
+angerechnet. Die bestehende Behandlung bereits beim Aktivieren offener Fenster
+bleibt erhalten. Lichtschalter werden über ihre physischen Eingänge erfasst:
+Tastenereignisse (`event.*`), physische Binäreingänge (`binary_sensor.*`) und
+entdeckte MQTT-Geräteaktionen wie `single_left`. Eine Betätigung erzeugt einen
+15-Sekunden-Impuls. Lampen- und Relaiszustände (`light.*`, `switch.*`) sind keine
+Alarmeingänge; vorhandene solche Eingangszuordnungen werden deaktiviert.
+Ausgangsaktionen dürfen weiterhin Licht schalten. Wiederholungen und mehrere
+Tasten desselben physischen Geräts bleiben ein Innenbeleg. Die übrigen Level-
+und Raumregeln bleiben unverändert.
+
+Aktionen werden unter „Was soll passieren?“ direkt bei der jeweiligen Stufe
+gepflegt, einschließlich der gewünschten Alarmmodi. LVL 2/3 bieten zusätzlich
+1/3, 2/3 und 3/3 als Auslösezeitpunkte. Eine aufwärts erreichte Schwelle löst ihre
+Aktion einmal aus; unveränderte Statusupdates wiederholen sie nicht. Der Zähler
+wird nach einem Rückfall entsprechend niedriger angesetzt. Abgeschaltete Anlage,
+Startverzögerung und bestehende Freigaben für Aktionen bleiben wirksam. Bestehende
+Aktionen behalten ihre Zuordnung; es werden keine neuen Aktionen aktiviert.
+
+Unter **LVL 0 → Was soll passieren?** sind auch Aktionen **beim Deaktivieren**
+konfigurierbar, etwa ein grünes Statuslicht mit eingestellter Dauer. Die gewählten
+Alarmmodi beziehen sich auf das Profil, aus dem ausgeschaltet wird. Zuerst werden
+alte Alarm-Ausgänge beendet, danach läuft die Deaktivierungsaktion einmal.
+Erneutes Ausschalten und Sensormeldungen im ausgeschalteten Zustand starten sie
+nicht nochmals. Ein erneutes Aktivieren verwirft verspätete Deaktivierungsaktionen.
+
 **Erst verstehen, dann auslösen.** IQAlarm ist eine lokale Home-Assistant-Integration mit räumlicher Sensor-Korrelation, Prell-Schutz und eigenem deutschen Seitenpanel. Das Panel wird direkt als ES-Modul ausgeliefert. Auf dem Home-Assistant-System sind weder Node.js noch ein Frontend-Build nötig.
 
 ## Eigene Symbole
 
 Unter **Kameras & Sensoren** einen Eintrag anklicken und **Symbol anpassen** öffnen. Gängige Symbole (Fenster, Tür, Schublade, Kühlschrank, Bewegung und weitere) sind direkt auswählbar. Eine eigene `mdi:…`-Kennung zeigt sofort eine Vorschau. **Automatisch** stellt das bisherige Symbol wieder her. Speichern, Raumwechsel und Sortieren übernehmen die Auswahl. Zusammengeführte Fenster haben ein eigenes Symbol; ihre Eingangssensoren bleiben erhalten. Das Raumsymbol lässt sich über das Symbol im Gruppenkopf oder unter **Räume & Grundriss → Raum bearbeiten** ändern. Die Auswahl gilt auch im Live-Status und ändert keine Alarmrollen oder Regeln.
+
+## Außenbewegung und Kamerabestätigung
+
+Ein Außenbewegungsmelder startet LVL 2 ohne Bestätigungsgrad. Zwei unabhängige
+Außenbewegungsmelder im selben oder direkt verbundenen Bereich liefern 1/3,
+drei liefern 2/3. Mehrere Entitäten desselben Geräts und wiederholte Meldungen
+desselben Bewegungsmelders zählen hierfür einmal. Unverbundene Bewegungsgruppen
+werden nicht zusammengezählt; indirekte Verbindungsketten reichen nicht aus.
+
+Der Kameraanteil folgt weiterhin den eingestellten Personen-Meldeschwellen und
+zählt Personenmeldungen der freigegebenen Außenkameras gemeinsam. Beide Anteile
+werden addiert: Zwei passende Bewegungsmelder und zwei Personenmeldungen ergeben
+bei den Standardschwellen 3/3; drei passende Bewegungsmelder benötigen dafür eine
+Personenmeldung. Ohne Kamera bleibt der Grad höchstens 2/3. Der Grad allein
+erzeugt keinen Vollalarm und keine gespeicherte unabhängige Alarmbestätigung.
+
+Jede Meldung behält ihre eigene Gültigkeit, standardmäßig 60 Sekunden nach Aus.
+Mit ihrem Countdown endet auch ihr Beitrag zur Bestätigung. Die vereinbarten
+Live-Abläufe und Sollwerte stehen in [SIMULATIONSTESTS.md](SIMULATIONSTESTS.md).
 
 ## Frei konfigurierbare Alarmstufen
 
@@ -33,7 +100,9 @@ Jeder Raum hat einen eigenen Bestätigungsgrad. Ein Zusammenhang umfasst den Rau
 
 Bei **3/3** bleibt die Erkennung im Testbetrieb in LVL 3. Weitere Meldungen starten lediglich die Ruhezeit neu; Zeitablauf führt ausschließlich zur schrittweisen Rückstufung. Die Live-Seite, die höheren Stufen und deren Aktionsabschnitte kennzeichnen die Sperre. Bestehende Vollalarmregeln, Gefahrensensoren, gespeicherte höhere Alarme und manuelle Aktionstests können sie nicht umgehen. Auch bei ausgeschalteter Automatik im einzelnen Profil gilt die obere Testgrenze weiterhin.
 
-Die vorbereitete spätere Logik für den Übergang zu LVL 4 bleibt erhalten, ist im Testbetrieb aber außer Betrieb. LVL 4 wird erst nach dem Test von LVL 0 bis LVL 3 weiter gestaltet.
+Für den anschließenden LVL-4-Test kann die gespeicherte Testgrenze auf die direkte Folgestufe (`automatic_detection.test_stage_id = next_stage_id`) gesetzt werden. Dann führen gültige Innen-3/3 nach 30 Sekunden (`promote_seconds`) zu LVL 4, oder früher durch einen weiteren unabhängigen Innensensor, auch in einem entfernten Raum. Wiederholungen der bisherigen Quellen starten die Frist nicht neu. Eine rote Überlagerung des vorhandenen äußeren Rings zeigt den Ablauf dieser Frist; der innere Bestätigungsring bleibt bei 3/3 voll.
+
+Der schnellere Außen-/Innen-Weg führt von bereits gültiger Außenbestätigung 3/3 und einer neuen Kontaktmeldung im zugeordneten Innenraum unmittelbar zu LVL 4. Der Außenbereich muss zur Bestätigung beigetragen haben. Ignorierte Fenster und im Profil ausgeschlossene Quellen bleiben ausgenommen. LVL 5 und seine Aktionen bleiben gesperrt. Der erste Außen-/Innen-LVL-4-Nachweis läuft vorläufig nach der vorhandenen Ruhezeit ab der Kontaktmeldung aus, ohne Vollalarm oder Dauerspeicherung.
 
 Unter **Profile & System → Sensorfreigaben für automatische Erkennung** stehen die Freigabe je Alarmmodus, Öffnungssensoren, Innenbewegung und optionale Raum-/Sensoreinschränkungen. Die Nacht-Freigabe „Erst nach einer passenden Öffnung“ gilt zeitlich und räumlich. Technische Ausfälle, Prellen, Informationssignale, ignorierte Fenster, Roboter-Ausnahmen und mehrere Entitäten desselben Geräts liefern keine zusätzliche unabhängige Bestätigung. Aktionen je Modus bleiben im eigenen Abschnitt. Neustarts behalten nur gültige Zähler und ihren ursprünglichen Ablaufzeitpunkt.
 
@@ -78,6 +147,10 @@ Die fertige Vorschau und der Live-Grundriss richten Bildausschnitt und Seitenver
 Unter **Räume & Grundriss → Fertige Raum-Grafik ansehen** lässt sich mit **Originalbild einblenden** die Zeichenvorlage von 0 bis 100 Prozent Deckkraft unterlegen. **Bildanzeige speichern** speichert diese Einstellung je Etage. Die Live-Seite zeigt das gespeicherte Ergebnis ohne Regler oder Speichern-Button. Standard ist 0 Prozent. Bild, Raumflächen und Sensorzuordnungen werden dabei nicht verändert.
 
 Unter **Räume & Grundriss → Grundriss-Assistent → Türen / Raumverbindungen** kannst du zwei Räume nacheinander im Grundriss markieren oder über „Von Raum / Zu Raum“ verbinden. Markierst du dieselben verbundenen Räume erneut, entfernst du die Verbindung; dafür gibt es außerdem einen Entfernen-Button. Maus, Touch und Tastatur werden unterstützt. Die Linien und Türmarkierungen erscheinen nur in der Bearbeitungsansicht.
+
+Unter **Räume & Grundriss → Außen → Innen** ordnest du einem Außenbereich mehrere Innenräume zu, zum Beispiel Garten Büroseite → Büro oder Vorgarten → Flur UG, Garderobe und WC. Wähle den Außenbereich, hake die zugehörigen Innenräume an und speichere. Zum Entfernen direkt bei der gespeicherten Zuordnung **Löschen** anklicken oder die entsprechenden Haken lösen und erneut speichern. Die Zuordnung erfolgt pro Außenbereich und gilt damit für dessen Kameras und Außensensoren; einzelne Kameras werden nicht zugeordnet.
+
+Im **Grundriss-Assistenten → Außen → Innen markieren** klickst du zuerst den Außenbereich und danach seine Innenräume an. Ein erneuter Klick auf einen Innenraum entfernt die Zuordnung; ein Klick auf den gewählten Außenbereich hebt die Auswahl auf, damit du einen anderen wählen kannst. Die gerichteten Linien erscheinen nur beim Bearbeiten, nicht in der fertigen Vorschau oder im Live-Grundriss. Außen-/Innen-Zuordnungen werden getrennt von tatsächlichen Türen und Durchgängen gespeichert. Sie liefern den räumlichen Zusammenhang für den oben beschriebenen Übergang von gültiger Außenbestätigung 3/3 zu einer neuen Innen-Kontaktmeldung. Eine Zuordnung allein erhöht keine Stufe; die Testgrenze muss LVL 4 ebenfalls freigeben.
 
 Eine ausdrücklich eingetragene Tür oder ein offener Durchgang verbindet die beiden Räume direkt für passende Alarmbestätigungen. Ein Öffnungssignal in A und Bewegung in B dürfen räumlich zusammenpassen, wenn A ↔ B eingetragen wurde. A ↔ B ↔ C erlaubt keine Bestätigung zwischen A und C. Sensorrollen, Zeitfenster, unabhängige Quellen, konfigurierte Vorfeldbestätigung und Prell-Schutz gelten weiterhin. Berührende Polygone und alte allgemeine Nachbarschaftsangaben erzeugen keine Türfreigabe. Vorhandene gerichtete Bestätigungswege bleiben erhalten.
 
@@ -137,7 +210,7 @@ Das Logbuch erklärt passende Auslöseketten und abgelehnte räumliche Kombinati
 
 ## Unabhängige IQAlarm-Profile
 
-Profile haben freie Namen und definieren die gesamte Steuerung. Es gibt **keine Zuordnung zu HA-Modi**. Zuhause, Nacht, Abwesend und Urlaub sind bearbeitbare und löschbare Startvorgaben; selbst ihre Kennungen bestimmen keine Regeln.
+Profile haben freie Namen und definieren die gesamte Steuerung. Die Startvorgaben sind in dieser Reihenfolge **Nacht, Abwesend, Urlaub und Besuch**. Sie bleiben bearbeitbar und löschbar. Die Zuordnung zu nativen HA-Bedientasten wählt ein Profil aus; sie verändert keine Sensoren oder Alarmregeln.
 
 Jedes Profil wählt seine verwendeten Levelregeln, erlaubt oder unterdrückt Geräteaktionen und kann eine eigene Scharfschaltverzögerung sowie Anwesenheitssimulation verwenden. Sensoren, räumliche Bedingungen und Bestätigungsfenster stehen ausschließlich an der Levelregel. Die Aktionen jedes Modus werden im selben Profil ganz unten gepflegt.
 
@@ -167,11 +240,11 @@ Mit **Art → Bewegung bei Zustandswechsel (15 s)** lässt sich beispielsweise e
 
 ### Profilsymbole
 
-Unter **Profile & System** hat jedes Profil ein eigenes, frei wählbares Symbol. Die Vorgaben sind Haus (Zuhause), Mond (Nacht), Haus mit Ausgang (Abwesend), Palme (Urlaub) und Personengruppe (Besuch). Der Aus-Schalter verwendet das Power-Symbol. Die Auswahl enthält eine grafische Vorschau und erlaubt zusätzliche MDI-Kennungen wie `mdi:dog`. Eigene Symbole und die Profilreihenfolge bleiben beim Bearbeiten, Duplizieren und nach Neustarts erhalten. Symbole ändern keine Alarmregeln.
+Unter **Profile & System** hat jedes Profil ein eigenes, frei wählbares Symbol. Die Vorgaben sind Mond (Nacht), Haus mit Ausgang (Abwesend), Palme (Urlaub) und Personengruppe (Besuch). Der Aus-Schalter verwendet das Power-Symbol. Die Auswahl enthält eine grafische Vorschau und erlaubt zusätzliche MDI-Kennungen wie `mdi:dog`. Eigene Symbole und die Profilreihenfolge bleiben beim Bearbeiten, Duplizieren und nach Neustarts erhalten. Symbole ändern keine Alarmregeln.
 
 ### Einfache HA-Anbindung
 
-`binary_sensor.iqalarm_aktiv` meldet ausschließlich **an / aus** für erlaubte Alarmreaktionen. Profilname und Alarmstufe sind eigene Sensorinformationen. Die HA-Alarmkarte erhält einen generischen Scharf-Knopf (`armed_away` als technischer HA-Zustand); dieser aktiviert das zuletzt verwendete Schutzprofil. Es ist keine Profilzuordnung erforderlich. Ein bestätigter Alarm meldet weiterhin `triggered`, Ein-/Ausgangsverzögerungen `pending` / `arming`. Beobachtung bleibt für die HA-Alarmkarte `disarmed`, auch wenn die Live-Bewertung hoch ist.
+`binary_sensor.iqalarm_aktiv` meldet ausschließlich **an / aus** für erlaubte Alarmreaktionen. Profilname und Alarmstufe sind eigene Sensorinformationen. Im nativen HA-Alarmdialog aktiviert **Zuhause → Besuch**, **Nacht → Nacht**, **Abwesend → Abwesend** und **Urlaub → Urlaub**. Unter **Profile & System → Home Assistant → „Benutzerdefiniert“ aktiviert** wird ein zusätzliches Profil für die native HA-Taste ausgewählt. Ohne Auswahl gibt es dafür keinen automatischen Ersatz. Die Zuordnungen bleiben beim Umbenennen, Sortieren und nach Neustarts über Profilkennungen erhalten. Bereits vorhandene Profile werden bei der Einführung dieser Zuordnung beibehalten; ein vorhandenes Profil „Besuch“ wird dem HA-Modus „Zuhause“ zugeordnet. Entfernte Profile verlieren ihre HA-Verknüpfung. Ein bestätigter Alarm meldet weiterhin `triggered`, Ein-/Ausgangsverzögerungen `pending` / `arming`. Beobachtung bleibt für die HA-Alarmkarte `disarmed`, auch wenn die Live-Bewertung hoch ist. Profilwechsel verlangen weiterhin vorheriges Entschärfen und eine eingerichtete PIN gilt auch im nativen Dialog.
 
 Die Migration übernimmt vorhandene Profile, Auswahl, Regeln, Aktionen, PIN und Quarantäne. Frühere HA-Basismodi werden einmalig in explizite Profilregeln übersetzt und anschließend nicht mehr ausgewertet.
 
@@ -296,3 +369,30 @@ Das Deployment-Skript prüft vor Schreibzugriffen, dass das Ziel ein HA-Konfigur
 [Alarm-Control-Panel-Entität](https://developers.home-assistant.io/docs/core/entity/alarm-control-panel/), [eigene Panels](https://developers.home-assistant.io/docs/frontend/custom-ui/creating-custom-panels/), [WebSocket-Erweiterungen](https://developers.home-assistant.io/docs/frontend/extending/websocket-api/), [HACS-Integrationsanforderungen](https://www.hacs.dev/docs/publish/integration/).
 
 Lizenz: MIT, siehe [LICENSE](LICENSE).
+
+## LVL 4/5 und externe Überwachung ab 2.14.0
+
+Bei eingerichteter `alarm_escalation` ist LVL 4 der bestätigte, bis zum manuellen
+Ausschalten bestehende Alarm. Danach folgt standardmäßig nach 300 Sekunden
+LVL 5, ohne neue Sensorbedingungen. Ruhige oder weitere Sensoren verändern den
+Beginn nicht. Einstellungen in LVL 4: Zeit, externe Überwachung (standardmäßig
+Aus), frei eingebbare Benutzerbezeichnung und System-ID. LVL 5 hat keine Sensorregeln. Aktionen bleiben pro Alarmmodus
+unter Profile & System. Die bestehenden Ringe zeigen bei LVL 4 Zeitfortschritt
+und verbleibende Zeit statt x/3.
+
+Der optionale externe Dienst übernimmt eine eigene dauerhafte Frist und kann
+auch bei einem späteren HA-Ausfall eskalieren. Ein optionaler TeamMessage-Worker
+kann bei fehlender Entwarnung die zugeordneten SMS-Empfänger informieren. Einrichtung, Protokoll und Betriebsgrenzen stehen in
+[external_monitor/README.md](external_monitor/README.md). Bestehende freie
+Konfigurationen ohne `alarm_escalation` behalten ihr bisheriges Verhalten;
+Speichern der neuen LVL-4-Einstellungen aktiviert den neuen Ablauf.
+
+Ab 2.14.1 ist die Benutzerbezeichnung im LVL-4-Formular frei eingebbar;
+Standard ist „deinem Freund“. Die externe SMS lautet bei der Standardfrist:
+„IQAlarm - ALARM LVL05! Die Alarmanlage von deinem Freund hat einen Einbruchsalarm
+gemeldet. Seit 5 Minuten keine Entwarnung. Bitte sofort Anrufen und prüfen!“
+Die Zeitangabe folgt der beim Alarm geltenden Eskalationsdauer.
+
+Ab 2.14.2 zeigt LVL 4 die Erklärung zur externen Überwachung und drei optionale
+Telefonnummernfelder. Die Nummern mit Ländervorwahl werden beim Aktivieren an
+den externen Dienst übermittelt und dort der jeweiligen System-ID zugeordnet.

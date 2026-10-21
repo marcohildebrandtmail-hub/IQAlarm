@@ -7,13 +7,18 @@ from types import SimpleNamespace as NS
 import pytest
 from iqalarm_core.correlation_engine import CorrelationEngine
 from iqalarm_core.models import Configuration, SensorConfig
+from iqalarm_core.models import Settings as ScenarioSettings
 from iqalarm_core.robots import RobotConfig
 
 DOOR = "binary_sensor.inner_door"
 
 
 def activity_engine(config, initial=False):
-    config = Configuration(rooms=deepcopy(config.rooms), sensors=deepcopy(config.sensors))
+    config = Configuration(
+        settings=ScenarioSettings(startup_delay_seconds=0),
+        rooms=deepcopy(config.rooms),
+        sensors=deepcopy(config.sensors),
+    )
     config.sensors[DOOR] = SensorConfig(
         DOOR, "interior_motion", "living", name="Innentür", activation_mode="change"
     )

@@ -80,3 +80,71 @@ test("repeat reports from one camera retain their individual timers",()=>{
   assert.match(triggerRows(data,120),/noch 00:52/);
   assert.equal(liveTriggers(data,162).length,1);
 });
+
+function motion(id,room="yard",expires_at=200,source_id=id){
+  return {entity_id:id,source_id,room_id:room,role:"perimeter_sensor",timestamp:90,expires_at};
+}
+function outdoorProgress(motions,persons=[],thresholds=[1,2,3]){
+  return [{current:0,target:3,thresholds,person_reports:persons,motion_reports:motions}];
+}
+function outdoorGrade(motions,persons=[],connections=[],now=100){
+  return projectPersonProgress(outdoorProgress(motions,persons),now,connections)[0]?.current||0;
+}
+
+test("motion counts independent devices once and caps its contribution at two",()=>{
+  assert.equal(outdoorGrade([motion("one")]),0);
+  assert.equal(outdoorGrade([motion("one"),motion("one")]),0);
+  assert.equal(outdoorGrade([motion("one","yard",200,"device"),motion("two","yard",200,"device")]),0);
+  assert.equal(outdoorGrade([motion("one"),motion("two")]),1);
+  assert.equal(outdoorGrade([motion("one"),motion("two"),motion("three")]),2);
+  assert.equal(outdoorGrade([motion("one"),motion("two"),motion("three"),motion("four")]),2);
+  assert.equal(outdoorGrade([motion("one",null),motion("two",null)]),0);
+});
+
+test("only directly related motion groups contribute, without pooling separate groups",()=>{
+  const a=motion("one","a"),b=motion("two","b"),c=motion("three","c");
+  assert.equal(outdoorGrade([a,b]),0);
+  assert.equal(outdoorGrade([a,b],[],[["a","b"]]),1);
+  assert.equal(outdoorGrade([a,c],[],[["a","b"],["b","c"]]),0);
+  assert.equal(outdoorGrade([a,b,c],[],[["a","b"],["b","c"]]),1);
+  assert.equal(outdoorGrade([a,b,c],[],[["a","b"],["b","c"],["a","c"]]),2);
+  assert.equal(outdoorGrade([a,motion("four","a"),c,motion("five","c")]),1);
+});
+
+test("two motion detectors replace one camera report and each expires on its own timer",()=>{
+  const motions=[motion("one","a",150),motion("two","b",160)],connections=[["a","b"]];
+  const persons=[{entity_id:"camera_one",expires_at:170},{entity_id:"camera_two",expires_at:180}];
+  const progress=outdoorProgress(motions,persons);
+  assert.equal(projectPersonProgress(progress,100,connections)[0].current,3);
+  assert.equal(projectPersonProgress(progress,150,connections)[0].current,2);
+  assert.equal(projectPersonProgress(progress,160,connections)[0].current,2);
+  assert.equal(projectPersonProgress(progress,170,connections)[0].current,1);
+  assert.deepEqual(projectPersonProgress(progress,180,connections),[]);
+});
+
+test("three motion detectors need one camera and lose full confirmation when it expires",()=>{
+  const motions=[motion("one"),motion("two"),motion("three")];
+  const progress=outdoorProgress(motions,[{entity_id:"camera",expires_at:150}]);
+  assert.equal(projectPersonProgress(progress,100)[0].current,3);
+  const partial=projectPersonProgress(progress,150)[0];
+  assert.equal(partial.current,2);assert.equal(partial.complete,false);
+  assert.deepEqual(partial.person_reports,[]);
+  assert.deepEqual(projectPersonProgress(progress,200),[]);
+});
+
+test("custom camera thresholds still govern the camera contribution",()=>{
+  const motions=[motion("one"),motion("two")];
+  const persons=Array.from({length:4},(_,index)=>({entity_id:`camera${index}`,expires_at:null}));
+  for(const [count,current] of [[0,1],[1,1],[2,2],[3,2],[4,3]]){
+    assert.equal(projectPersonProgress(outdoorProgress(motions,persons.slice(0,count),[2,4,6]),100)[0].current,current);
+  }
+});
+
+test("repeat motion uses its latest valid timer without creating another source",()=>{
+  const reports=[motion("one","yard",170),motion("one","yard",150),motion("two","yard",180)];
+  const progress=outdoorProgress(reports);
+  assert.equal(projectPersonProgress(progress,100)[0].current,1);
+  assert.equal(projectPersonProgress(progress,100)[0].next_decay,170);
+  assert.equal(projectPersonProgress(progress,150)[0].current,1);
+  assert.deepEqual(projectPersonProgress(progress,170),[]);
+});

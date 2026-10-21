@@ -12,11 +12,13 @@ sys.modules["iqalarm_core"] = package
 
 from iqalarm_core.correlation_engine import CorrelationEngine  # noqa: E402
 from iqalarm_core.models import AlarmStage, Configuration, Room, SensorConfig  # noqa: E402
+from iqalarm_core.models import Settings as ScenarioSettings  # noqa: E402
 
 
 @pytest.fixture
 def config():
     result = Configuration(
+        settings=ScenarioSettings(startup_delay_seconds=0),
         secure_stage_id="0",
         rules=None,
         stages=[

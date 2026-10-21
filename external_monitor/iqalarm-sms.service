@@ -1,0 +1,19 @@
+[Unit]
+Description=IQAlarm TeamMessage SMS action worker
+After=iqalarm-monitor.service network-online.target
+Requires=iqalarm-monitor.service
+Wants=network-online.target
+
+[Service]
+User=iqalarm-monitor
+Group=iqalarm-monitor
+ExecStart=/usr/bin/python3 /opt/iqalarm-monitor/sms_worker.py
+Restart=always
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

@@ -143,7 +143,9 @@ def test_missing_profile_symbols_receive_appropriate_defaults(config, name, symb
 
 
 def test_custom_icon_and_profile_order_survive_edit_copy_and_roundtrip(config):
-    config.profiles["guests"] = Profile(name="Besuch", icon="mdi:dog", motion_mode="ignore")
+    config.profiles["guests"] = Profile(
+        name="Besuch mit Hund", icon="mdi:dog", motion_mode="ignore"
+    )
     config.validate()
     data = config.to_dict()
     data["profiles"]["copy"] = deepcopy(data["profiles"]["guests"])

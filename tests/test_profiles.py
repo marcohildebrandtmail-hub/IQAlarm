@@ -110,6 +110,7 @@ def test_scoped_global_perimeter_and_spatial_perimeter(engine):
 
 def test_custom_timers_are_used_without_changing_standard_profile(engine):
     add_profile(engine.config, correlation_seconds=5, exit_seconds=3)
+    engine.config.settings.startup_delay_seconds = 3
     engine.set_profile("guests", 100)
     assert engine.arming_until == 103
     engine.tick(103)

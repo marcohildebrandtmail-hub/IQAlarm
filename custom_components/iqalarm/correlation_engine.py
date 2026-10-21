@@ -10,6 +10,7 @@ from collections import defaultdict, deque
 from dataclasses import asdict, replace
 from typing import Any
 
+from .alarm_escalation import ALARM_RULE, new_alarm, restore_alarm
 from .automatic_detection import AUTO_RULE, DETECTED_RULE, advance_detection
 from .confirmations import grade_match, match_with_memory, memory_signature, valid_memory
 from .const import (
@@ -23,9 +24,15 @@ from .const import (
     Role,
     RunState,
 )
+from .distributed_detection import (
+    DISTRIBUTED_DETECTED_RULE,
+    DISTRIBUTED_RULE,
+    advance_distributed,
+)
 from .grade_decay import advance_grade
 from .level_rules import RuleMatch, accepts, spaces
 from .models import Configuration, EventLog, Evidence, Profile
+from .outside_opening import OUTSIDE_OPENING_RULE, advance_outside_openings, outside_opening_rule
 from .person_detection import advance_person_detection, managed_person_rule
 from .robots import evaluate_robots
 
@@ -51,6 +58,8 @@ class CorrelationEngine:
         self.evidence: deque[Evidence] = deque(maxlen=2000)
         self.events: deque[EventLog] = deque(maxlen=MAX_EVENTS)
         self._outbox: list[EventLog] = []
+        self.arming_started_at: float | None = None
+        self._action_grade_levels: dict[str, int] = {}
         self.arming_until: float | None = None
         self.pending_until: float | None = None
         self.pending_chain: list[Evidence] = []
@@ -65,8 +74,11 @@ class CorrelationEngine:
         self.rule_matches: list[RuleMatch] = []
         self.rule_confirmations: dict[str, dict] = {}
         self.rule_grades: dict[str, dict] = {}
+        self.alarm_state: dict | None = None
         self.automatic_states: dict[str, dict] = {}
+        self.distributed_state: dict = {}
         self.person_states: dict[str, dict] = {}
+        self.outside_opening_state: dict = {}
         self._person_managed_ids: set[str] = set()
         self.robot_devices: list[dict] = []
         self.robot_paused: set[str] = set()
@@ -131,12 +143,13 @@ class CorrelationEngine:
         return self.severity == Level.SECURE and self.pending_until is None
 
     def stage_allowed(self, stage_id: str) -> bool:
-        """Keep every rule and action below the temporary LVL-3 test ceiling."""
+        """Apply the same temporary stage ceiling to every rule and action."""
         settings = self.config.automatic_detection
         return not (
             settings
             and settings.test_mode
-            and self.config.stage_rank(stage_id) > self.config.stage_rank(settings.stage_id)
+            and self.config.stage_rank(stage_id)
+            > self.config.stage_rank(settings.test_stage_id or settings.stage_id)
         )
 
     def active_rules(self):
@@ -149,6 +162,8 @@ class CorrelationEngine:
             if rule.enabled and (profile.rule_ids is None or key in profile.rule_ids)
         ]
         auto = self.config.automatic_detection
+        if self.config.alarm_escalation:
+            rules = [rule for rule in rules if self.config.stage_rank(rule.stage_id) < 4]
         if auto:
             rules = [
                 rule for rule in rules if rule.stage_id not in (auto.stage_id, auto.next_stage_id)
@@ -186,8 +201,25 @@ class CorrelationEngine:
         return self._automatic_rule_cache
 
     def rule_definition(self, rule_id):
+        if rule_id == ALARM_RULE and self.config.alarm_escalation:
+            from .level_rules import LevelRule, RuleCondition
+
+            return LevelRule(
+                ALARM_RULE,
+                "Alarm",
+                self.config.alarm_escalation.stage_id,
+                [RuleCondition(roles=["interior_motion"])],
+            )
+        if self.config.automatic_detection and rule_id == OUTSIDE_OPENING_RULE:
+            return outside_opening_rule(self.config.automatic_detection)
         if self.config.automatic_detection and rule_id in (AUTO_RULE, DETECTED_RULE):
             return self.automatic_rules[rule_id]
+        if self.config.automatic_detection and rule_id in (
+            DISTRIBUTED_RULE,
+            DISTRIBUTED_DETECTED_RULE,
+        ):
+            base = DETECTED_RULE if rule_id == DISTRIBUTED_DETECTED_RULE else AUTO_RULE
+            return replace(self.automatic_rules[base], id=rule_id)
         rule = (self.config.rules or {}).get(rule_id)
         return self._effective_rule(rule) if rule is not None else None
 
@@ -232,7 +264,9 @@ class CorrelationEngine:
 
     def _detected_contexts(self, now):
         contexts = {}
-        for room, state in self.automatic_states.items():
+        for room, state in list(self.automatic_states.items()) + [
+            (room, self.distributed_state) for room in self.distributed_state.get("rooms", [])
+        ]:
             at, deadline = state.get("promoted_at"), state.get("next_decay")
             if (
                 type(at) not in (int, float)
@@ -306,6 +340,7 @@ class CorrelationEngine:
         entity_id: str | None = None,
         stage_id: str | None = None,
         confirmed: bool | None = None,
+        confirmation_grade: int | None = None,
     ) -> None:
         chain = sorted(chain or [], key=lambda e: e.timestamp)
         event = EventLog(
@@ -323,6 +358,7 @@ class CorrelationEngine:
             stage_name=self.config.stage(stage_id or self.stage_id).name,
             confirmed=self.confirmed if confirmed is None else confirmed,
             reactions_enabled=self.reactions_enabled,
+            confirmation_grade=confirmation_grade,
         )
         self.events.appendleft(event)
         self._outbox.append(event)
@@ -332,7 +368,7 @@ class CorrelationEngine:
         if entity_id in self.config.sensors:
             self.sensors[entity_id] = self.config.sensors[entity_id]
         sensor = self.sensors.get(entity_id)
-        if sensor and sensor.activation_mode == "change":
+        if sensor and sensor.activation_mode in ("change", "press"):
             self.change_sources[entity_id] = active
             self.activity_until.pop(entity_id, None)
             self.raw[entity_id] = None if active is None else False
@@ -490,6 +526,8 @@ class CorrelationEngine:
     def set_profile(self, profile_id: str | None, now: float, *, restore: bool = False) -> None:
         """Select an independent profile, separating analysis from output permission."""
         now = self._time(now)
+        if self.alarm_state and profile_id is not None and profile_id != self.profile_id:
+            raise ValueError("Alarm läuft. Anlage zuerst manuell ausschalten.")
         if profile_id is not None and profile_id not in self.config.profiles:
             raise ValueError("Unbekanntes Alarmprofil")
         profile = self.config.profiles.get(profile_id)
@@ -531,19 +569,26 @@ class CorrelationEngine:
         self.pending_chain = []
         self.breach_chain = []
         self.arming_until = None
+        self.arming_started_at = None
+        self._action_grade_levels.clear()
         self.rule_pending.clear()
         self.rule_confirmations.clear()
         self.rule_grades.clear()
+        self.alarm_state = None
         self.automatic_states.clear()
+        self.distributed_state.clear()
         self.person_states.clear()
+        self.outside_opening_state.clear()
         self.rule_matches = []
         self._discard_excluded_evidence()
         if profile_id is None:
             self.quarantine.clear()
         elif self.reactions_enabled:
             self.last_profile_id = profile_id
-        if self.reactions_enabled and not restore and self.profile.exit_seconds:
-            self.arming_until = now + self.profile.exit_seconds
+        delay = self.config.settings.startup_delay_seconds
+        if self.reactions_enabled and not restore and delay:
+            self.arming_started_at = now
+            self.arming_until = now + delay
         self._log(
             now,
             "mode_changed",
@@ -667,6 +712,15 @@ class CorrelationEngine:
         sensor = self.sensors.get(entity_id)
         if sensor is None:
             return
+        if sensor.activation_mode == "press":
+            self.change_sources[entity_id] = None if active is None else False
+            if active is None:
+                self.activity_until.pop(entity_id, None)
+                self.last_active.pop(entity_id, None)
+                self._feed_state(entity_id, None, now)
+            elif self.raw.get(entity_id) is None:
+                self._feed_state(entity_id, False, now)
+            return
         if sensor.activation_mode != "change":
             self._feed_state(entity_id, active, now)
             return
@@ -684,6 +738,17 @@ class CorrelationEngine:
         self.raw[entity_id] = False
         self._feed_state(entity_id, True, now)
 
+    def feed_press(self, entity_id: str, now: float) -> None:
+        """Accept a verified new button event, never an actuator state."""
+        sensor = self.sensors.get(entity_id)
+        if not sensor or not sensor.enabled or sensor.activation_mode != "press":
+            return
+        now = self._time(now)
+        self.change_sources[entity_id] = False
+        self.activity_until[entity_id] = now + CHANGE_ACTIVITY_SECONDS
+        self.raw[entity_id] = False
+        self._feed_state(entity_id, True, now)
+
     def _feed_state(self, entity_id: str, active: bool | None, now: float) -> None:
         """Handle only meaningful raw transitions; unavailable never counts as an edge."""
         now = self._time(now)
@@ -698,7 +763,11 @@ class CorrelationEngine:
             return
         if entity_id not in self.robot_mask and (
             active is True
-            or (old is True and active is False and sensor.activation_mode != "change")
+            or (
+                old is True
+                and active is False
+                and sensor.activation_mode not in ("change", "press")
+            )
         ):
             self.last_active[entity_id] = now
         if entity_id in self.robot_waiting and active is False:
@@ -740,6 +809,10 @@ class CorrelationEngine:
         if old == active:
             return
         if sensor.information_only or entity_id in self.grouped_inputs:
+            return
+        if self.arming_until is not None:
+            self.debouncing.pop(entity_id, None)
+            self._recompute(now)
             return
         diagnose = self.reactions_enabled or self.config.settings.diagnose_disarmed
         if diagnose and sensor.role in CONTACT_ROLES and sensor.flap_enabled:
@@ -970,6 +1043,14 @@ class CorrelationEngine:
             self.severity == level and self.stage_id == stage_id
         ):
             return
+        if (
+            self.config.alarm_escalation
+            and self.reactions_enabled
+            and stage_id == self.config.alarm_escalation.stage_id
+        ):
+            if self.alarm_state is None:
+                self.alarm_state = new_alarm(self.config.alarm_escalation, now, chain)
+            level = Level.BREACH
         previous_rank = self.level
         previous_confirmed = self.confirmed
         self.severity, self.stage_id = level, stage_id
@@ -988,6 +1069,23 @@ class CorrelationEngine:
         if previous_confirmed != self.confirmed:
             kind = "confirmation_changed"
         self._log(now, kind, reason, chain)
+
+    def _advance_alarm(self, now):
+        a = self.alarm_state
+        settings = self.config.alarm_escalation
+        if now >= a["deadline"] and self.stage_allowed(settings.next_stage_id):
+            a["escalated"] = True
+        stage = settings.next_stage_id if a["escalated"] else settings.stage_id
+        chain = [Evidence(**item) for item in a["chain"]]
+        self.rule_matches = [RuleMatch(ALARM_RULE, stage, chain, True)]
+        self._set_level(
+            Level.BREACH,
+            now,
+            "Alarm nicht manuell beendet" if a["escalated"] else "Alarm aktiv",
+            chain,
+            ALARM_RULE,
+            stage,
+        )
 
     def _recompute(self, now: float, current: Evidence | None = None) -> None:
         if self.config.rules is not None:
@@ -1069,6 +1167,9 @@ class CorrelationEngine:
         self._set_level(severity, now, reason, chain, rule)
 
     def _recompute_rules(self, now: float) -> None:
+        if self.config.alarm_escalation and self.reactions_enabled and self.alarm_state:
+            self._advance_alarm(now)
+            return
         if self.held_alarm and not self.stage_allowed(self.held_alarm["stage_id"]):
             self.held_alarm = None
             self.latched = False
@@ -1224,9 +1325,10 @@ class CorrelationEngine:
                         held["rule"], held["stage_id"], [Evidence(**e) for e in held["chain"]], True
                     )
                 )
-        matches.extend(self._recompute_automatic(now) if self.arming_until is None else [])
         self.rule_matches = matches
         self._recompute_person_detection(now)
+        matches.extend(self._recompute_automatic(now) if self.arming_until is None else [])
+        self._recompute_outside_openings(now)
         baseline_rank = self.config.stage_rank(self.baseline_stage_id)
         eligible = (
             [m for m in matches if m.confirmed]
@@ -1265,6 +1367,8 @@ class CorrelationEngine:
                 "Überwachung bereit" if self.profile_id else "Anlage deaktiviert",
                 stage_id=self.baseline_stage_id,
             )
+        if self.reactions_enabled and self.arming_until is None:
+            self._emit_grade_actions(now)
         higher = [item for item in pending if self.config.stage_rank(item[1].stage_id) > self.level]
         if higher:
             self.pending_until, pending_rule, self.pending_chain = min(
@@ -1273,6 +1377,38 @@ class CorrelationEngine:
             self.pending_rule = pending_rule.id
         else:
             self.pending_until, self.pending_chain, self.pending_rule = None, [], None
+
+    def _emit_grade_actions(self, now):
+        grades = {}
+        for progress in self._rule_progress(now):
+            stage = progress["stage_id"]
+            if progress.get("target") == 3:
+                grades[stage] = max(grades.get(stage, 0), progress["current"])
+        for stage, current in grades.items():
+            previous = self._action_grade_levels.get(stage, 0)
+            if stage != self.stage_id:
+                continue
+            for grade in range(previous + 1, current + 1):
+                if any(
+                    a.enabled and a.level == stage and a.trigger == f"grade_{grade}"
+                    for a in self.config.actions.values()
+                ):
+                    sources = [
+                        p
+                        for p in self._rule_progress(now)
+                        if p["stage_id"] == stage and p["current"] == current
+                    ]
+                    chain = [Evidence(**item) for item in sources[0]["sources"]] if sources else []
+                    self._log(
+                        now,
+                        "grade_reached",
+                        f"Bestätigungsgrad {grade}/3 erreicht",
+                        chain,
+                        stage_id=stage,
+                        confirmed=False,
+                        confirmation_grade=grade,
+                    )
+        self._action_grade_levels = grades
 
     def tick(self, now: float) -> bool:
         """Advance timers even when no sensor changes state."""
@@ -1286,9 +1422,18 @@ class CorrelationEngine:
                 activity_changed = True
         if self.arming_until is not None and now >= self.arming_until:
             self.arming_until = None
-            self._log(now, "armed", "Ausgangsverzögerung abgelaufen")
+            self.arming_started_at = None
+            self.evidence.clear()
+            self.debouncing.clear()
+            self.edges.clear()
+            # State-change pulses from the startup period are not replayed.
+            for entity_id in self.activity_until:
+                self.raw[entity_id] = False
+                self.last_active.pop(entity_id, None)
+            self.activity_until.clear()
+            self._log(now, "armed", "Startverzögerung abgelaufen")
             for sensor in self.sensors.values():
-                if sensor.role in CONTACT_ROLES and self.raw.get(sensor.entity_id) is True:
+                if self.raw.get(sensor.entity_id) is True and self._included(sensor):
                     self._activate(sensor.entity_id, now)
         for entity_id, deadline in list(self.debouncing.items()):
             if now >= deadline:
@@ -1362,7 +1507,49 @@ class CorrelationEngine:
             now,
             self.person_states.get("global"),
             context,
+            room_connections=self.config.room_connections,
         )
+        previous = self.person_states.get("global", {})
+        full_since = previous.get("full_since", now)
+        if (
+            type(full_since) not in (int, float)
+            or not math.isfinite(full_since)
+            or full_since > now
+        ):
+            full_since = now
+        state["full_since"] = (
+            (
+                full_since
+                if previous.get("context") == context and previous.get("grade") == 3
+                else now
+            )
+            if state["grade"] == 3
+            else None
+        )
+        # At a shared expiry/promotion deadline, an already completed indoor
+        # interval may win. Retain only one prior outdoor interval, revalidated
+        # against the current sensor scope and availability (never a new bonus).
+        prior_reports = [
+            r for r in previous.get("reports", []) if r["role"] == Role.PERIMETER_CAMERA
+        ]
+        if previous.get("motion_grade"):
+            prior_reports += previous.get("motion_sources", [])
+        previous_until = previous.get("next_decay")
+        if (
+            previous.get("context") == context
+            and previous.get("grade") == 3
+            and type(previous_until) in (int, float)
+            and previous_until <= now
+            and all(
+                r["entity_id"] in allowed and raw.get(r["entity_id"]) is not None
+                for r in prior_reports
+            )
+        ):
+            state["prior_full"] = {
+                "since": full_since,
+                "until": previous_until,
+                "sources": [r["source_id"] or r["entity_id"] for r in prior_reports],
+            }
         self.person_states = {"global": state}
         # These signals now have a single authoritative lifetime. The old
         # independent rule window must not keep an expired report alive.
@@ -1387,16 +1574,79 @@ class CorrelationEngine:
                 )
             )
 
+    def _recompute_outside_openings(self, now):
+        settings = self.config.automatic_detection
+        if (
+            not settings
+            or not self.reactions_enabled
+            or not self.profile.automatic_detection
+            or self.arming_until is not None
+            or not self.config.outside_inside_links
+            or not self.stage_allowed(settings.next_stage_id)
+        ):
+            self.outside_opening_state.clear()
+            return
+        outdoor = self.person_states.get("global", {})
+        admitted_outdoor = outdoor.get("context", {}).get("sensors", {})
+        sensors = {
+            key: sensor
+            for key, sensor in self.rule_sensors.items()
+            if key in admitted_outdoor or self._automatic_included(sensor)
+        }
+        contacts = {
+            item.entity_id: item
+            for item in self.evidence
+            if item.entity_id in sensors
+            and item.role in CONTACT_ROLES
+            and self._automatic_included(sensors[item.entity_id])
+            and item.entity_id not in self.quarantine
+            and self.raw.get(item.entity_id) is not None
+        }
+        context = {
+            "profile": self.profile_id,
+            "revision": self.config.revision,
+            "links": [list(pair) for pair in self.config.outside_inside_links],
+            "connections": [list(pair) for pair in self.config.room_connections],
+            "settings": asdict(settings),
+            "outdoor_context": outdoor.get("context"),
+        }
+        self.outside_opening_state = advance_outside_openings(
+            self.config,
+            context,
+            outdoor,
+            contacts,
+            sensors,
+            self.raw,
+            self.quarantine,
+            now,
+            self.outside_opening_state,
+        )
+        for room, record in self.outside_opening_state["openings"].items():
+            self.rule_matches.append(
+                RuleMatch(
+                    OUTSIDE_OPENING_RULE,
+                    settings.next_stage_id,
+                    [Evidence(**item) for item in record["chain"]],
+                    False,
+                    room_id=room,
+                    expires_at=record["until"],
+                )
+            )
+
     def _person_progress(self):
         settings = self.config.person_detection_settings
         state = self.person_states.get("global", {})
         if not settings or not self.reactions_enabled or not state.get("grade"):
             return []
         reports = [r for r in state["reports"] if r["role"] == Role.PERIMETER_CAMERA]
+        motion = [r for r in state["reports"] if r["role"] == Role.PERIMETER_SENSOR]
+        sources = reports + state["motion_sources"]
         return [
             {
                 "rule_id": "person:global",
-                "name": "Personenerkennung außen",
+                "name": "Außenbewegung & Personenerkennung"
+                if state["motion_grade"]
+                else "Personenerkennung außen",
                 "stage_id": settings.stage_id,
                 "room_id": None,
                 "current": state["grade"],
@@ -1407,7 +1657,10 @@ class CorrelationEngine:
                 "next_decay": state["next_decay"],
                 "until": None,
                 "person_reports": reports,
-                "sources": [{k: v for k, v in r.items() if k != "expires_at"} for r in reports],
+                "motion_reports": motion,
+                "camera_grade": state["camera_grade"],
+                "motion_grade": state["motion_grade"],
+                "sources": [{k: v for k, v in r.items() if k != "expires_at"} for r in sources],
             }
         ]
 
@@ -1420,6 +1673,7 @@ class CorrelationEngine:
             or not self.reactions_enabled
         ):
             self.automatic_states.clear()
+            self.distributed_state.clear()
             return []
         sensors = {
             key: sensor
@@ -1454,6 +1708,15 @@ class CorrelationEngine:
             "connections": [list(pair) for pair in self.config.room_connections],
         }
         matches, states = [], {}
+        # Every admitted interior source has its own room state. Compare all
+        # previously seen edges so an old distant report cannot act as a fourth
+        # sensor, while a genuinely new independent one can confirm indoor 3/3.
+        seen = {}
+        for previous in self.automatic_states.values():
+            for key, at in previous.get("seen", {}).items():
+                seen[key] = max(at, seen.get(key, -1))
+        additional = [item for item in evidence if item.timestamp > seen.get(item.entity_id, -1)]
+        cold_evidence = None
         confirmed_proofs = set()
         for room_id in self.config.rooms:
             if room_id not in self.automatic_states and not any(
@@ -1467,19 +1730,71 @@ class CorrelationEngine:
             previous = self.automatic_states.get(room_id)
             if previous and previous.get("context") != context:
                 previous = None
+            if previous is None and cold_evidence is None:
+                # A newly visited room may borrow a still-valid neighbor proof,
+                # but not replay an already consumed and decayed old report.
+                retained = set()
+                for old_room, old in self.automatic_states.items():
+                    if old.get("context") != context or not old.get("grade"):
+                        continue
+                    old_scope = {old_room} | {
+                        other
+                        for pair in self.config.room_connections
+                        if old_room in pair
+                        for other in pair
+                    }
+                    old_sensors = {
+                        key: sensor
+                        for key, sensor in sensors.items()
+                        if sensor.room_id in old_scope
+                    }
+                    _, live, _ = advance_grade(
+                        self.config,
+                        rule,
+                        old_sensors,
+                        self.raw,
+                        [],
+                        self.quarantine,
+                        now,
+                        old,
+                        self.debouncing,
+                        required_room_id=old_room,
+                    )
+                    if live:
+                        retained.update((item.entity_id, item.timestamp) for item in live.chain)
+                cold_evidence = [
+                    item
+                    for item in evidence
+                    if item.timestamp > seen.get(item.entity_id, -1)
+                    or (item.entity_id, item.timestamp) in retained
+                ]
             state, match = advance_detection(
                 self.config,
                 settings,
                 room_id,
                 scoped,
                 self.raw,
-                [item for item in evidence if item.entity_id in scoped],
+                [
+                    item
+                    for item in (evidence if previous is not None else cold_evidence)
+                    if item.entity_id in scoped
+                ],
                 self.quarantine,
                 now,
                 previous,
                 self.debouncing,
                 rule=rule,
+                additional_evidence=additional,
+                outdoor_bonus=self.person_states.get("global"),
             )
+            if previous is None:
+                # Remember excluded old reports as consumed too; otherwise the
+                # next update would feed them back as seemingly fresh evidence.
+                for item in evidence:
+                    if item.entity_id in scoped:
+                        state["seen"][item.entity_id] = max(
+                            item.timestamp, state["seen"].get(item.entity_id, -1)
+                        )
             state["context"] = context
             states[room_id] = state
             if match:
@@ -1500,6 +1815,34 @@ class CorrelationEngine:
                         confirmed=False,
                     )
         self.automatic_states = states
+        self.distributed_state = advance_distributed(
+            self.config,
+            context,
+            states,
+            sensors,
+            self.raw,
+            self.quarantine,
+            additional,
+            now,
+            self.distributed_state,
+        )
+        distributed = self.distributed_state
+        if distributed.get("grade"):
+            promoted = distributed.get("promoted_at") is not None
+            stage = settings.next_stage_id if promoted else settings.stage_id
+            if self.stage_allowed(stage):
+                chain = [Evidence(**item) for item in distributed["chain"]]
+                matches.extend(
+                    RuleMatch(
+                        DISTRIBUTED_DETECTED_RULE if promoted else DISTRIBUTED_RULE,
+                        stage,
+                        chain,
+                        False,
+                        room,
+                        expires_at=distributed["next_decay"],
+                    )
+                    for room in distributed["rooms"]
+                )
         return matches
 
     def _room_rule_matches(self, room_id: str, now: float) -> list[RuleMatch]:
@@ -1521,7 +1864,14 @@ class CorrelationEngine:
             if match.rule_id in resolved:
                 continue
             resolved.add(match.rule_id)
-            if match.rule_id in (AUTO_RULE, DETECTED_RULE):
+            if match.rule_id in (
+                ALARM_RULE,
+                AUTO_RULE,
+                DETECTED_RULE,
+                OUTSIDE_OPENING_RULE,
+                DISTRIBUTED_RULE,
+                DISTRIBUTED_DETECTED_RULE,
+            ):
                 continue
             rule = self.config.rules[match.rule_id]
             found = match_with_memory(
@@ -1553,6 +1903,8 @@ class CorrelationEngine:
 
     def _recognition_until(self, match, now):
         """Publish the same proof deadline that determines the displayed stage."""
+        if match.rule_id in (OUTSIDE_OPENING_RULE, DISTRIBUTED_RULE, DISTRIBUTED_DETECTED_RULE):
+            return match.expires_at
         if match.perimeter_report:
             return match.expires_at
         if self.held_alarm and self.held_alarm["rule"] == match.rule_id:
@@ -1565,7 +1917,7 @@ class CorrelationEngine:
                     return deadline
                 return (
                     deadline
-                    + max(0, state.get("grade", 0) - 1)
+                    + max(0, state.get("base_grade", state.get("grade", 0)) - 1)
                     * self.config.automatic_detection.quiet_seconds
                 )
         rule = self.rule_definition(match.rule_id)
@@ -1610,7 +1962,14 @@ class CorrelationEngine:
                 "report_id": f"{match.chain[0].entity_id}:{match.chain[0].timestamp}"
                 if match.perimeter_report
                 else None,
-                "sources": [asdict(e) for e in match.chain],
+                # The outdoor reports keep their own LVL-2 display deadlines.
+                # Only the new contact is the direct trigger held by this proof.
+                "sources": [
+                    asdict(e)
+                    for e in (
+                        match.chain[-1:] if match.rule_id == OUTSIDE_OPENING_RULE else match.chain
+                    )
+                ],
             }
             for match in matches
             if self.config.stage_rank(match.stage_id) > baseline
@@ -1729,9 +2088,32 @@ class CorrelationEngine:
         if not self.reactions_enabled:
             return None
         state = self.automatic_states.get(room_id)
+        distributed = self.distributed_state
+        if room_id in distributed.get("rooms", []) and distributed.get("grade"):
+            if (
+                not state
+                or (
+                    (distributed.get("promoted_at") is not None, distributed["grade"])
+                    > (state.get("promoted_at") is not None, state.get("grade", 0))
+                )
+                or (
+                    state.get("grade") == 3
+                    and state.get("promoted_at") is None
+                    and distributed.get("promoted_at") is None
+                    and distributed["full"]["since"] < state["full"]["since"]
+                )
+            ):
+                state = distributed
         if not state or not state.get("grade") or not self.config.automatic_detection:
             return None
         settings = self.config.automatic_detection
+        deadline = state["next_decay"]
+        if state.get("outdoor_bonus") and state.get("bonus_until") is not None:
+            deadline = (
+                min(deadline, state["bonus_until"])
+                if deadline is not None
+                else state["bonus_until"]
+            )
         return {
             "rule_id": f"{AUTO_RULE}:{room_id}",
             "name": f"Automatische Erkennung · {self.config.rooms[room_id].name}",
@@ -1742,11 +2124,15 @@ class CorrelationEngine:
             "target": 3,
             "complete": state["grade"] == 3,
             "remembered": False,
-            "next_decay": state["next_decay"],
+            "next_decay": deadline,
             "until": None,
             "sources": state["chain"],
             "next_level_at": state["full"]["since"] + settings.promote_seconds
-            if not settings.test_mode and state.get("full") and state.get("promoted_at") is None
+            if settings.promotion_enabled
+            and state.get("full")
+            and state.get("promoted_at") is None
+            and deadline is not None
+            and deadline >= state["full"]["since"] + settings.promote_seconds
             else None,
         }
 
@@ -1810,6 +2196,7 @@ class CorrelationEngine:
         stage_id = self.stage_id if is_active else self.config.stages[0].id
         return {
             "server_time": now,
+            "alarm": self.alarm_state.copy() if is_active and self.alarm_state else None,
             "mode": self.mode.value,
             "active": self.reactions_enabled,
             "observing": not self.reactions_enabled,
@@ -1834,6 +2221,7 @@ class CorrelationEngine:
             "stage_color": self.config.stage(stage_id).color,
             "reactions_enabled": self.reactions_enabled,
             "arming_until": self.arming_until,
+            "arming_started_at": self.arming_started_at,
             "pending_until": self.pending_until,
             "quarantine": self.quarantine,
             "raw": self.raw.copy(),
@@ -1868,14 +2256,19 @@ class CorrelationEngine:
             "change_sources": self.change_sources.copy(),
             "pending_until": self.pending_until,
             "arming_until": self.arming_until,
+            "arming_started_at": self.arming_started_at,
             "pending_chain": [asdict(e) for e in self.pending_chain],
             "breach_chain": [asdict(e) for e in self.breach_chain],
             "evidence": [asdict(e) for e in self.evidence],
             "rule_pending": self.rule_pending,
             "rule_confirmations": self.rule_confirmations,
             "rule_grades": self.rule_grades,
+            "alarm_state": self.alarm_state,
             "automatic_states": self.automatic_states,
+            "distributed_state": self.distributed_state,
             "person_states": self.person_states,
+            "outside_opening_state": self.outside_opening_state,
+            "action_grade_levels": self._action_grade_levels,
             "robot_suppressed": sorted(self.robot_mask),
             "ignored_windows": self.ignored_windows.copy(),
             "robot_recovering": sorted(
@@ -1887,6 +2280,14 @@ class CorrelationEngine:
 
     def restore(self, data: dict, now: float) -> None:
         """Restore evidence only within its original window; never replay actions."""
+        self.outside_opening_state = (
+            data.get("outside_opening_state", {})
+            if isinstance(data.get("outside_opening_state", {}), dict)
+            else {}
+        )
+        self.distributed_state = data.get("distributed_state", {})
+        if not isinstance(self.distributed_state, dict):
+            self.distributed_state = {}
         saved_person = data.get("person_states", {})
         self.person_states = (
             {
@@ -1898,6 +2299,11 @@ class CorrelationEngine:
             else {}
         )
         self.profile_id = data.get("profile_id")
+        self.alarm_state = (
+            restore_alarm(data.get("alarm_state"), self.config.alarm_escalation, now)
+            if self.profile_id
+            else None
+        )
         self.automatic_states = (
             data.get("automatic_states", {})
             if isinstance(data.get("automatic_states", {}), dict)
@@ -1934,7 +2340,7 @@ class CorrelationEngine:
             eid: float(t) for eid, t in data.get("last_active", {}).items() if now - float(t) <= 300
         }
         for key, sensor in self.sensors.items():
-            if sensor.activation_mode != "change":
+            if sensor.activation_mode not in ("change", "press"):
                 continue
             deadline = data.get("activity_until", {}).get(key)
             source = data.get("change_sources", {}).get(key)
@@ -1951,6 +2357,19 @@ class CorrelationEngine:
             else:
                 self.last_active.pop(key, None)
         self.arming_until = data.get("arming_until")
+        self.arming_started_at = data.get("arming_started_at")
+        saved_grades = data.get("action_grade_levels", {})
+        self._action_grade_levels = (
+            {
+                key: value
+                for key, value in saved_grades.items()
+                if key in {stage.id for stage in self.config.stages}
+                and type(value) is int
+                and 0 <= value <= 3
+            }
+            if isinstance(saved_grades, dict)
+            else {}
+        )
         self.pending_until = data.get("pending_until")
         self.pending_chain = [
             Evidence(
@@ -1990,7 +2409,9 @@ class CorrelationEngine:
             for robot in self.config.robots.values()
             if robot.enabled
             for key, sensor in self.sensors.items()
-            if sensor.role in INTERIOR_ROLES and sensor.room_id in robot.rooms(self.config)
+            if sensor.role in INTERIOR_ROLES
+            and sensor.sensor_kind != "light_switch"
+            and sensor.room_id in robot.rooms(self.config)
         }
         self.robot_waiting.update(
             key

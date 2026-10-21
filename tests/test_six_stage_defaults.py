@@ -6,6 +6,7 @@ import time
 import pytest
 from iqalarm_core.correlation_engine import CorrelationEngine
 from iqalarm_core.models import Configuration, default_stages
+from iqalarm_core.models import Settings as ScenarioSettings
 from safety_support import local_runtime, models, runtime_module
 
 
@@ -22,15 +23,15 @@ def six(config):
 
 
 def test_new_install_has_requested_names_colors_and_targets():
-    config = Configuration()
+    config = Configuration(settings=ScenarioSettings(startup_delay_seconds=0))
     config.validate()
     assert [s.name for s in config.stages] == [
         "Deaktiviert",
         "Sicher",
-        "Bewegung Außen",
-        "Erste Sensorauslösung / Fehlerfall",
-        "Bewegung Innen",
-        "ALARM!!!",
+        "Umfeld",
+        "Verdacht",
+        "Alarm",
+        "Alarmstufe 2",
     ]
     assert [s.color for s in config.stages] == [
         "#ffffff",

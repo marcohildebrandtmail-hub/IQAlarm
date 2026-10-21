@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass, field, fields
 from typing import Any
 from uuid import uuid4
 
+from .alarm_escalation import AlarmEscalation
 from .automatic_detection import AUTO_RULE, DETECTED_RULE, AutomaticDetection
 from .const import (
     ALLOWED_SENSOR_DOMAINS,
@@ -19,6 +20,7 @@ from .const import (
     Mode,
     Role,
 )
+from .ha_profiles import HA_CUSTOM_MODE, HA_PROFILE_MODES, initial_ha_profiles
 from .level_rules import LevelRule, default_rules, upgrade_level_rules
 from .person_detection import PersonDetection, managed_person_rule
 from .robots import RobotConfig
@@ -118,12 +120,13 @@ class SensorConfig:
     active_above: float | None = None
     icon: str | None = None
     activation_mode: str = "state"
+    device_trigger: dict | None = None
 
     def __post_init__(self) -> None:
         display_icon(self.icon)
         entity(self.entity_id, ALLOWED_SENSOR_DOMAINS)
         self.role = Role(self.role).value
-        if self.activation_mode not in ("state", "change"):
+        if self.activation_mode not in ("state", "change", "press"):
             raise ValueError("Unbekannte Sensorauswertung")
         if self.activation_mode == "change" and self.role != Role.MOTION:
             raise ValueError("Zustandswechsel-Auswertung benötigt die Rolle Bewegung innen")
@@ -135,10 +138,49 @@ class SensorConfig:
                 if self.role == Role.LOCK
                 else "generic"
             )
-        if self.sensor_kind not in ("generic", "window_handle", "door_lock"):
+        if self.sensor_kind not in ("generic", "window_handle", "door_lock", "light_switch"):
             raise ValueError("Unbekannte Sensorart")
-        if self.sensor_kind != "generic" and self.role not in CONTACT_ROLES:
+        if self.sensor_kind in ("window_handle", "door_lock") and self.role not in CONTACT_ROLES:
             raise ValueError("Fenstergriff/Türschloss benötigt eine Außenhaut-Rolle")
+        if self.entity_id.startswith(("light.", "switch.")) and self.enabled:
+            raise ValueError("Lichtzustände sind keine Tastendrücke; physischen Eingang wählen")
+        if self.sensor_kind == "light_switch":
+            valid = self.role == Role.MOTION and (
+                (self.entity_id.startswith("event.") and self.activation_mode == "press")
+                or (
+                    self.entity_id.startswith("binary_sensor.") and self.activation_mode == "change"
+                )
+            )
+            if not valid and self.enabled:
+                raise ValueError(
+                    "Lichtschalter benötigt ein Tastenereignis oder einen physischen Eingang"
+                )
+        if self.activation_mode == "press" or self.entity_id.startswith("event."):
+            if (
+                self.sensor_kind != "light_switch"
+                or self.role != Role.MOTION
+                or self.activation_mode != "press"
+            ):
+                raise ValueError("Tastenereignisse benötigen die Geräteart Lichtschalter")
+        if self.device_trigger is not None:
+            from .button_inputs import device_source_id, press_types
+
+            trigger = self.device_trigger
+            if (
+                not isinstance(trigger, dict)
+                or set(trigger) != {"platform", "domain", "device_id", "type", "subtype"}
+                or trigger.get("platform") != "device"
+                or trigger.get("domain") != "mqtt"
+                or trigger.get("type") != "action"
+                or not isinstance(trigger.get("device_id"), str)
+                or not re.fullmatch(r"[a-f0-9]{32}", trigger["device_id"])
+                or not press_types([trigger.get("subtype")])
+                or len(trigger["subtype"]) > 100
+                or self.entity_id != device_source_id(trigger["device_id"], trigger["subtype"])
+                or self.activation_mode != "press"
+            ):
+                raise ValueError("Ungültiger MQTT-Tastenauslöser")
+            self.source_id = f"device:{trigger['device_id']}"
         if (
             self.entity_id.startswith("lock.")
             and self.active_states == ["on"]
@@ -471,9 +513,9 @@ class Action:
     def __post_init__(self) -> None:
         if not isinstance(self.id, str) or not ID_RE.fullmatch(self.id):
             raise ValueError("Ungültige Aktions-ID")
-        if self.trigger not in ("level_entered", "rule_confirmed"):
+        if self.trigger not in ("level_entered", "rule_confirmed", "grade_1", "grade_2", "grade_3"):
             raise ValueError("Ungültiger Aktionszeitpunkt")
-        if self.level == "diagnostic" and self.trigger == "rule_confirmed":
+        if self.level == "diagnostic" and self.trigger != "level_entered":
             raise ValueError("Diagnose verwendet keinen Bestätigungsgrad")
         if not isinstance(self.level, str) or not ID_RE.fullmatch(self.level):
             raise ValueError("Ungültige Aktionsstufe")
@@ -531,6 +573,7 @@ class Action:
 
 @dataclass
 class Settings:
+    startup_delay_seconds: int = 60
     diagnose_disarmed: bool = True
     block_open_on_arm: bool = True
     block_unavailable_on_arm: bool = True
@@ -578,6 +621,9 @@ class Settings:
         number(self.simulation_start, 0, 23, "Simulationsbeginn")
         number(self.simulation_end, 1, 24, "Simulationsende")
         number(self.recent_seconds, 5, 300, "Kürzlich-Dauer")
+        number(self.startup_delay_seconds, 0, 600, "Startverzögerung")
+        if type(self.startup_delay_seconds) is not int:
+            raise ValueError("Startverzögerung muss ganzzahlig sein")
         if any(
             type(getattr(self, key)) is not int
             for key in ("retention_days", "simulation_start", "simulation_end", "recent_seconds")
@@ -643,10 +689,10 @@ def default_stages() -> list[AlarmStage]:
     return [
         AlarmStage("0", "Deaktiviert", "#ffffff"),
         AlarmStage("1", "Sicher", "#64bc29"),
-        AlarmStage("2", "Bewegung Außen", "#08ba1d"),
-        AlarmStage("3", "Erste Sensorauslösung / Fehlerfall", "#cad345"),
-        AlarmStage("4", "Bewegung Innen", "#bc2929"),
-        AlarmStage("5", "ALARM!!!", "#8000ff", True, True, True),
+        AlarmStage("2", "Umfeld", "#08ba1d"),
+        AlarmStage("3", "Verdacht", "#cad345"),
+        AlarmStage("4", "Alarm", "#bc2929"),
+        AlarmStage("5", "Alarmstufe 2", "#8000ff", True, True, True),
     ]
 
 
@@ -703,7 +749,7 @@ class FloorPlan:
 def default_profiles() -> dict[str, Profile]:
     return {
         m.value: Profile(
-            name=MODE_NAMES[m],
+            name="Besuch" if m == Mode.HOME else MODE_NAMES[m],
             motion_mode="after_contact"
             if m == Mode.NIGHT
             else "ignore"
@@ -725,7 +771,7 @@ def default_profiles() -> dict[str, Profile]:
             + (["motion"] if m in (Mode.AWAY, Mode.VACATION) else []),
             **({"correlation_seconds": 45, "entry_seconds": 5} if m == Mode.VACATION else {}),
         )
-        for m in ARMED_MODES
+        for m in (Mode.NIGHT, Mode.AWAY, Mode.VACATION, Mode.HOME)
     }
 
 
@@ -734,6 +780,7 @@ class Configuration:
     rooms: dict[str, Room] = field(default_factory=dict)
     sensors: dict[str, SensorConfig] = field(default_factory=dict)
     profiles: dict[str, Profile] = field(default_factory=default_profiles)
+    ha_profile_ids: dict[str, str] | None = None
     actions: dict[str, Action] = field(default_factory=dict)
     settings: Settings = field(default_factory=Settings)
     revision: int = 0
@@ -744,9 +791,20 @@ class Configuration:
     secure_stage_id: str = "1"
     rules: dict[str, LevelRule] | None = field(default_factory=default_rules)
     room_connections: list[list[str]] = field(default_factory=list)
+    outside_inside_links: list[list[str]] = field(default_factory=list)
     robots: dict[str, RobotConfig] = field(default_factory=dict)
     automatic_detection: AutomaticDetection | None = None
     person_detection: PersonDetection | None = None
+    alarm_escalation: AlarmEscalation | None = None
+    external_monitoring: dict = field(
+        default_factory=lambda: {
+            "enabled": False,
+            "url": "",
+            "certificate_sha256": "",
+            "user_label": "deinem Freund",
+            "phone_numbers": [],
+        }
+    )
 
     @property
     def person_detection_settings(self) -> PersonDetection | None:
@@ -820,6 +878,80 @@ class Configuration:
         }
 
     def validate(self) -> None:
+        if self.ha_profile_ids is None:
+            self.ha_profile_ids = initial_ha_profiles(self.profiles)
+        if (
+            not isinstance(self.ha_profile_ids, dict)
+            or set(self.ha_profile_ids) - {*HA_PROFILE_MODES, HA_CUSTOM_MODE}
+            or any(not isinstance(key, str) for key in self.ha_profile_ids.values())
+            or len(set(self.ha_profile_ids.values())) != len(self.ha_profile_ids)
+        ):
+            raise ValueError("Ungültige Home-Assistant-Profilzuordnung")
+        # Removing a profile removes its native shortcut, without choosing another.
+        self.ha_profile_ids = {
+            mode: key for mode, key in self.ha_profile_ids.items() if key in self.profiles
+        }
+        if self.alarm_escalation:
+            a = self.alarm_escalation
+            if self.stage_rank(a.stage_id) != 4 or self.stage_rank(a.next_stage_id) != 5:
+                raise ValueError("Alarm und Folgealarm müssen LVL 4 und LVL 5 sein")
+        monitor = self.external_monitoring
+        if (
+            not isinstance(monitor, dict)
+            or set(monitor)
+            - {"enabled", "url", "certificate_sha256", "user_label", "phone_numbers"}
+            or type(monitor.get("enabled", False)) is not bool
+        ):
+            raise ValueError("Ungültige externe Überwachung")
+        user_label = monitor.get("user_label", "deinem Freund")
+        if (
+            not isinstance(user_label, str)
+            or len(user_label) > 80
+            or (user_label and not user_label.isprintable())
+        ):
+            raise ValueError("Ungültige Benutzerbezeichnung für externe Überwachung")
+        monitor["user_label"] = user_label.strip() or "deinem Freund"
+        if "phone_numbers" in monitor:
+            numbers = monitor["phone_numbers"]
+            if not isinstance(numbers, list) or len(numbers) > 3:
+                raise ValueError("Maximal drei Telefonnummern für externe Überwachung")
+            normalized = []
+            for number in numbers:
+                if not isinstance(number, str) or len(number) > 32:
+                    raise ValueError("Ungültige Telefonnummer")
+                number = re.sub(r"[\s()/.-]", "", number)
+                if not number:
+                    continue
+                if number.startswith("00"):
+                    number = "+" + number[2:]
+                if not re.fullmatch(r"\+[1-9][0-9]{6,14}", number):
+                    raise ValueError("Telefonnummer mit Ländervorwahl angeben, z. B. +49…")
+                if number not in normalized:
+                    normalized.append(number)
+            monitor["phone_numbers"] = normalized
+        from urllib.parse import urlsplit
+
+        url = monitor.get("url", "")
+        parsed = urlsplit(url) if isinstance(url, str) else None
+        if parsed is None or (
+            url
+            and (
+                parsed.scheme != "https"
+                or not parsed.hostname
+                or parsed.username
+                or parsed.password
+                or parsed.query
+                or parsed.fragment
+            )
+        ):
+            raise ValueError("Externe Überwachung benötigt eine HTTPS-Adresse")
+        fingerprint = monitor.get("certificate_sha256", "")
+        if not isinstance(fingerprint, str) or (
+            fingerprint and not re.fullmatch(r"[a-fA-F0-9]{64}", fingerprint)
+        ):
+            raise ValueError("Ungültiger TLS-Fingerabdruck")
+        if monitor.get("enabled") and (not self.alarm_escalation or not url):
+            raise ValueError("Externe Überwachung benötigt Alarmtimer und Dienstadresse")
         if self.person_detection is not None:
             detection = self.person_detection
             if not isinstance(detection, PersonDetection) or self.rules is None:
@@ -851,9 +983,9 @@ class Configuration:
                 raise ValueError(
                     "Automatische Erkennung benötigt zwei aufeinanderfolgende Stufen oberhalb Sicher"
                 )
-            if (
-                self.stage(detection.stage_id).requires_confirmation
-                or self.stage(detection.next_stage_id).requires_confirmation
+            if self.stage(detection.stage_id).requires_confirmation or (
+                self.stage(detection.next_stage_id).requires_confirmation
+                and not self.alarm_escalation
             ):
                 raise ValueError("Automatische Erkennung darf keine Vollalarmstufe verwenden")
             if {AUTO_RULE, DETECTED_RULE}.intersection(self.rules):
@@ -922,6 +1054,22 @@ class Configuration:
                 raise ValueError("Zusammengeführte Fenster dürfen keine Schleifen bilden")
         if not 1 <= len(self.profiles) <= 50:
             raise ValueError("1 bis 50 Profile erforderlich")
+        if not isinstance(self.outside_inside_links, list) or len(self.outside_inside_links) > 500:
+            raise ValueError("Maximal 500 Außen-/Innen-Zuordnungen erlaubt")
+        seen_links = set()
+        for pair in self.outside_inside_links:
+            if (
+                not isinstance(pair, list)
+                or len(pair) != 2
+                or any(not isinstance(room, str) or room not in self.rooms for room in pair)
+                or pair[0] == pair[1]
+            ):
+                raise ValueError(
+                    "Außen-/Innen-Zuordnung benötigt zwei verschiedene vorhandene Räume"
+                )
+            if tuple(pair) in seen_links:
+                raise ValueError("Außen-/Innen-Zuordnung doppelt eingetragen")
+            seen_links.add(tuple(pair))
         if not 1 <= len(self.stages) <= 32 or len({stage.id for stage in self.stages}) != len(
             self.stages
         ):
@@ -1072,7 +1220,17 @@ class Configuration:
             if action.level != "diagnostic" and action.level not in stage_ids:
                 raise ValueError("Aktion verweist auf eine unbekannte Alarmstufe")
             loud = action.kind in {"siren", "switch", "script", "tts"} or action.critical
-            if loud and (action.level == "diagnostic" or not self.stage(action.level).allow_loud):
+            if loud and (
+                action.level == "diagnostic"
+                or (
+                    not self.stage(action.level).allow_loud
+                    and not (
+                        self.alarm_escalation
+                        and action.level
+                        in (self.alarm_escalation.stage_id, self.alarm_escalation.next_stage_id)
+                    )
+                )
+            ):
                 raise ValueError(
                     "Akustische/freie Aktionen und kritische Pushs benötigen eine freigegebene bestätigte Alarmstufe"
                 )
@@ -1145,6 +1303,7 @@ class Configuration:
                 ).items()
             },
             actions={k: construct(Action, v) for k, v in data.get("actions", {}).items()},
+            ha_profile_ids=data.get("ha_profile_ids"),
             settings=construct(Settings, data.get("settings", {})),
             revision=data.get("revision", 0),
             stages=[
@@ -1162,12 +1321,26 @@ class Configuration:
             policy_version=data.get("policy_version", 2),
             secure_stage_id=data.get("secure_stage_id", "1"),
             room_connections=data.get("room_connections", []),
+            outside_inside_links=data.get("outside_inside_links", []),
             robots={
                 key: construct(RobotConfig, value) for key, value in data.get("robots", {}).items()
             },
             automatic_detection=construct(AutomaticDetection, data["automatic_detection"])
             if data.get("automatic_detection") is not None
             else None,
+            alarm_escalation=construct(AlarmEscalation, data["alarm_escalation"])
+            if data.get("alarm_escalation") is not None
+            else None,
+            external_monitoring=data.get(
+                "external_monitoring",
+                {
+                    "enabled": False,
+                    "url": "",
+                    "certificate_sha256": "",
+                    "user_label": "deinem Freund",
+                    "phone_numbers": [],
+                },
+            ),
             person_detection=construct(PersonDetection, data["person_detection"])
             if data.get("person_detection") is not None
             else None,
@@ -1184,6 +1357,16 @@ def migrate_configuration(data: dict) -> dict:
     if not isinstance(data, dict):
         raise ValueError("Ungültige Konfiguration")
     result = deepcopy(data)
+    for sensor in result.get("sensors", {}).values():
+        if isinstance(sensor, dict) and (
+            sensor.get("entity_id", "").startswith(("light.", "switch."))
+            or (
+                sensor.get("sensor_kind") == "light_switch"
+                and not sensor.get("entity_id", "").startswith(("event.", "binary_sensor."))
+            )
+        ):
+            # Preserve obsolete assignments for removal, but never monitor outputs.
+            sensor["enabled"] = False
     # Existing installations keep their stage identities, actions and baseline.
     # Six-stage defaults apply to new configurations; the active baseline is explicit.
     if "secure_stage_id" not in result and result.get("stages"):
@@ -1315,6 +1498,7 @@ class EventLog:
     confirmed: bool = False
     reactions_enabled: bool = False
     category: str | None = None
+    confirmation_grade: int | None = None
 
     def __post_init__(self):
         if self.category is None:

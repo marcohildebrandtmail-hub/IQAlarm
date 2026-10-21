@@ -1,0 +1,20 @@
+[Unit]
+Description=IQAlarm independent alarm watchdog
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=iqalarm-monitor
+Group=iqalarm-monitor
+ExecStart=/usr/bin/python3 /opt/iqalarm-monitor/server.py --cert /etc/iqalarm-monitor/tls.crt --key /etc/iqalarm-monitor/tls.key
+Restart=always
+RestartSec=2
+StateDirectory=iqalarm-monitor
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

@@ -139,6 +139,7 @@ async def verify(hass, target) -> str:
         hass.states.async_set(entity_id, "off")
 
     data = runtime.config.to_dict()
+    data["settings"]["startup_delay_seconds"] = 0  # Immediate-event compatibility scenarios.
     assert len(data["stages"]) == 6 and data["secure_stage_id"] == "1"
     # Continue the established compatibility suite with an existing four-stage setup.
     data["stages"] = [

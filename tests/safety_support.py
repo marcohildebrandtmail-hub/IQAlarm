@@ -31,7 +31,7 @@ class HAError(Exception):
 
 class MemoryStore:
     def __init__(self, hass):
-        self.config = models.Configuration()
+        self.config = models.Configuration(settings=models.Settings(startup_delay_seconds=0))
         self.state = {}
         self.outputs = {}
         self.writes = []
@@ -134,6 +134,9 @@ class LocalHA:
     async def drain(self):
         while self.tasks:
             await asyncio.gather(*list(self.tasks))
+            # Finished-task gather can complete synchronously; let callbacks
+            # remove completed background tasks before checking the set again.
+            await asyncio.sleep(0)
 
     async def async_add_executor_job(self, fn, *args):
         return fn(*args)
@@ -141,6 +144,7 @@ class LocalHA:
 
 def base_config():
     return models.Configuration(
+        settings=models.Settings(startup_delay_seconds=0),
         secure_stage_id="0",
         rules=None,
         stages=[

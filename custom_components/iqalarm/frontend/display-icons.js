@@ -20,6 +20,7 @@ const ROOM_ICONS = {
 };
 export function sensorSymbol(sensor = {}) {
   if (MDI_ICON.test(sensor.icon || "")) return sensor.icon;
+  if(sensor.sensor_kind==="light_switch")return "mdi:light-switch";
   const role = sensor.role || "";
   return `mdi:${role.startsWith("perimeter") ? "cctv" : role.startsWith("interior") ? "motion-sensor" : sensor.sensor_kind === "door_lock" || role === "lock_contact" ? "lock" : role === "smoke" ? "smoke-detector-variant" : role === "panic" ? "gesture-tap-button" : "window-closed-variant"}`;
 }

@@ -11,6 +11,7 @@ from safety_support import core, local_runtime, models, runtime_module, windows_
 def test_automatic_grade_decay_is_published_and_saved_without_a_level_change(tmp_path, monkeypatch):
     async def scenario():
         config = models.Configuration(
+            settings=models.Settings(startup_delay_seconds=0),
             rooms={"r": models.Room("r", "Raum")},
             sensors={
                 f"binary_sensor.motion_{n}": models.SensorConfig(
@@ -104,7 +105,11 @@ def test_window_save_invariants_and_enum_contact():
         windows_module.capture_position(window, {"sensor.frame": "open"}, "open")["state"] == "open"
     )
     window.mappings.pop()
-    config = models.Configuration(rooms={"r": models.Room("r", "Raum")}, windows={"w": window})
+    config = models.Configuration(
+        settings=models.Settings(startup_delay_seconds=0),
+        rooms={"r": models.Room("r", "Raum")},
+        windows={"w": window},
+    )
     with pytest.raises(ValueError, match="Geschlossen und Offen"):
         config.validate()
 
@@ -113,7 +118,11 @@ def test_window_protection_controls_reach_alarm_source():
     window = composite(
         immediate=True, debounce_ms=250, flap_threshold=20, flap_window=30, entry_delay=True
     )
-    config = models.Configuration(rooms={"r": models.Room("r", "Raum")}, windows={"w": window})
+    config = models.Configuration(
+        settings=models.Settings(startup_delay_seconds=0),
+        rooms={"r": models.Room("r", "Raum")},
+        windows={"w": window},
+    )
     sensor = config.all_sensors()[window.sensor_id]
     assert (
         sensor.immediate,

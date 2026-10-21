@@ -42,6 +42,7 @@ export const LIVE_VIEW_CSS=`
 .status-rings circle{fill:none;transform:rotate(-90deg);transform-origin:72px 72px;stroke-linecap:round;transition:stroke-dashoffset .7s ease,stroke .9s ease}
 .status-rings .ring-track{stroke:var(--iq-border);stroke-linecap:butt}
 .status-rings text{fill:var(--level-color);font:750 36px system-ui;text-anchor:middle;dominant-baseline:central}
+.status-rings .promotion-ring{stroke:var(--iq-red);stroke-linecap:butt;transition:stroke-dashoffset 1s linear}
 .grade-caption{font-size:12px;color:var(--iq-muted)}
 .confirmation-context{margin-top:8px;min-width:0;overflow-wrap:anywhere}
 .confirmation-context p{margin:2px 0 0;font-size:12px;line-height:1.4}
@@ -91,19 +92,64 @@ export function triggerRows(data,now) {
     return `<div class="live-trigger-item" role="listitem" data-live-key="live-trigger:${esc(item.key)}" data-live-trigger="${esc(item.entity_id)}"><span class="live-trigger-name">${esc([item.room,item.name].filter(Boolean).join(" · "))}</span><span class="live-trigger-timer">${esc(timer)}</span></div>`;
   }).join("");
 }
-export function projectPersonProgress(progress,now) {
+function motionConfirmation(reports,connections) {
+  const rooms=new Map();
+  for(const report of reports){
+    if(report.role!=="perimeter_sensor"||!report.room_id)continue;
+    if(!rooms.has(report.room_id))rooms.set(report.room_id,new Map());
+    const source=report.source_id||report.entity_id,previous=rooms.get(report.room_id).get(source);
+    const expiry=report.expires_at??Infinity,oldExpiry=previous?.expires_at??Infinity;
+    if(!previous||expiry>oldExpiry||(expiry===oldExpiry&&(report.timestamp||0)>(previous.timestamp||0)))rooms.get(report.room_id).set(source,report);
+  }
+  const neighbors=new Map([...rooms.keys()].map(room=>[room,new Set()]));
+  for(const [a,b] of connections)if(a!==b&&rooms.has(a)&&rooms.has(b)){
+    neighbors.get(a).add(b);neighbors.get(b).add(a);
+  }
+  const sources=(...ids)=>{
+    const combined=new Map();
+    for(const room of ids)for(const [source,report] of rooms.get(room))combined.set(source,report);
+    return [...combined.values()].slice(0,3);
+  };
+  let best=[];
+  for(const a of [...rooms.keys()].sort()){
+    let candidate=sources(a);
+    if(candidate.length===3)return candidate;
+    if(candidate.length>best.length)best=candidate;
+    for(const b of [...neighbors.get(a)].filter(room=>room>a).sort()){
+      candidate=sources(a,b);
+      if(candidate.length===3)return candidate;
+      if(candidate.length>best.length)best=candidate;
+      for(const c of [...neighbors.get(a)].filter(room=>room>b&&neighbors.get(b).has(room)).sort()){
+        candidate=sources(a,b,c);
+        if(candidate.length===3)return candidate;
+      }
+    }
+  }
+  return best.length>=2?best:[];
+}
+
+export function projectPersonProgress(progress,now,connections=[]) {
   return (progress||[]).flatMap(item=>{
     if(!item.person_reports)return [item];
     const reports=item.person_reports.filter(report=>report.expires_at==null||report.expires_at>now);
-    const current=(item.thresholds||[1,2,3]).filter(threshold=>reports.length>=threshold).length;
+    const motionReports=(item.motion_reports||[]).filter(report=>report.expires_at==null||report.expires_at>now);
+    const motion=motionConfirmation(motionReports,connections);
+    const cameraGrade=(item.thresholds||[1,2,3]).filter(threshold=>reports.length>=threshold).length;
+    const motionGrade=Math.max(0,motion.length-1),current=Math.min(3,cameraGrade+motionGrade);
     if(!current)return [];
-    const deadlines=reports.map(report=>report.expires_at).filter(Number.isFinite);
-    return [{...item,current,complete:current===item.target,person_reports:reports,
+    const deadlines=[...reports,...motion].map(report=>report.expires_at).filter(Number.isFinite);
+    return [{...item,current,complete:current===item.target,person_reports:reports,motion_reports:motionReports,
+      camera_grade:cameraGrade,motion_grade:motionGrade,
       next_decay:deadlines.length?Math.min(...deadlines):null,
-      sources:reports.map(({expires_at,...source})=>source)}];
+      sources:[...reports,...motion].map(({expires_at,...source})=>source)}];
   });
 }
-export function ringValues(data) {
+export function alarmProgress(data,now) {
+  const a=data.status.alarm;
+  if(!a||a.escalated||data.status.stage_id!==a.stage_id||!data.status.active||!(a.duration>0))return null;
+  return Math.max(0,Math.min(1,1-(a.deadline-now)/a.duration));
+}
+export function ringValues(data,now=Date.now()/1000) {
   const status=data.status;
   const isInactive = status.active === false || status.mode === "inactive" || status.profile_id === null;
   if(isInactive){
@@ -114,13 +160,36 @@ export function ringValues(data) {
   if(status.profile_id&&status.stage_id===data.config.secure_stage_id&&(Object.values(data.config.robots||{}).some(robot=>robot.enabled)||status.ignored_windows?.length)){
     const coverage=status.coverage||{current:0,target:3};grade={...coverage,kind:"coverage"};
   }
+  const elapsed=alarmProgress(data,now);
+  if(elapsed!==null)grade={kind:"escalation",current:elapsed,target:1};
   return {level:Math.max(0,Math.min(1,status.level/Math.max(1,data.config.stages.length-1))),grade,confirmation:grade?Math.max(0,Math.min(1,grade.current/grade.target)):0};
 }
-export function statusRings(data) {
+export function startupProgress(data,now) {
+  const s=data.status;
+  if(!s.active||!s.profile_id||!Number.isFinite(s.arming_until))return null;
+  const start=s.arming_started_at??(s.arming_until-(data.config.settings?.startup_delay_seconds??60));
+  return s.arming_until>start?Math.max(0,Math.min(1,(now-start)/(s.arming_until-start))):null;
+}
+export function promotionProgress(data,now) {
+  const startup=startupProgress(data,now);if(startup!==null)return startup;
+  const alarm=alarmProgress(data,now);if(alarm!==null)return alarm;
+  const status=data.status,settings=data.config.automatic_detection;
+  if(!settings||status.active===false||status.mode==='inactive'||status.profile_id===null||status.stage_id!==settings.stage_id||!(settings.promote_seconds>0))return null;
+  const deadlines=(status.rule_progress||[]).filter(item=>item.stage_id===settings.stage_id&&item.current===3&&item.target===3&&item.detected_at==null&&Number.isFinite(item.next_level_at)).map(item=>item.next_level_at);
+  if(!deadlines.length)return null;
+  const end=Math.min(...deadlines);
+  return Math.max(0,Math.min(1,1-(end-now)/settings.promote_seconds));
+}
+export function statusRings(data,now=Date.now()/1000) {
   const isInactive = data.status.active === false || data.status.mode === "inactive" || data.status.profile_id === null;
-  const {level,grade,confirmation}=ringValues(data),outer=2*Math.PI*61,inner=2*Math.PI*46;
+  const {level,grade,confirmation}=ringValues(data,now),outer=2*Math.PI*61,inner=2*Math.PI*46;
   const label=grade?.kind==="coverage"?"Überwachungsrisiko":"Bestätigungsgrad";
   const stageName = isInactive ? (data.config.stages[0]?.name || "Deaktiviert") : data.status.stage_name;
   const levelNum = isInactive ? 0 : data.status.level;
-  return `<div class="level-display" data-live-key="status-rings"><div class="level-caption">${esc(stageName)}</div><svg class="status-rings" viewBox="0 0 144 144" role="img" aria-label="Alarmstufe ${levelNum}${grade?`, ${label} ${grade.current} von ${grade.target}`:""}"><circle class="ring-track" cx="72" cy="72" r="61" stroke-width="8"/><circle data-level-ring cx="72" cy="72" r="61" stroke="var(--level-color)" stroke-width="8" stroke-dasharray="${outer}" stroke-dashoffset="${outer*(1-level)}"/><circle class="ring-track" cx="72" cy="72" r="46" stroke-width="6"/><circle ${grade?.kind==="coverage"?"data-risk-ring":"data-confirmation-ring"} cx="72" cy="72" r="46" stroke="${grade?.kind==="coverage"?"var(--iq-amber)":"var(--iq-accent)"}" stroke-width="6" stroke-dasharray="${inner}" stroke-dashoffset="${inner*(1-confirmation)}"/><text x="72" y="72">${levelNum}</text></svg>${grade?`<small class="grade-caption">${label} ${grade.current}/${grade.target}</small>`:""}</div>`;
+  const startup=startupProgress(data,now);
+  const remaining=startup!==null?Math.max(0,Math.ceil(data.status.arming_until-now)):null;
+  const timer=startup!==null?`Start in ${String(Math.floor(remaining/60)).padStart(2,"0")}:${String(remaining%60).padStart(2,"0")}`:grade?.kind==="escalation"?`LVL 5 in ${String(Math.floor(Math.max(0,Math.ceil(data.status.alarm.deadline-now))/60)).padStart(2,"0")}:${String(Math.max(0,Math.ceil(data.status.alarm.deadline-now))%60).padStart(2,"0")}`:null;
+  const promotion=promotionProgress(data,now);
+  const overlay=promotion===null?'':`<circle class="promotion-ring" data-promotion-ring cx="72" cy="72" r="61" stroke-width="8" stroke-dasharray="${outer}" stroke-dashoffset="${outer*(1-promotion)}"/>`;
+  return `<div class="level-display" data-live-key="status-rings"><div class="level-caption">${esc(stageName)}</div><svg class="status-rings" viewBox="0 0 144 144" role="img" aria-label="Alarmstufe ${levelNum}${timer?`, ${timer}`:grade?`, ${label} ${grade.current} von ${grade.target}`:""}"><circle class="ring-track" cx="72" cy="72" r="61" stroke-width="8"/><circle data-level-ring cx="72" cy="72" r="61" stroke="var(--level-color)" stroke-width="8" stroke-dasharray="${outer}" stroke-dashoffset="${outer*(1-level)}"/><circle class="ring-track" cx="72" cy="72" r="46" stroke-width="6"/><circle ${grade?.kind==="coverage"?"data-risk-ring":"data-confirmation-ring"} cx="72" cy="72" r="46" stroke="${grade?.kind==="coverage"?"var(--iq-amber)":"var(--iq-accent)"}" stroke-width="6" stroke-dasharray="${inner}" stroke-dashoffset="${inner*(1-confirmation)}"/>${overlay}<text x="72" y="72">${levelNum}</text></svg>${grade||timer?`<small class="grade-caption">${timer||`${label} ${grade.current}/${grade.target}`}</small>`:""}</div>`;
 }

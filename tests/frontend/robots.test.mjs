@@ -5,7 +5,7 @@ import {renderLevels} from "../../custom_components/iqalarm/frontend/level-confi
 
 function panel() {
   const robot={id:"bot",name:"Saugroboter <EG>",activities:[{entity_id:"vacuum.robot"}],room_ids:["kitchen"],floorplan_id:null,risk_points:1,enabled:true};
-  return {stage:"1",_head:()=>"",_lockNote:()=>"",_stagesEditor:()=>"",data:{config:{robots:{bot:robot},rooms:{kitchen:{id:"kitchen",name:"Küche"}},floorplans:{},stages:[{id:"0",name:"Aus",color:"#fff"},{id:"1",name:"Sicher",color:"#000"},{id:"2",name:"Außen",color:"#000"}],secure_stage_id:"1",rules:{},profiles:{}},status:{profile_id:"night",coverage:{current:1,target:3,robots:[{...robot,active:true,waiting:false,fault:false,paused_sensors:["binary_sensor.motion"]}]}}}};
+  return {_number:(name,label,value)=>`<input name="${name}" value="${value}">`,stage:"1",_head:()=>"",_lockNote:()=>"",_stagesEditor:()=>"",data:{config:{robots:{bot:robot},rooms:{kitchen:{id:"kitchen",name:"Küche"}},floorplans:{},stages:[{id:"0",name:"Aus",color:"#fff"},{id:"1",name:"Sicher",color:"#000"},{id:"2",name:"Außen",color:"#000"}],secure_stage_id:"1",rules:{},profiles:{}},status:{profile_id:"night",coverage:{current:1,target:3,robots:[{...robot,active:true,waiting:false,fault:false,paused_sensors:["binary_sensor.motion"]}]}}}};
 }
 test("robot settings belong to the secure baseline and retain configurable scope and points",()=>{
   const p=panel(),html=renderLevels(p);

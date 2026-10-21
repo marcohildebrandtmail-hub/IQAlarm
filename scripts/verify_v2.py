@@ -12,6 +12,7 @@ async def verify_v2(hass, entry, admin_token, user_token, calls):
     runtime = entry.runtime_data
     saved = deepcopy(runtime.config.to_dict())
     data = deepcopy(saved)
+    data["settings"]["startup_delay_seconds"] = 0
     data["stages"].append(
         {
             "id": "verified",

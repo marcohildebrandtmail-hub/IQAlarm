@@ -7,13 +7,15 @@ from iqalarm_core.automatic_detection import AutomaticDetection
 from iqalarm_core.correlation_engine import CorrelationEngine
 from iqalarm_core.level_rules import LevelRule, RuleCondition
 from iqalarm_core.models import Configuration, Room, SensorConfig
+from iqalarm_core.models import Settings as ScenarioSettings
 
 
 @pytest.fixture
 def automatic():
     config = Configuration(
+        settings=ScenarioSettings(startup_delay_seconds=0),
         rooms={key: Room(key, key) for key in ("kitchen", "living", "hall", "bed")},
-        automatic_detection=AutomaticDetection(test_mode=False),
+        automatic_detection=AutomaticDetection(test_mode=False, promote_seconds=60),
     )
     # Keep this suite about LVL 3; no separately configured full-alarm rule.
     for profile in config.profiles.values():
@@ -48,7 +50,7 @@ def test_test_mode_stays_at_level_three_on_extra_triggers_and_timer(automatic):
     automatic.config.automatic_detection.test_mode = True
     complete(automatic)
     assert grade(automatic)["current"] == 3
-    assert grade(automatic)["next_level_at"] is None
+    assert (grade(automatic) or {}).get("next_level_at") is None
     fire(automatic, "kitchen", 4, 110)
     automatic.tick(163)  # The former LVL-4 deadline must not promote.
     assert automatic.level == 3 and not automatic.confirmed
@@ -125,12 +127,80 @@ def test_independent_sources_reach_three_steps_without_skipping_to_level_four(au
     assert grade(automatic)["stage_id"] == "3"  # No invented LVL-4 confirmation grade.
 
 
-@pytest.mark.parametrize("extra", [1, 4])
+@pytest.mark.parametrize("extra", [4])
 def test_a_genuine_new_edge_after_three_of_three_reaches_level_four(automatic, extra):
     complete(automatic)
     fire(automatic, "kitchen", extra, 110)
     assert automatic.level == 4
     assert grade(automatic)["current"] == 3
+
+
+def test_same_sensor_after_three_of_three_does_not_replace_a_further_independent_sensor(automatic):
+    complete(automatic)
+    fire(automatic, "kitchen", 1, 110)
+    assert automatic.level == 3
+    assert grade(automatic)["next_level_at"] == 163
+
+
+@pytest.mark.parametrize("trigger", ["timer", "additional", "repeat", "remote", "same_device"])
+def test_indoor_three_of_three_promotes_after_thirty_seconds_or_a_further_sensor(
+    automatic, trigger
+):
+    settings = automatic.config.automatic_detection
+    settings.test_mode = True
+    settings.test_stage_id = settings.next_stage_id
+    settings.promote_seconds = 30
+    complete(automatic)
+    assert automatic.level == 3
+    assert grade(automatic)["next_level_at"] == 133
+    if trigger in ("additional", "remote"):
+        fire(automatic, "kitchen" if trigger == "additional" else "bed", 4, 110)
+        assert automatic.level == 4
+    else:
+        if trigger == "repeat":
+            fire(automatic, "kitchen", 1, 110)
+        elif trigger == "same_device":
+            automatic.sensors["binary_sensor.kitchen_4"].source_id = "binary_sensor.kitchen_1"
+            fire(automatic, "kitchen", 4, 110)
+        automatic.tick(132.999)
+        assert automatic.level == 3
+        assert grade(automatic)["next_level_at"] == 133
+        automatic.tick(133)
+        assert automatic.level == 4
+    assert not automatic.confirmed and not automatic.latched
+    assert not automatic.stage_allowed("5")
+
+
+def test_old_remote_evidence_does_not_replay_as_the_fourth_sensor(automatic):
+    settings = automatic.config.automatic_detection
+    settings.test_stage_id = settings.next_stage_id
+    settings.promote_seconds = 30
+    fire(automatic, "bed", 1, 101)
+    complete(automatic, start=110)
+    automatic.tick(120)
+    assert automatic.level == 3
+    assert grade(automatic)["next_level_at"] == 142
+
+
+def test_remote_entity_of_one_of_the_three_devices_is_not_a_fourth_source(automatic):
+    settings = automatic.config.automatic_detection
+    settings.test_stage_id = settings.next_stage_id
+    settings.promote_seconds = 30
+    automatic.sensors["binary_sensor.bed_1"].source_id = "binary_sensor.kitchen_1"
+    complete(automatic)
+    fire(automatic, "bed", 1, 110)
+    assert automatic.level == 3
+
+
+def test_lost_full_grade_cancels_the_pending_thirty_second_promotion(automatic):
+    settings = automatic.config.automatic_detection
+    settings.test_stage_id = settings.next_stage_id
+    settings.promote_seconds = 30
+    complete(automatic)
+    automatic.feed("binary_sensor.kitchen_1", None, 120)
+    assert (grade(automatic) or {}).get("next_level_at") is None
+    automatic.tick(133)
+    assert automatic.level < 4
 
 
 def test_held_active_values_and_ticks_do_not_count_as_additional_triggers(automatic):
@@ -151,6 +221,32 @@ def test_old_events_cannot_replay_after_stepwise_inactivity_decay(automatic):
         current = grade(automatic)
         assert (current["current"] if current else 0) == expected
         assert automatic.level == (3 if expected else 1)
+
+
+def test_expired_neighbor_cannot_reappear_when_a_room_gets_its_first_trigger(automatic):
+    automatic.config.room_connections = [["kitchen", "living"]]
+    automatic.config.automatic_detection.promote_seconds = 30
+    fire(automatic, "kitchen", 1, 101)
+    automatic.tick(161)
+    assert automatic.level == 1
+    fire(automatic, "living", 1, 162)
+    assert grade(automatic, "living")["current"] == 1
+    fire(automatic, "living", 2, 174)
+    assert grade(automatic, "living")["current"] == 2
+    automatic.tick(204)
+    assert automatic.level == 3
+
+
+@pytest.mark.parametrize("decay_at,expected", [(150, 3), (163, 3), (223, 2), (283, 1)])
+def test_first_neighbor_trigger_borrows_only_the_remaining_valid_grade(
+    automatic, decay_at, expected
+):
+    automatic.config.room_connections = [["kitchen", "living"]]
+    automatic.config.automatic_detection.promote_seconds = 300
+    complete(automatic)
+    automatic.tick(decay_at)
+    fire(automatic, "living", 1, decay_at + 1)
+    assert grade(automatic, "living")["current"] == expected
 
 
 def test_sensitivity_requires_the_displayed_number_of_independent_devices(automatic):
@@ -180,7 +276,7 @@ def test_unrelated_rooms_have_independent_simultaneous_grades(automatic):
     assert grade(automatic, "bed") is None
     complete(automatic, "kitchen", 110)
     fire(automatic, "bed", 1, 115)
-    assert automatic.room_status("kitchen", 115)["level"] == 3
+    assert automatic.room_status("kitchen", 115)["level"] == 4
     assert grade(automatic, "bed")["current"] == 1
 
 
@@ -360,3 +456,150 @@ def test_disarmed_inactive_does_not_count_or_elevate_automatic_detection(automat
     assert snap["matched_rules"] == []
     assert snap["breach_chain"] == []
     assert grade(automatic, "kitchen") is None
+
+
+def distributed_pairs(engine):
+    engine.config.room_connections = [["kitchen", "living"], ["hall", "bed"]]
+    engine.config.automatic_detection.promote_seconds = 30
+    for room, at in zip(("kitchen", "living", "hall", "bed"), (101, 113, 125, 137), strict=True):
+        fire(engine, room, 1, at)
+
+
+def test_two_independent_confirmed_areas_reach_full_grade(automatic):
+    automatic.config.room_connections = [["kitchen", "living"], ["hall", "bed"]]
+    automatic.config.automatic_detection.promote_seconds = 30
+    for room, at, expected in zip(
+        ("kitchen", "living", "hall", "bed"), (101, 113, 125, 137), (1, 2, 2, 3), strict=True
+    ):
+        fire(automatic, room, 1, at)
+        assert max(p["current"] for p in automatic.snapshot(at + 0.01)["rule_progress"]) == expected
+        assert automatic.level == 3
+    assert grade(automatic)["next_level_at"] == 167
+    automatic.tick(166.99)
+    assert automatic.level == 3
+    automatic.tick(167)
+    assert automatic.level == 4
+
+
+def test_two_areas_extra_independent_sensor_promotes(automatic):
+    distributed_pairs(automatic)
+    fire(automatic, "living", 1, 140)  # Same physical source is no extra proof.
+    assert automatic.level == 3
+    assert grade(automatic)["next_level_at"] == 167
+    fire(automatic, "kitchen", 2, 145)
+    assert automatic.level == 4
+
+
+def test_two_areas_expired_pair_does_not_combine(automatic):
+    automatic.config.room_connections = [["kitchen", "living"], ["hall", "bed"]]
+    fire(automatic, "kitchen", 1, 101)
+    fire(automatic, "living", 1, 102)
+    automatic.tick(163)
+    fire(automatic, "hall", 1, 164)
+    fire(automatic, "bed", 1, 165)
+    assert max(p["current"] for p in automatic.snapshot(165.01)["rule_progress"]) == 2
+    assert automatic.distributed_state["grade"] == 0
+
+
+def test_two_areas_restart_keeps_original_deadline(automatic):
+    distributed_pairs(automatic)
+    restored = CorrelationEngine(automatic.config)
+    for key in restored.sensors:
+        restored.seed(key, False)
+    restored.restore(deepcopy(automatic.persistent_state()), 150)
+    restored.tick(150)
+    assert grade(restored)["next_level_at"] == 167
+    restored.tick(167)
+    assert restored.level == 4
+
+
+def test_overlapping_area_views_cannot_count_twice(automatic):
+    automatic.config.room_connections = [["kitchen", "living"], ["living", "hall"]]
+    fire(automatic, "kitchen", 1, 101)
+    fire(automatic, "living", 1, 102)
+    assert automatic.distributed_state["grade"] == 0
+    assert max(p["current"] for p in automatic.snapshot(102.01)["rule_progress"]) == 2
+
+
+@pytest.mark.parametrize("invalidation", ["disabled", "unavailable", "connection", "profile"])
+def test_two_areas_invalidated_proof_cannot_promote(automatic, invalidation):
+    distributed_pairs(automatic)
+    key = "binary_sensor.hall_1"
+    if invalidation == "disabled":
+        automatic.config.sensors[key].enabled = False
+    elif invalidation == "unavailable":
+        automatic.feed(key, None, 150)
+    elif invalidation == "connection":
+        automatic.config.room_connections = [["kitchen", "living"]]
+    else:
+        automatic.config.profiles["armed_away"].sensor_ids = [
+            k for k in automatic.sensors if k != key
+        ]
+    automatic.tick(167)
+    assert automatic.level <= 3
+    assert automatic.distributed_state["grade"] == 0
+
+
+def test_two_areas_late_tick_keeps_due_promotion_but_never_replays(automatic):
+    distributed_pairs(automatic)
+    automatic.tick(200)  # The deadline at 167 precedes the pair's decay at 173.
+    assert automatic.level == 4
+    assert grade(automatic)["detected_at"] == 167
+    for at in (227, 300, 400):
+        automatic.tick(at)
+        assert automatic.level <= 3
+        assert automatic.distributed_state["grade"] == 0
+    assert automatic.level == 1
+
+
+def test_two_areas_decay_before_thirty_seconds_cancels_promotion(automatic):
+    automatic.config.room_connections = [["kitchen", "living"], ["hall", "bed"]]
+    automatic.config.automatic_detection.promote_seconds = 30
+    for room, at in zip(("kitchen", "living", "hall", "bed"), (101, 102, 155, 156), strict=True):
+        fire(automatic, room, 1, at)
+    assert grade(automatic)["current"] == 3
+    automatic.tick(163)
+    assert automatic.distributed_state["grade"] == 0
+    automatic.tick(186)
+    assert automatic.level == 3
+
+
+def test_two_areas_higher_sensitivity_requires_two_complete_pairs(automatic):
+    automatic.config.room_connections = [["kitchen", "living"], ["hall", "bed"]]
+    automatic.config.automatic_detection.threshold = 2
+    for room, index, at in [
+        ("kitchen", 1, 101),
+        ("living", 1, 102),
+        ("hall", 1, 103),
+        ("bed", 1, 104),
+    ]:
+        fire(automatic, room, index, at)
+    assert automatic.distributed_state["grade"] == 0
+    fire(automatic, "living", 2, 105)
+    assert automatic.distributed_state["grade"] == 0
+    fire(automatic, "bed", 2, 106)
+    assert automatic.distributed_state["grade"] == 3
+
+
+def test_two_areas_shared_physical_device_cannot_confirm_twice(automatic):
+    automatic.config.sensors["binary_sensor.hall_1"].source_id = "shared"
+    automatic.config.sensors["binary_sensor.kitchen_1"].source_id = "shared"
+    distributed_pairs(automatic)
+    assert automatic.distributed_state["grade"] == 0
+
+
+def test_two_areas_disarming_clears_distributed_proof(automatic):
+    distributed_pairs(automatic)
+    automatic.set_profile(None, 150)
+    assert automatic.distributed_state == {}
+    automatic.set_profile("armed_away", 151)
+    automatic.tick(167)
+    assert automatic.level == 1
+
+
+def test_two_areas_test_ceiling_blocks_level_four(automatic):
+    automatic.config.automatic_detection.test_mode = True
+    distributed_pairs(automatic)
+    automatic.tick(167)
+    assert automatic.level == 3
+    assert grade(automatic)["next_level_at"] is None

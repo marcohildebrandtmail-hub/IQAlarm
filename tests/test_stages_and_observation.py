@@ -41,7 +41,7 @@ def test_profile_name_and_id_never_select_motion_or_contact_policy(engine):
 
 def test_contact_policy_can_be_disabled_independently(engine):
     engine.config.profiles["visitors"] = Profile(
-        name="Besuch", contacts_enabled=False, motion_mode="ignore"
+        name="Besuch Sonderprofil", contacts_enabled=False, motion_mode="ignore"
     )
     engine.config.validate()
     engine.set_profile("visitors", 100)
@@ -113,7 +113,7 @@ def test_delete_stage_requires_remapping_rules_and_actions(config):
 def test_existing_v11_profile_is_migrated_once(config):
     data = config.to_dict()
     data["profiles"]["guests"] = {
-        "name": "Besuch",
+        "name": "Besuch Sonderprofil",
         "base_mode": "armed_night",
         "night_motion_requires_contact": True,
         "night_motion_scope": "house",

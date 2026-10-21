@@ -1,16 +1,18 @@
-"""Person reports charge LVL 2; outdoor motion never charges its inner ring."""
+"""Camera reports and independent, directly related motion add to the LVL-2 grade."""
 
 from copy import deepcopy
 
 import pytest
 from iqalarm_core.correlation_engine import CorrelationEngine
 from iqalarm_core.models import Configuration, Room, SensorConfig
+from iqalarm_core.models import Settings as ScenarioSettings
 from iqalarm_core.person_detection import PersonDetection
 
 
 @pytest.fixture
 def cameras():
     config = Configuration(
+        settings=ScenarioSettings(startup_delay_seconds=0),
         rooms={key: Room(key, key) for key in ("front", "garden")},
         person_detection=PersonDetection(),
     )
@@ -42,6 +44,171 @@ def progress(engine):
         ),
         None,
     )
+
+
+@pytest.fixture
+def motions(cameras):
+    config = deepcopy(cameras.config)
+    for room in ("front", "garden", "side", "remote"):
+        config.rooms.setdefault(room, Room(room, room))
+        for index in range(1, 5):
+            key = f"binary_sensor.{room}_motion{index}"
+            config.sensors[key] = SensorConfig(key, "perimeter_sensor", room, name=key)
+    config.room_connections = [["front", "garden"], ["garden", "side"]]
+    engine = CorrelationEngine(config)
+    for key in engine.sensors:
+        engine.seed(key, False)
+    engine.set_profile("armed_away", 100)
+    return engine
+
+
+def test_independent_motion_adds_one_then_two_grades_but_never_three(motions):
+    for index, expected in ((1, 0), (2, 1), (3, 2), (4, 2)):
+        report(motions, 100 + index * 5, kind=f"motion{index}")
+        assert (progress(motions) or {}).get("current", 0) == expected
+        assert motions.level == 2 and not motions.confirmed
+    assert progress(motions)["motion_grade"] == 2
+    assert progress(motions)["camera_grade"] == 0
+    assert not motions.rule_confirmations
+
+
+def test_same_motion_device_never_adds_another_grade(motions):
+    motions.sensors["binary_sensor.front_motion2"].source_id = "same-device"
+    motions.sensors["binary_sensor.front_motion1"].source_id = "same-device"
+    for at in (101, 110, 120):
+        report(motions, at, kind="motion1")
+        assert progress(motions) is None
+    report(motions, 130, kind="motion2")
+    assert progress(motions) is None
+    report(motions, 140, kind="motion3")
+    assert progress(motions)["current"] == 1
+    report(motions, 145, kind="motion1")
+    assert progress(motions)["current"] == 1
+
+
+def test_motion_requires_same_room_or_explicit_direct_connection(motions):
+    report(motions, 101, kind="motion1")
+    report(motions, 110, room="side", kind="motion1")
+    assert progress(motions) is None
+    report(motions, 120, room="garden", kind="motion1")
+    assert progress(motions)["current"] == 1  # Neither end is directly connected.
+    report(motions, 130, kind="motion2")
+    assert progress(motions)["current"] == 2  # Two front sources + its direct neighbor.
+
+
+def test_unrelated_motion_groups_do_not_pool_their_partial_grades(motions):
+    for index, room in enumerate(("front", "front", "remote", "remote")):
+        report(motions, 101 + index * 5, room=room, kind=f"motion{index % 2 + 1}")
+    assert progress(motions)["current"] == 1
+
+
+def test_three_pairwise_connected_rooms_can_contribute_two_grades(motions):
+    motions.config.room_connections.append(["front", "side"])
+    for index, room in enumerate(("front", "garden", "side")):
+        report(motions, 101 + index * 5, room=room, kind="motion1")
+    assert progress(motions)["current"] == 2
+
+
+def test_repeat_motion_keeps_its_latest_timer_without_counting_twice(motions):
+    report(motions, 101, kind="motion1")
+    report(motions, 110, kind="motion1")
+    report(motions, 120, kind="motion2")
+    assert progress(motions)["current"] == 1
+    assert progress(motions)["next_decay"] == 172  # Latest report of the first device.
+    motions.tick(163)
+    assert progress(motions)["current"] == 1
+    motions.tick(172)
+    assert progress(motions) is None
+
+
+def test_missing_room_and_old_adjacency_never_invent_motion_connections(motions):
+    motions.config.rooms["front"].adjacent = ["remote"]
+    motions.config.rooms["remote"].adjacent = ["front"]
+    report(motions, 101, kind="motion1")
+    report(motions, 110, room="remote", kind="motion1")
+    assert progress(motions) is None
+    motions.sensors["binary_sensor.front_motion2"].room_id = None
+    motions.sensors["binary_sensor.front_motion3"].room_id = None
+    report(motions, 120, kind="motion2")
+    report(motions, 130, kind="motion3")
+    assert progress(motions) is None
+
+
+def test_motion_and_camera_grades_add_and_expire_with_their_own_reports(motions):
+    report(motions, 101, kind="motion1")
+    report(motions, 110, kind="motion2")
+    assert progress(motions)["current"] == 1
+    report(motions, 120)
+    assert progress(motions)["current"] == 2
+    report(motions, 130, room="garden")
+    assert progress(motions)["current"] == 3
+    assert progress(motions)["motion_grade"] == 1
+    assert progress(motions)["camera_grade"] == 2
+    for at, expected in ((162.9, 3), (163, 2), (172, 2), (182, 1), (192, 0)):
+        motions.tick(at)
+        assert (progress(motions) or {}).get("current", 0) == expected
+    assert motions.level == 1
+
+
+def test_camera_expiry_leaves_motion_at_two_of_three(motions):
+    report(motions, 101)
+    for index in range(1, 5):
+        report(motions, 105 + index * 5, kind=f"motion{index}")
+    assert progress(motions)["current"] == 3
+    motions.tick(163)
+    assert progress(motions)["current"] == 2
+    assert not progress(motions)["complete"]
+    assert progress(motions)["person_reports"] == []
+    assert motions.level == 2 and not motions.confirmed
+
+
+def test_motion_expiry_never_renews_when_another_source_reports(motions):
+    report(motions, 101, kind="motion1")
+    report(motions, 110, kind="motion2")
+    report(motions, 120, kind="motion3")
+    assert progress(motions)["current"] == 2
+    motions.tick(163)
+    assert progress(motions)["current"] == 1
+    motions.tick(172)
+    assert progress(motions) is None
+    assert motions.level == 2
+    motions.tick(182)
+    assert motions.level == 1
+
+
+def test_unavailable_or_quarantined_motion_no_longer_contributes(motions):
+    for index in range(1, 4):
+        report(motions, 100 + index * 5, kind=f"motion{index}")
+    motions.feed("binary_sensor.front_motion1", None, 120)
+    assert progress(motions)["current"] == 1
+    motions.quarantine["binary_sensor.front_motion2"] = {"since": 125}
+    motions.tick(125)
+    assert progress(motions) is None
+
+
+def test_configured_camera_thresholds_are_preserved_when_motion_adds_a_grade(motions):
+    motions.config.person_detection = PersonDetection(thresholds=[2, 4, 6])
+    report(motions, 101, kind="motion1")
+    report(motions, 105, kind="motion2")
+    for index in range(1, 5):
+        report(motions, 110 + index * 5)
+        assert progress(motions)["current"] == 1 + index // 2
+
+
+def test_mixed_grade_restores_without_refreshing_its_motion_deadlines(motions):
+    report(motions, 101, kind="motion1")
+    report(motions, 110, kind="motion2")
+    report(motions, 120)
+    restored = CorrelationEngine(motions.config)
+    for key in restored.sensors:
+        restored.seed(key, False)
+    restored.restore(deepcopy(motions.persistent_state()), 130)
+    assert progress(restored)["current"] == 2
+    assert progress(restored)["next_decay"] == 163
+    restored.tick(163)
+    assert progress(restored)["current"] == 1
+    restored.tick(182)
+    assert progress(restored) is None and restored.level == 1
 
 
 def test_motion_triggers_level_two_without_grade(cameras):

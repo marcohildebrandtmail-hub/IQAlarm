@@ -25,7 +25,7 @@ from .models import (
     WindowConfig,
     construct,
 )
-from .sensor_discovery import discover_sensors, sensor_setup
+from .sensor_discovery import classify_entity, discover_sensors, sensor_setup
 from .windows import capture_position, inspect_window
 
 
@@ -221,6 +221,9 @@ async def ws_crud(hass, connection, msg) -> None:
                 data["room_connections"] = [
                     pair for pair in data["room_connections"] if key not in pair
                 ]
+                data["outside_inside_links"] = [
+                    pair for pair in data.get("outside_inside_links", []) if key not in pair
+                ]
                 if any(
                     s["room_id"] == key or key in s["front_of"] for s in data["sensors"].values()
                 ):
@@ -415,8 +418,10 @@ async def ws_test(hass, connection, msg) -> None:
 
 @websocket_api.websocket_command({"type": "iqalarm/catalog"})
 @websocket_api.require_admin
-@callback
-def ws_catalog(hass, connection, msg) -> None:
+@websocket_api.async_response
+async def ws_catalog(hass, connection, msg) -> None:
+    from .button_inputs import mqtt_button_sources, press_types
+
     domains = ALLOWED_SENSOR_DOMAINS | {
         "vacuum",
         "lawn_mower",
@@ -452,6 +457,8 @@ def ws_catalog(hass, connection, msg) -> None:
         options = s.attributes.get("options")
         if isinstance(options, list):
             options = [str(x) for x in options if isinstance(x, (str, int, float, bool))]
+        elif s.domain == "event":
+            options = press_types(s.attributes.get("event_types"))
         elif s.domain == "cover":
             options = ["open", "opening", "closing", "closed"]
         elif s.domain == "lock":
@@ -464,6 +471,11 @@ def ws_catalog(hass, connection, msg) -> None:
                 "name": s.attributes.get("friendly_name", s.entity_id),
                 "state": s.state,
                 "platform": entry.platform if entry else None,
+                "role": classify_entity(
+                    s.entity_id,
+                    s.attributes.get("friendly_name", s.entity_id),
+                    s.attributes.get("device_class"),
+                ),
                 **sensor_setup(s, entry.device_id if entry else None),
                 "options": options,
                 "area_id": area_id,
@@ -475,6 +487,7 @@ def ws_catalog(hass, connection, msg) -> None:
                 },
             }
         )
+    entities.extend(await mqtt_button_sources(hass))
     notify = [
         f"notify.{service}"
         for service in hass.services.async_services().get("notify", {})
@@ -488,15 +501,37 @@ def ws_catalog(hass, connection, msg) -> None:
 
 @websocket_api.websocket_command({"type": "iqalarm/sensors/discover"})
 @websocket_api.require_admin
-@callback
-def ws_discover_sensors(hass, connection, msg) -> None:
+@websocket_api.async_response
+async def ws_discover_sensors(hass, connection, msg) -> None:
     try:
+        from .button_inputs import mqtt_button_sources
+
         instance = runtime(hass)
         candidates = discover_sensors(
             hass,
             instance.config.sensors | dict.fromkeys(instance.config.window_members()),
             instance.config.rooms,
         )
+        for source in await mqtt_button_sources(hass):
+            if source["entity_id"] in instance.config.sensors:
+                continue
+            room = next(
+                (
+                    r
+                    for r in instance.config.rooms.values()
+                    if r.area_id and r.area_id == source["area_id"]
+                ),
+                None,
+            )
+            candidates.append(
+                {
+                    **source,
+                    "room_id": room.id if room else None,
+                    "room_name": room.name if room else None,
+                    "integration_name": "MQTT",
+                    "setup_required": False,
+                }
+            )
         connection.send_result(
             msg["id"],
             {

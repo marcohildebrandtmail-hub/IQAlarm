@@ -291,11 +291,22 @@ def build_room_matcher(
     return matcher_entries
 
 
+def physical_binary_input(entity_id: str) -> bool:
+    return entity_id.startswith("binary_sensor.") and bool(
+        re.search(r"_input(?:_\d+)?_input$", entity_id)
+    )
+
+
 def classify_entity(entity_id: str, name: str, device_class: str | None) -> str | None:
     """Classify a Home Assistant entity into an IQAlarm role or return None if unrelated."""
     domain = entity_id.split(".")[0]
-    if domain not in ALLOWED_SENSOR_DOMAINS:
+    if domain not in ALLOWED_SENSOR_DOMAINS or domain in {"light", "switch"}:
         return None
+
+    if domain == "event":
+        return Role.MOTION.value if device_class == "button" else None
+    if physical_binary_input(entity_id):
+        return Role.MOTION.value
 
     if EXCLUDED_ID_PATTERNS.search(entity_id):
         return None
@@ -382,7 +393,20 @@ def sensor_setup(state, device_id: str | None = None) -> dict:
         "setup_required": False,
         "setup_reason": "",
     }
-    if domain in {"camera", "image_processing"}:
+    if domain == "event":
+        from .button_inputs import press_types
+
+        presses = press_types(state.attributes.get("event_types"))
+        result.update(
+            sensor_kind="light_switch",
+            activation_mode="press",
+            active_states=presses,
+            setup_required=not bool(presses),
+            setup_reason="" if presses else "Kein Tastenereignis erkannt",
+        )
+    elif physical_binary_input(state.entity_id):
+        result.update(sensor_kind="light_switch", activation_mode="change")
+    elif domain in {"camera", "image_processing"}:
         for attribute in ("person_detected", "person", "persons", "person_count", "count_person"):
             value = state.attributes.get(attribute)
             if isinstance(value, bool):
@@ -447,6 +471,8 @@ def discover_sensors(
         dc = state.attributes.get("device_class")
 
         role = classify_entity(entity_id, name, dc)
+        if entity_id.startswith("event."):
+            role = Role.MOTION.value if not sensor_setup(state)["setup_required"] else None
         if not role:
             continue
 

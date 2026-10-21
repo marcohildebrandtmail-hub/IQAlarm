@@ -53,3 +53,19 @@ test("room selection saves the new activity interpretation together with the sen
   assert.equal(saved.room_id,"r");assert.equal(saved.name,"Innentür");assert.equal(saved.role,"interior_motion");
   assert.equal(saved.activation_mode,"change");assert.equal(saved.entry_delay,false);assert.equal(saved.icon,"mdi:door-closed");
 });
+
+for(const role of ["interior_mmwave","vibration_glass","panic","smoke","interior_motion","entry_contact","lock_contact"])test(`moving ${role} keeps all settings and unrelated configuration`,async()=>{
+  const panel=setup();panel.data.status={active:false};
+  const id="binary_sensor.b";
+  Object.assign(panel.data.config.sensors[id],{role,name:"",icon:null,sensor_kind:"generic",activation_mode:"state",active_states:["present"],active_above:2,attribute:"count",source_id:"device:physical",enabled:false,debounce_ms:1234,flap_enabled:false,flap_threshold:7,flap_window:22,entry_delay:true,immediate:false,camera_entity_id:"camera.test"});
+  const before=structuredClone(panel.data.config);
+  panel.shadowRoot={getElementById(){return {close(){}};}};
+  panel._toast=()=>{};panel._render=()=>{};
+  panel._call=async(type,{config})=>({config,status:{active:false}});
+  await panel._moveSensor(id,"r",id,1,null,false,"",role);
+  assert.deepEqual(panel.data.config.sensors[id],{...before.sensors[id],room_id:"r"});
+  assert.deepEqual(panel.data.config.windows,before.windows);
+  assert.deepEqual(panel.data.config.sensors["binary_sensor.other"],before.sensors["binary_sensor.other"]);
+  await panel._moveSensor(id,"k");
+  assert.deepEqual(panel.data.config.sensors,before.sensors);
+});

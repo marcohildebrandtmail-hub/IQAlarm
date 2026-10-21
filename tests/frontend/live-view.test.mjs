@@ -1,7 +1,31 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {ringValues,statusRings} from "../../custom_components/iqalarm/frontend/live-view.js";
+import {ringValues,statusRings,promotionProgress} from "../../custom_components/iqalarm/frontend/live-view.js";
 const data={config:{stages:Array(6).fill({})},status:{level:2,stage_id:"outside",stage_name:"Bewegung Außen",rule_progress:[]}};
+test('red overlay follows the authoritative thirty-second deadline on the existing outer ring',()=>{
+  const state=structuredClone(data);
+  state.config.automatic_detection={stage_id:'inside',promote_seconds:30};
+  Object.assign(state.status,{active:true,level:3,stage_id:'inside',rule_progress:[{stage_id:'inside',current:3,target:3,next_level_at:130}]});
+  for(const [now,expected] of [[100,0],[107.5,.25],[115,.5],[129,29/30],[130,1]])assert.equal(promotionProgress(state,now),expected);
+  const html=statusRings(state,115);
+  assert.match(html,/class="promotion-ring" data-promotion-ring/);
+  assert.match(html,/data-promotion-ring[^>]*r="61"/);
+  assert.doesNotMatch(html,/<progress/);
+  state.status.rule_progress[0].next_level_at=null;
+  assert.equal(promotionProgress(state,115),null);
+  assert.doesNotMatch(statusRings(state,115),/data-promotion-ring/);
+  state.status.rule_progress[0].next_level_at=130;
+  state.status.active=false;
+  assert.equal(promotionProgress(state,115),null);
+  state.status.active=true;state.status.stage_id='four';
+  assert.equal(promotionProgress(state,115),null);
+});
+test('simultaneous full indoor areas animate toward the earliest real promotion',()=>{
+  const state=structuredClone(data);
+  state.config.automatic_detection={stage_id:'inside',promote_seconds:30};
+  Object.assign(state.status,{active:true,level:3,stage_id:'inside',rule_progress:[{stage_id:'inside',current:3,target:3,next_level_at:150},{stage_id:'inside',current:3,target:3,next_level_at:130}]});
+  assert.equal(promotionProgress(state,115),.5);
+});
 test("level and confirmation rings have independent normalized progress",()=>{
   for(const n of [1,2,3]){
     const state=structuredClone(data);state.status.rule_progress=[{stage_id:"outside",current:n,target:3}];
@@ -64,4 +88,25 @@ test("disarmed inactive status strictly enforces level 0 and empty rings",()=>{
   assert.match(html,/Deaktiviert/);
   assert.doesNotMatch(html,/Bestätigungsgrad/);
   assert.doesNotMatch(html,/grade-caption/);
+});
+
+test('LVL 4 uses the existing rings for escalation time instead of x/3',()=>{
+  const state=structuredClone(data);
+  Object.assign(state.status,{active:true,profile_id:'away',level:4,stage_id:'alarm',stage_name:'Alarm',alarm:{stage_id:'alarm',started_at:100,deadline:400,duration:300,escalated:false}});
+  const html=statusRings(state,250);
+  assert.match(html,/LVL 5 in 02:30/);
+  assert.match(html,/data-promotion-ring/);
+  assert.doesNotMatch(html,/Bestätigungsgrad|<progress/);
+  assert.equal(promotionProgress(state,250),.5);
+  state.status.alarm.escalated=true;
+  assert.equal(promotionProgress(state,401),null);
+});
+
+test("startup delay fills only the existing red ring and shows the remaining time",()=>{
+  const d={config:{settings:{startup_delay_seconds:60},stages:[{name:"Aus"},{name:"Sicher"}]},status:{active:true,profile_id:"away",mode:"active",stage_id:"1",stage_name:"Sicher",level:1,arming_started_at:100,arming_until:160,rule_progress:[]}};
+  const html=statusRings(d,130);
+  assert.match(html,/data-promotion-ring/);assert.match(html,/Start in 00:30/);
+  assert.doesNotMatch(html,/<progress|class="card"/);
+  assert.equal(promotionProgress(d,100),0);assert.equal(promotionProgress(d,130),.5);assert.equal(promotionProgress(d,160),1);
+  d.status.active=false;assert.equal(promotionProgress(d,130),null);
 });

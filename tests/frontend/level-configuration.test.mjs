@@ -1,6 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {actionsForProfile,ruleSummary} from "../../custom_components/iqalarm/frontend/level-configuration.js";
+import {actionsForProfile,ruleSummary,renderHaProfileSettings} from "../../custom_components/iqalarm/frontend/level-configuration.js";
+
+test("HA custom selector offers additional profiles and keeps stable standard associations",()=>{
+  const panel={data:{config:{ha_profile_ids:{armed_home:"guests",armed_night:"night",armed_away:"away",armed_vacation:"trip",armed_custom_bypass:"extra2"},profiles:{guests:{name:"Gästeabend"},night:{name:"Nachtschutz"},away:{name:"Unterwegs"},trip:{name:"Reise"},extra1:{name:"Werkstatt"},extra2:{name:"Garage <EG>"},disabled:{name:"Beobachtung",reactions_enabled:false}}}}};
+  const html=renderHaProfileSettings(panel);
+  assert.match(html,/value="extra2" selected/);assert.match(html,/Garage &lt;EG&gt;/);
+  assert.match(html,/value="extra1"/);assert.match(html,/value="disabled" disabled/);
+  assert.doesNotMatch(html,/value="guests"|value="night"|value="away"|value="trip"/);
+  assert.match(html,/Kein Zusatzprofil ausgewählt/);
+});
 
 test("profile stage lists contain only the selected mode's own or explicitly shared actions",()=>{
   const config={actions:{n:{id:"n",level:"2",profile_ids:["night"]},a:{id:"a",level:"2",profile_ids:["away"]},shared:{id:"shared",level:"2",profile_ids:["night","away"]},other:{id:"other",level:"3",profile_ids:["night"]},unused:{id:"unused",level:"2",profile_ids:[]}}};
