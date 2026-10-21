@@ -149,6 +149,19 @@ export function alarmProgress(data,now) {
   if(!a||a.escalated||data.status.stage_id!==a.stage_id||!data.status.active||!(a.duration>0))return null;
   return Math.max(0,Math.min(1,1-(a.deadline-now)/a.duration));
 }
+export function recognitionDisplayData(data,now=Date.now()/1000) {
+  const original=data.status;
+  const status={...original,rule_progress:projectPersonProgress(original.rule_progress,now,data.config.room_connections||[])};
+  const display={...data,status},rooms=Object.values(status.rooms||{});
+  if(!status.active||!rooms.length||!rooms.every(room=>Object.hasOwn(room,"recognitions")))return display;
+  if(status.confirmed||!rooms.some(room=>room.recognitions.some(item=>item.level===status.level)))return display;
+  const remaining=rooms.flatMap(room=>room.recognitions.filter(item=>item.expires_at==null||item.expires_at>now));
+  const baseline=data.config.stages.findIndex(stage=>stage.id===data.config.secure_stage_id);
+  const level=Math.max(baseline,...remaining.map(item=>item.level));
+  if(level===status.level||level<0)return display;
+  const stage=data.config.stages[level];
+  return {...display,status:{...status,level,stage_id:stage.id,stage_name:stage.name,stage_color:stage.color}};
+}
 export function ringValues(data,now=Date.now()/1000) {
   const status=data.status;
   const isInactive = status.active === false || status.mode === "inactive" || status.profile_id === null;

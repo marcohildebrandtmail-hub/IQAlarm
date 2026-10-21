@@ -22,6 +22,7 @@ def test_release_zip_contains_entire_buildless_integration(tmp_path):
     )
     with zipfile.ZipFile(archive) as contents:
         assert "custom_components/iqalarm/frontend/iqalarm-panel.js" in contents.namelist()
+        assert "custom_components/iqalarm/frontend/iqalarm-card.js" in contents.namelist()
         assert "custom_components/iqalarm/translations/de.json" in contents.namelist()
         assert all(
             n.startswith("custom_components/iqalarm/") and "__pycache__" not in n

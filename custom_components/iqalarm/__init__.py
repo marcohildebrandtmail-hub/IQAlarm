@@ -150,6 +150,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         panel_registered = True
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        card_url = f"/iqalarm_static/iqalarm-card.js?v={VERSION}"
+        frontend.add_extra_js_url(hass, card_url)
+        data["card_module_url"] = card_url
     except Exception:
         if panel_registered:
             frontend.async_remove_panel(hass, DOMAIN)
@@ -164,6 +167,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         return False
     await entry.runtime_data.stop()
+    if card_url := hass.data[DOMAIN].pop("card_module_url", None):
+        frontend.remove_extra_js_url(hass, card_url)
     frontend.async_remove_panel(hass, DOMAIN)
     hass.data[DOMAIN].pop("runtime", None)
     entry.runtime_data.publish()

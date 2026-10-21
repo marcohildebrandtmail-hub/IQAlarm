@@ -210,6 +210,28 @@ Das Logbuch erklärt passende Auslöseketten und abgelehnte räumliche Kombinati
 
 ## Unabhängige IQAlarm-Profile
 
+### IQAlarm-Dashboard-Karte
+
+Die kompakte Karte **IQAlarm** zeigt den vorhandenen Levelring, den Profilstatus,
+den Bestätigungsgrad beziehungsweise das Überwachungsrisiko und die laufenden
+Start-/Eskalationstimer. Sie enthält keine Bedientasten und ruft keine
+Geräteaktionen auf. Darstellung und Ablaufzeiten verwenden dieselben Funktionen
+und Live-Daten wie das IQAlarm-Panel. Bei Verbindungsverlust wird der alte Status
+ausgeblendet, bis wieder aktuelle Daten vorliegen.
+
+Nach Installation und Neuladen des Browsers steht sie unter **Dashboard bearbeiten
+→ Karte hinzufügen → IQAlarm** zur Auswahl. Die Integration lädt das Kartenmodul
+automatisch; ein zusätzlicher Ressourceneintrag ist nicht erforderlich. Alternativ:
+
+```yaml
+type: custom:iqalarm-card
+```
+
+Die Karte verwendet die bestehende, auf HA-Administratoren beschränkte
+IQAlarm-Live-Schnittstelle. Die Zugriffsrechte werden dadurch nicht erweitert.
+
+### Profile
+
 Profile haben freie Namen und definieren die gesamte Steuerung. Die Startvorgaben sind in dieser Reihenfolge **Nacht, Abwesend, Urlaub und Besuch**. Sie bleiben bearbeitbar und löschbar. Die Zuordnung zu nativen HA-Bedientasten wählt ein Profil aus; sie verändert keine Sensoren oder Alarmregeln.
 
 Jedes Profil wählt seine verwendeten Levelregeln, erlaubt oder unterdrückt Geräteaktionen und kann eine eigene Scharfschaltverzögerung sowie Anwesenheitssimulation verwenden. Sensoren, räumliche Bedingungen und Bestätigungsfenster stehen ausschließlich an der Levelregel. Die Aktionen jedes Modus werden im selben Profil ganz unten gepflegt.

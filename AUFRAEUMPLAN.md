@@ -89,6 +89,17 @@ Direkt beauftragt und lokal umgesetzt, noch nicht installiert:
 
 ## Prüfung
 
+Nachtrag Dashboard-Karte (21.10.2026): Kompakte, ausdrücklich ohne Bedientasten
+beauftragte IQAlarm-Karte mit dem bestehenden Ring, Profilstatus, Bestätigungsgrad
+und Timern. Geteilte Darstellungsfunktionen mit dem Panel; bei Verbindungsverlust
+keine veraltete Sicherheitsanzeige. Automatisch als HA-Frontend-Modul registriert.
+Nur lokal vorbereitet; kein produktives Dashboard geändert und nicht installiert.
+721 Python-Tests, 138 Frontend-Funktionstests und 60 lokale Browserfälle
+bestanden (11 Kartenfälle sowie 49 bestehende Live-/Aufräumfälle). Geprüft sind
+helle/dunkle und schmale Darstellung, Timer mit Serverzeit, Wiederverbindung,
+fehlende Berechtigung, begrenzte Wiederholversuche und sauberes Abmelden.
+Lokale Vorschau geprüft; Installationspaket 2.15.0 aktualisiert.
+
 Nachtrag native HA-Profile (21.10.2026): 721 Python-Tests, 132 Frontend-
 Funktionstests und 29 lokale Browserfälle bestanden. Geprüft sind exakte
 Profilauswahl aller fünf nativen Befehle, Statusmeldungen, Umbenennen/Sortieren,

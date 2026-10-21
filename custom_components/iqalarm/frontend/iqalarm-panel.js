@@ -2,7 +2,7 @@ import {sensorTypeField, sensorTypeChoices, setSensorType, sensorListGroup, isSe
 import {insideRoomChoices, outsideInsideControls, outsideInsideSVG, renderOutsideInside, setOutsideInside} from "./outside-inside.js?v=2.15.0";
 import {openRobotDialog, readRobotForm, renderCoverage, updateRobotStatuses} from "./robots.js?v=2.15.0";
 import {TOPOLOGY_CSS, connectionEditor, imageControls, roomConnections, setRoomConnection} from "./floorplan-topology.js?v=2.15.0";
-import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings, triggerRows, projectPersonProgress} from "./live-view.js?v=2.15.0";
+import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings, triggerRows, recognitionDisplayData} from "./live-view.js?v=2.15.0";
 import {RULE_SOURCES_CSS, updateRuleSources} from "./rule-sources.js?v=2.15.0";
 import {bindIconFields, iconField, MDI_ICON, roomSymbol, sensorSymbol, symbolHTML} from "./display-icons.js?v=2.15.0";
 import {DraftJournal} from "./floorplan-drafts.js?v=2.15.0";
@@ -1279,17 +1279,7 @@ class IQAlarmPanel extends HTMLElement {
   }
 
   _recognitionDisplayData(now=Date.now()/1000) {
-    const original=this.data.status;
-    const status={...original,rule_progress:projectPersonProgress(original.rule_progress,now+(this._displayClockOffset||0),this.data.config.room_connections||[])};
-    const data={...this.data,status},rooms=Object.values(status.rooms||{});
-    if(!status.active||!rooms.length||!rooms.every(room=>Object.hasOwn(room,"recognitions")))return data;
-    const remaining=Object.keys(status.rooms).map(room=>this._armedRoomRecognition(room,now)).filter(Boolean);
-    const baseline=this.data.config.stages.findIndex(stage=>stage.id===this.data.config.secure_stage_id);
-    if(status.confirmed||!rooms.some(room=>room.recognitions.some(item=>item.level===status.level)))return data;
-    const level=Math.max(baseline,...remaining.map(item=>item.level));
-    if(level===status.level||level<0)return data;
-    const stage=this.data.config.stages[level];
-    return {...data,status:{...status,level,stage_id:stage.id,stage_name:stage.name,stage_color:stage.color}};
+    return recognitionDisplayData(this.data,now+(this._displayClockOffset||0));
   }
 
   _scheduleRecognitionRefresh() {
