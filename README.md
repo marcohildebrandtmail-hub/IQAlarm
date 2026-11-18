@@ -1,5 +1,11 @@
 # IQAlarm
 
+### Version 2.15.3 · Einzelne Grundrisse als Karte auswählen
+
+Im visuellen Karteneditor kann unter **Grundriss** eine einzelne Etage oder
+**Alle Grundrisse** gewählt werden. Mehrere Karten speichern ihre Auswahl
+unabhängig, zum Beispiel Erdgeschoss und Obergeschoss nebeneinander.
+
 ### Version 2.15.2 · Vollständiger geprüfter Anlagenstand
 
 Enthält die Scharfschaltkorrektur aus 2.15.1 und erhält die bereits eingesetzten

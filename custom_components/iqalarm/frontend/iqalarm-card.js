@@ -1,5 +1,5 @@
 /* Read-only Lovelace card. Rendering and timer projection are shared with IQAlarm. */
-import {LIVE_VIEW_CSS,patchHTML,recognitionDisplayData,statusRings} from "./live-view.js?v=2.15.2";
+import {LIVE_VIEW_CSS,patchHTML,recognitionDisplayData,statusRings} from "./live-view.js?v=2.15.3";
 
 const esc=value=>String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const css=`
@@ -136,13 +136,55 @@ export function selectedFloorplans(data,selection="") {
   return byName;
 }
 
+export class IQAlarmFloorplanCardEditor extends HTMLElement {
+  constructor() {
+    super();this.attachShadow({mode:"open"});this._plans=[];this._generation=0;
+    this.shadowRoot.innerHTML='<style>:host{display:block;padding:12px 0;color:var(--primary-text-color)}label{display:grid;gap:8px;font:inherit}select{box-sizing:border-box;width:100%;padding:12px;font:inherit;color:inherit;background:var(--card-background-color,#fff);border:1px solid var(--divider-color,#ccc);border-radius:4px}</style><label>Grundriss<select aria-label="Grundriss"></select></label>';
+    this.shadowRoot.querySelector("select").addEventListener("change",event=>{
+      if(!this._config)return;
+      const config={...this._config};
+      if(event.target.value==="all")delete config.floorplan;else config.floorplan=event.target.value;
+      this._config=config;
+      this.dispatchEvent(new CustomEvent("config-changed",{detail:{config},bubbles:true,composed:true}));
+    });
+  }
+  setConfig(config){this._config={...config};this._render();}
+  set hass(value){
+    const changed=this._connection!==value?.connection;
+    this._hass=value;
+    if(changed){this._connection=value?.connection;this._loaded=false;this._generation++;this._plans=[];}
+    this._render();this._load();
+  }
+  connectedCallback(){this._render();this._load();}
+  async _load(){
+    if(this._loaded||!this._hass?.callWS)return;
+    this._loaded=true;const generation=this._generation;
+    try{
+      const data=await this._hass.callWS({type:"iqalarm/get"});
+      if(generation!==this._generation)return;
+      this._plans=Object.values(data.config?.floorplans||{});this._render();
+    }catch{if(generation===this._generation)this._loaded=false;}
+  }
+  _render(){
+    const select=this.shadowRoot.querySelector("select");
+    const options=[{value:"all",label:"Alle Grundrisse"},...this._plans.map(plan=>({value:plan.id,label:plan.name}))];
+    const configured=this._config?.floorplan||"all";
+    const selected=this._plans.find(plan=>plan.id===configured)||this._plans.filter(plan=>plan.name===configured).length===1&&this._plans.find(plan=>plan.name===configured);
+    const value=selected?.id||configured;
+    if(!options.some(option=>option.value===value))options.push({value,label:configured});
+    select.replaceChildren(...options.map(item=>{const option=document.createElement("option");option.value=item.value;option.textContent=item.label;return option;}));
+    select.value=value;
+  }
+}
+
 export class IQAlarmFloorplanCard extends IQAlarmCard {
   constructor() {
     super();this._images=new Map();this._imageRequests=new Map();this._imageFailures=new Set();this._imageGeneration=0;
     this.shadowRoot.querySelector("style").textContent=floorplanCss;
   }
   static get cardType(){return "custom:iqalarm-floorplan-card";}
-  static getConfigForm(){return {schema:[{name:"floorplan",label:"Etage (Name oder ID; leer: alle)",selector:{text:{}}}]};}
+  static getConfigForm=undefined;
+  static getConfigElement(){return document.createElement("iqalarm-floorplan-card-editor");}
   getCardSize(){return 8;}
   getGridOptions(){return {columns:12,rows:"auto",min_columns:6};}
   setConfig(config) {
@@ -180,7 +222,7 @@ export class IQAlarmFloorplanCard extends IQAlarmCard {
     if(!this._live||!this._data){patchHTML(host,`<p class="message" role="status">${esc(this._message||"Verbinde mit IQAlarm …")}</p>`);return;}
     if(!this._floorplanRenderer){
       if(!this._rendererPromise&&!this._rendererFailed){
-        this._rendererPromise=import("./iqalarm-panel.js?v=2.15.2").then(module=>{
+        this._rendererPromise=import("./iqalarm-panel.js?v=2.15.3").then(module=>{
           this._floorplanRenderer=module;this.shadowRoot.querySelector("style").textContent=LIVE_VIEW_CSS+module.FLOORPLAN_VIEW_CSS+floorplanCss;
           if(this.isConnected)this._render();
         }).catch(()=>{this._rendererFailed=true;if(this.isConnected)this._render();});
@@ -200,6 +242,7 @@ export class IQAlarmFloorplanCard extends IQAlarmCard {
 }
 
 if(!customElements.get("iqalarm-card"))customElements.define("iqalarm-card",IQAlarmCard);
+if(!customElements.get("iqalarm-floorplan-card-editor"))customElements.define("iqalarm-floorplan-card-editor",IQAlarmFloorplanCardEditor);
 if(!customElements.get("iqalarm-floorplan-card"))customElements.define("iqalarm-floorplan-card",IQAlarmFloorplanCard);
 window.customCards=window.customCards||[];
 if(!window.customCards.some(card=>card.type==="iqalarm-card"))window.customCards.push({

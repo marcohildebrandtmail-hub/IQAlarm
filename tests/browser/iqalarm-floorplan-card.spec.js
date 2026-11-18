@@ -57,6 +57,29 @@ test('a floor can be selected by name or ID and missing floors never silently sh
   expect(await page.evaluate(()=>window.requests.length)).toBe(1);
 });
 
+test('visual editor selects one floor independently per card and preserves other settings',async({page})=>{
+  await page.evaluate(()=>{
+    const Card=customElements.get('iqalarm-floorplan-card');
+    window.changes=[];
+    for(const [index,floorplan] of ['Obergeschoss','eg'].entries()){
+      const editor=Card.getConfigElement();editor.id=`editor${index}`;
+      editor.setConfig({type:'custom:iqalarm-floorplan-card',floorplan,grid_options:{columns:6}});
+      editor.addEventListener('config-changed',event=>window.changes.push({index,config:event.detail.config}));
+      editor.hass={connection:window.target,callWS:async()=>structuredClone(window.data)};
+      document.body.append(editor);
+    }
+  });
+  const first=page.locator('#editor0').getByLabel('Grundriss'),second=page.locator('#editor1').getByLabel('Grundriss');
+  await expect(first.locator('option')).toHaveText(['Alle Grundrisse','Erdgeschoss','Obergeschoss']);
+  await expect(first).toHaveValue('og');await expect(second).toHaveValue('eg');
+  expect(await page.evaluate(()=>window.changes)).toEqual([]);
+  await first.selectOption('eg');await expect(second).toHaveValue('eg');
+  expect((await page.evaluate(()=>window.changes))[0]).toEqual({index:0,config:{type:'custom:iqalarm-floorplan-card',floorplan:'eg',grid_options:{columns:6}}});
+  await second.selectOption('all');
+  expect((await page.evaluate(()=>window.changes))[1].config).toEqual({type:'custom:iqalarm-floorplan-card',grid_options:{columns:6}});
+  await first.selectOption('og');await expect(second).toHaveValue('all');
+});
+
 test('server-clock activity expires in place without any backend update',async({page})=>{
   const card=page.locator('iqalarm-floorplan-card');
   await page.evaluate(()=>{
