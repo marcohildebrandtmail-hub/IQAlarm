@@ -16,13 +16,13 @@ test("desktop cockpit and real room/sensor/action/profile CRUD", async ({page}) 
   await page.getByRole("tab", {name: "Räume & Grundriss"}).click();
   await page.getByRole("button", {name: "Raum anlegen"}).click();
   await page.getByLabel("Raumname", {exact: true}).fill("Browser Büro");
-  await page.getByRole("button", {name: "Speichern", exact: true}).click();
+  await page.getByRole("dialog").getByRole("button", {name: "Speichern", exact: true}).click();
   await expect(page.getByRole("combobox", {name: "Außenbereich", exact: true}).locator("option").filter({hasText:"Browser Büro"})).toHaveCount(1);
   await page.getByRole("tab", {name: "Kameras & Sensoren"}).click();
   await expect(page.getByRole("heading", {name: "Kameras & Sensoren", exact: true})).toBeVisible();
   await page.getByRole("button", {name: "binary_sensor.window bearbeiten", exact: true}).click();
   await page.getByLabel("Anzeigename", {exact: true}).fill("Browser Fenster");
-  await page.getByRole("button", {name: "Speichern", exact: true}).click();
+  await page.getByRole("dialog").getByRole("button", {name: "Speichern", exact: true}).click();
   await expect(page.getByText("Browser Fenster", {exact: true}).first()).toBeVisible();
   await page.getByRole("tab", {name: "Profile & System"}).click();
   await page.getByLabel("Korrelationsfenster (Sekunden)", {exact: true}).fill("58");
@@ -32,7 +32,7 @@ test("desktop cockpit and real room/sensor/action/profile CRUD", async ({page}) 
   await page.getByRole("button", {name: "Aktion hinzufügen"}).click();
   await page.getByLabel(/^Ziel \/ Dienst/).fill("notify.test_phone");
   await page.getByLabel(/^Nachricht/).fill("Browser-Test {{room}} {{sensor}}");
-  await page.getByRole("button", {name: "Speichern", exact: true}).click();
+  await page.getByRole("dialog").getByRole("button", {name: "Speichern", exact: true}).click();
   await expect(page.getByText("Browser-Test {{room}} {{sensor}}", {exact: true})).toBeVisible();
   await page.getByRole("button", {name: "Stufe 1 trocken testen", exact: true}).click();
   await expect(page.getByText("Trockenlauf abgeschlossen. Keine Geräte wurden geschaltet.")).toBeVisible();
@@ -45,7 +45,7 @@ test("desktop cockpit and real room/sensor/action/profile CRUD", async ({page}) 
   await page.getByRole("tab", {name: "Live-Status"}).click();
   await page.getByRole("button", {name: "Aus", exact: true}).click();
   await page.getByLabel("PIN", {exact: true}).fill("2468");
-  await page.getByRole("button", {name: "Speichern", exact: true}).click();
+  await page.getByRole("dialog").getByRole("button", {name: "Speichern", exact: true}).click();
   await expect(page.getByRole("heading", {name: "Anlage aus", exact: true})).toBeVisible();
   expect(errors).toEqual([]);
   fs.mkdirSync("test-results", {recursive: true});
