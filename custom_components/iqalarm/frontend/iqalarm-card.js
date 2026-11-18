@@ -1,5 +1,5 @@
 /* Read-only Lovelace card. Rendering and timer projection are shared with IQAlarm. */
-import {LIVE_VIEW_CSS,patchHTML,recognitionDisplayData,statusRings} from "./live-view.js?v=2.15.0";
+import {LIVE_VIEW_CSS,patchHTML,recognitionDisplayData,statusRings} from "./live-view.js?v=2.15.1";
 
 const esc=value=>String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const css=`

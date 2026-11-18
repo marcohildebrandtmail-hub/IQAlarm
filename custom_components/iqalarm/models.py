@@ -576,7 +576,8 @@ class Settings:
     startup_delay_seconds: int = 60
     diagnose_disarmed: bool = True
     block_open_on_arm: bool = True
-    block_unavailable_on_arm: bool = True
+    block_unavailable_on_arm: bool = False
+    arming_policy_version: int = 1
     auto_camera_snapshot: bool = True
     auto_camera_record: bool = False
     retention_days: int = 7
@@ -617,6 +618,8 @@ class Settings:
         ):
             if type(getattr(self, key)) is not bool:
                 raise ValueError(f"{key} muss boolesch sein")
+        if type(self.arming_policy_version) is not int or self.arming_policy_version != 1:
+            raise ValueError("Nicht unterstützte Scharfschaltversion")
         number(self.retention_days, 1, 90, "Aufbewahrung")
         number(self.simulation_start, 0, 23, "Simulationsbeginn")
         number(self.simulation_end, 1, 24, "Simulationsende")
@@ -1454,6 +1457,16 @@ def migrate_configuration(data: dict) -> dict:
     settings = result.setdefault("settings", {})
     if not isinstance(settings, dict):
         raise ValueError("Einstellungen müssen ein Objekt sein")
+    arming_policy = settings.get("arming_policy_version", 0)
+    if type(arming_policy) is not int or arming_policy not in (0, 1):
+        raise ValueError("Nicht unterstützte Scharfschaltversion")
+    if arming_policy == 0:
+        # Old releases defaulted to blocking the entire system for one outage.
+        # Migrate once; a deliberate opt-in after this upgrade stays effective.
+        settings.setdefault("block_unavailable_on_arm", False)
+        if settings["block_unavailable_on_arm"] is True:
+            settings["block_unavailable_on_arm"] = False
+        settings["arming_policy_version"] = 1
     if settings.get("observation_profile_id") == "observe":
         settings["observation_profile_id"] = "live"
     settings.setdefault("quiet_disarmed_floorplan", True)

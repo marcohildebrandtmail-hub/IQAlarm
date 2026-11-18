@@ -201,6 +201,7 @@ def test_arming_blockers_and_failed_mode_is_rolled_back(engine):
 
 
 def test_unavailable_arm_blocker(engine):
+    engine.config.settings.block_unavailable_on_arm = True
     engine.seed("binary_sensor.window", None)
     with pytest.raises(ValueError, match="nicht verfügbar"):
         engine.set_mode("armed_away", 100)

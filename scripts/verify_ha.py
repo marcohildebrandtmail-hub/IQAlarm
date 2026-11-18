@@ -349,6 +349,9 @@ async def verify(hass, target) -> str:
 
     await verify_free_rules(hass, entry, calls)
     await verify_rule_storage_migration(hass, entry)
+    from verify_arming_availability import verify_arming_availability
+
+    await verify_arming_availability(hass, entry)
     runtime = entry.runtime_data
 
     hass.states.async_set("binary_sensor.window", "off")

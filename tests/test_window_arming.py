@@ -171,10 +171,16 @@ def test_open_doors_still_block_and_failed_activation_leaves_no_window_exception
     assert engine.profile_id is None and not engine.ignored_windows
 
 
-def test_missing_window_connection_is_not_assumed_to_be_ventilation():
+@pytest.mark.parametrize("strict", [False, True])
+def test_missing_window_connection_is_not_assumed_to_be_ventilation(strict):
     engine = make_engine(None)
-    with pytest.raises(ValueError, match="nicht verfügbar"):
+    engine.config.settings.block_unavailable_on_arm = strict
+    if strict:
+        with pytest.raises(ValueError, match="nicht verfügbar"):
+            arm(engine)
+    else:
         arm(engine)
+        assert engine.reactions_enabled
     assert not engine.ignored_windows
 
 

@@ -1,5 +1,16 @@
 # IQAlarm
 
+### Version 2.15.1 · Scharfschalten trotz Sensorausfall
+
+Ein nicht verfügbarer Sensor verhindert standardmäßig nicht mehr die gesamte
+Scharfschaltung. Bestehende Konfigurationen werden beim ersten Start einmalig
+umgestellt und gespeichert. Die übrigen Melder bleiben aktiv; nach Wiederkehr
+wird der ausgefallene Sensor automatisch wieder ausgewertet. Die Prüfung
+offener Türen/Tore bleibt bestehen. Eine nach dem Update bewusst eingeschaltete
+Verfügbarkeitssperre bleibt bei späteren Neustarts erhalten.
+
+Details und Update-Hinweise: [RELEASE-2.15.1.md](RELEASE-2.15.1.md).
+
 
 ### Version 2.15.0 · Aufräumen der Oberfläche
 
@@ -128,7 +139,7 @@ Beim Scharfschalten markiert IQAlarm bereits offene oder gekippte, überwachte F
 
 Ignorierte Fenster liefern keine Öffnungswarnung, Prell-Auslösung, Alarmbestätigung oder Bestätigungsgrade. Der tatsächliche Zustand bleibt für die technische Fensteransicht erhalten. In der Übersicht steht **Ignoriert**; das Überwachungsrisiko zählt automatisch einen Punkt je Fenster, zusammen mit Roboter-Ausnahmen höchstens 3/3. Kameras, Bewegungsmelder und andere Kontakte werden weiter ausgewertet. Fenster, die beim Scharfschalten geschlossen waren, bleiben normal überwacht. Bei ausgeschalteter Anlage zeigen die Raumkarten keine redundante Alarmstufen-Plakette; die Sensorzustände bleiben sichtbar.
 
-Die Erkennung nutzt zusammengeführte IQAlarm-Fenster und die Home-Assistant-Geräteklasse **window**, einschließlich einer im Entitätsregister gewählten Zuordnung. Der Name ändert diese Einordnung nicht: Eine als Fenster zugeordnete Terrassentür gilt als Fenster. Ein einzelner Kontakt mit Geräteklasse **door** wird als Tür behandelt. Türschlösser, unbekannte und ausgefallene Fenster werden nicht als bereits offene Fenster angenommen. Die vorhandene Scharfschaltprüfung für Türen/Tore und fehlende Verbindungen bleibt bestehen.
+Die Erkennung nutzt zusammengeführte IQAlarm-Fenster und die Home-Assistant-Geräteklasse **window**, einschließlich einer im Entitätsregister gewählten Zuordnung. Der Name ändert diese Einordnung nicht: Eine als Fenster zugeordnete Terrassentür gilt als Fenster. Ein einzelner Kontakt mit Geräteklasse **door** wird als Tür behandelt. Türschlösser, unbekannte und ausgefallene Fenster werden nicht als bereits offene Fenster angenommen. Die Scharfschaltprüfung für Türen/Tore bleibt bestehen. Nicht verfügbare Sensoren blockieren standardmäßig nicht; eine nach dem Update bewusst aktivierte Verfügbarkeitssperre wird weiterhin berücksichtigt.
 
 ### Roboter-Ausnahmen ab 2.10.0
 
@@ -293,7 +304,7 @@ Unterstützt: **Home Assistant ab 2025.12.0**, geprüft mit 2025.12.5 und 2026.1
 3. Unter **Einstellungen → Geräte & Dienste → Integration hinzufügen → IQAlarm** einrichten. Optional eine 4–12-stellige PIN zum Entschärfen vergeben.
 4. Im Seitenmenü **IQAlarm** öffnen. Das Konfigurationspanel ist Administratoren vorbehalten.
 5. Räume aus HA importieren oder anlegen und Sensoren sowie Personenkameras zuweisen. Der Import übernimmt zunächst nur die Räume; Sensorrollen werden bewusst zugeordnet.
-6. Unter **Profile & System** Zeiten und Regeln kontrollieren. Erlaubte Bestätigungswege ausdrücklich auswählen. Standardmäßig verhindern offene Kontakte und nicht verfügbare Sensoren das Scharfschalten; Fenstergriff-Informationen blockieren nicht.
+6. Unter **Profile & System** Zeiten und Regeln kontrollieren. Erlaubte Bestätigungswege ausdrücklich auswählen. Standardmäßig verhindern offene Türen/Tore das Scharfschalten; nicht verfügbare Sensoren und Fenstergriff-Informationen blockieren nicht. Beim Update auf 2.15.1 wird die bisherige Verfügbarkeitssperre einmalig deaktiviert.
 7. Unter **Level-Konfiguration** die eigenen Dienste und Geräte zuweisen. Es werden keine Sirenen oder Benachrichtigungsziele automatisch ausgewählt.
 8. Trockenläufe ausführen und anschließend mit bewusst gewähltem realem Aktionstest die eigenen Geräte prüfen.
 
