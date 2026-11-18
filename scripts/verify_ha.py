@@ -448,7 +448,10 @@ async def verify_profiles(hass, entry, admin_token, user_token, calls) -> None:
             assert (await request("arm_profile", profile_id="guests"))["success"]
             await hass.async_block_till_done()
             entity = hass.states.get("alarm_control_panel.iqalarm")
-            assert entity.state == "armed_away" and entity.attributes["profile_id"] == "guests"
+            assert (
+                entity.state == "armed_custom_bypass"
+                and entity.attributes["profile_id"] == "guests"
+            )
             assert entity.attributes["profile_name"] == "Nacht mit Gästen"
             switched = await request("set_mode", mode="armed_night")
             assert not switched["success"] and entry.runtime_data.engine.profile_id == "guests"
