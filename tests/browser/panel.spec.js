@@ -19,7 +19,7 @@ test("desktop cockpit and real room/sensor/action/profile CRUD", async ({page}) 
   await page.getByRole("button", {name: "Speichern", exact: true}).click();
   await expect(page.getByRole("combobox", {name: "Außenbereich", exact: true}).locator("option").filter({hasText:"Browser Büro"})).toHaveCount(1);
   await page.getByRole("tab", {name: "Kameras & Sensoren"}).click();
-  await expect(page.getByRole("heading", {name: /Kameras & Außensensoren/})).toBeVisible();
+  await expect(page.getByRole("heading", {name: "Kameras & Sensoren", exact: true})).toBeVisible();
   await page.getByRole("button", {name: "binary_sensor.window bearbeiten", exact: true}).click();
   await page.getByLabel("Anzeigename", {exact: true}).fill("Browser Fenster");
   await page.getByRole("button", {name: "Speichern", exact: true}).click();

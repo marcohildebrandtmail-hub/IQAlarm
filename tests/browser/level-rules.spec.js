@@ -32,12 +32,15 @@ test.afterEach(async({page})=>{
 });
 
 test("free level conditions select entities, source count, timing and profiles, then evaluate",async({page})=>{
+  const setup=await ws(page,"get");
+  setup.config.stages.push({id:"free_qa",name:"Freie Regel QA",color:"#bc2929"});
+  await save(page,setup.config);await page.reload();
   await page.getByRole("tab",{name:"Profile & System"}).click();
   await expect(page.getByRole("heading",{name:"Verwendete Levelregeln"})).toBeVisible();
   await expect(page.getByLabel("Vorfeld auswerten",{exact:true})).toHaveCount(0);
   await expect(page.getByLabel("Alle Sensoren einbeziehen",{exact:true})).toHaveCount(0);
   await expect(page.getByLabel("Korrelationsfenster (Sekunden)",{exact:true})).toHaveCount(0);
-  await page.getByRole("tab",{name:"Level-Konfiguration"}).click();await page.locator('[data-stage="3"]').click();
+  await page.getByRole("tab",{name:"Level-Konfiguration"}).click();await page.locator('[data-stage="free_qa"]').click();
   await page.getByRole("button",{name:"Regel hinzufügen",exact:true}).click();
   await page.getByLabel("Regelname",{exact:true}).fill("Zwei Außenquellen");
   await page.getByLabel("Sensoren für Bedingung 1",{exact:true}).selectOption([ids.person,ids.person2,ids.outside]);
@@ -54,13 +57,13 @@ test("free level conditions select entities, source count, timing and profiles, 
   const saved=await ws(page,"get"),rule=Object.values(saved.config.rules).find(r=>r.name==="Zwei Außenquellen");
   expect(rule.conditions[0].count).toBe(2);expect(rule.window_seconds).toBe(30);
   expect(saved.config.profiles.qa_night.rule_ids).toContain(rule.id);expect(saved.config.profiles.qa_away.rule_ids).not.toContain(rule.id);
-  await page.reload();await page.getByRole("tab",{name:"Level-Konfiguration"}).click();await page.locator('[data-stage="3"]').click();
+  await page.reload();await page.getByRole("tab",{name:"Level-Konfiguration"}).click();await page.locator('[data-stage="free_qa"]').click();
   await expect(page.getByRole("heading",{name:"Zwei Außenquellen",exact:true})).toBeVisible();
   await page.screenshot({path:"test-results/free-level-rules.png",fullPage:true});
   await ws(page,"set_mode",{mode:"qa_night"});await state(page,ids.person,"on");
   await expect.poll(async()=>(await ws(page,"get")).status.level).toBe(2);
   await state(page,ids.outside,"on");
-  await expect.poll(async()=>(await ws(page,"get")).status.level).toBe(3);
+  await expect.poll(async()=>(await ws(page,"get")).status.level).toBe(6);
   expect((await ws(page,"get")).status.confirmed).toBe(false);
 });
 
@@ -164,6 +167,7 @@ test("confirmation grade remembers three sources and requires a later opening",a
   expect(parent.confirmation_thresholds).toEqual([1,2,3]);expect(parent.confirmation_decay_seconds).toEqual([60,60,60]);
   data.config.stages.push({id:"confirmed_qa",name:"Bestätigungsregel QA",color:"#8000ff",requires_confirmation:true,allow_loud:true,latch:true});
   await save(page,data.config);
+  await page.reload();await page.getByRole("tab",{name:"Level-Konfiguration"}).click();
   await page.locator('[data-stage="confirmed_qa"]').click();
   await page.getByRole("button",{name:"Regel hinzufügen",exact:true}).click();
   await dialog.getByLabel("Regelname",{exact:true}).fill("Nur nach bestätigtem Vorfeld");
