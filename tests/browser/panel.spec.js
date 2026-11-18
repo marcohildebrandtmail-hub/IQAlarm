@@ -310,6 +310,10 @@ test("direct upload opens file picker and room proposals remain editable until s
   await page.keyboard.press("ArrowRight");
   expect(Number(await handle.getAttribute("cx"))).toBeGreaterThan(keyboardBefore);
   await page.getByRole("button",{name:"Bereich speichern",exact:true}).click();
+  await expect.poll(async()=>{
+    const current=await page.evaluate(() => window.iqTest.request({type:"iqalarm/get"}));
+    return current.config.floorplans[plan.id].zones.living?.length || 0;
+  }).toBeGreaterThanOrEqual(3);
   const saved=await page.evaluate(() => window.iqTest.request({type:"iqalarm/get"}));
   expect(saved.config.floorplans[plan.id].zones.living.length).toBeGreaterThanOrEqual(3);
   await page.screenshot({path:"test-results/floorplan-assistant.png",fullPage:true});
