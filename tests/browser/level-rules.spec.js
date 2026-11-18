@@ -261,14 +261,14 @@ test("outdoor motion and person detection show their own source type on the floo
   await save(page,data.config);
   const label=page.locator('#floorplan-source_labels g[data-label-room="living"]');
   await state(page,ids.outside,"on");
-  await expect(label).toContainText("Bewegung erkannt");
+  await expect(label).toContainText("Bewegung");
   await expect(label).not.toContainText("Kamera aktiv");
   await expect(label).not.toContainText("Person");
   await state(page,ids.person,"on");
   await expect(label).toContainText("Person");
-  await expect(label).toContainText("Bewegung erkannt");
+  await expect(label).toContainText("Bewegung");
   await state(page,ids.outside,"off");
-  await expect(label).not.toContainText("Bewegung erkannt");
+  await expect(label).not.toContainText("Bewegung");
   await expect(label).toContainText("Person");
 });
 

@@ -317,11 +317,7 @@ class ActionDispatcher:
         return plan
 
     async def _persist_outputs(self) -> None:
-        try:
-            async with asyncio.timeout(2):
-                await self.runtime.persist()
-        except (HomeAssistantError, OSError, TimeoutError) as err:
-            self.runtime.report("runtime_error", f"Aktionszustand nicht gespeichert: {err}")
+        await self.runtime._flush_persistence()
 
     async def execute(
         self,

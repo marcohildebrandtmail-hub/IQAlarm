@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 globalThis.HTMLElement=class {};
 globalThis.window={};
 globalThis.customElements={get:()=>false,define(){}};
-const {cardMarkup}=await import("../../custom_components/iqalarm/frontend/iqalarm-card.js");
+const {cardMarkup,selectedFloorplans}=await import("../../custom_components/iqalarm/frontend/iqalarm-card.js");
 const {recognitionDisplayData}=await import("../../custom_components/iqalarm/frontend/live-view.js");
 
 function data(){return {config:{secure_stage_id:"1",settings:{startup_delay_seconds:60},robots:{},stages:["Deaktiviert","Sicher","Umfeld","Verdacht","Alarm","Alarmstufe 2"].map((name,i)=>({id:String(i),name,color:"#081dba"})),automatic_detection:{stage_id:"3",promote_seconds:30}},status:{active:true,mode:"active",profile_id:"away",profile_name:"Abwesend",level:2,stage_id:"2",stage_name:"Umfeld",rule_progress:[{stage_id:"2",current:2,target:3}],rooms:{}}};}
@@ -49,4 +49,22 @@ test("invalid colors cannot inject attributes and entry delay counts down",()=>{
   const d=data();d.config.stages[2].color='red" onclick="bad()';d.status.pending_until=145;
   const html=cardMarkup(d,100);
   assert.match(html,/Eingangsverzögerung 00:45/);assert.doesNotMatch(html,/onclick/);
+});
+
+test("floorplan selection supports all floors, stable IDs and unique names",()=>{
+  const d={config:{rooms:{},floorplans:{eg:{id:"eg",name:"Erdgeschoss"},og:{id:"og",name:"Obergeschoss"}}}};
+  assert.deepEqual(selectedFloorplans(d).map(p=>p.id),["eg","og"]);
+  assert.deepEqual(selectedFloorplans(d,"eg").map(p=>p.id),["eg"]);
+  assert.deepEqual(selectedFloorplans(d,"Obergeschoss").map(p=>p.id),["og"]);
+  assert.throws(()=>selectedFloorplans(d,"unknown"),/nicht gefunden/);
+  d.config.floorplans.og.name="Erdgeschoss";
+  assert.throws(()=>selectedFloorplans(d,"Erdgeschoss"),/nicht eindeutig/);
+  assert.equal(selectedFloorplans(d,"og")[0].id,"og");
+});
+
+test("missing plans show no invented rooms and retain the existing virtual-room fallback",()=>{
+  assert.deepEqual(selectedFloorplans({config:{}}),[]);
+  const plans=selectedFloorplans({config:{rooms:{hall:{id:"hall"}}}});
+  assert.equal(plans[0].id,"virtual");
+  assert.throws(()=>selectedFloorplans({config:{rooms:{hall:{id:"hall"}}}},"removed"),/nicht gefunden/);
 });

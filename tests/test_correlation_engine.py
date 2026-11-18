@@ -303,13 +303,59 @@ def test_direct_profile_switch_rejected(engine):
         engine.set_mode("armed_away", 101)
 
 
-def test_disarmed_diagnosis_optional(engine):
-    engine.config.settings.diagnose_disarmed = False
-    engine.config.settings.observation_profile_id = None
+@pytest.mark.parametrize("diagnose_disarmed", [False, True])
+@pytest.mark.parametrize("observation_profile_id", [None, "live"])
+def test_disarmed_contacts_never_enter_flap_quarantine(
+    engine, diagnose_disarmed, observation_profile_id
+):
+    engine.config.settings.diagnose_disarmed = diagnose_disarmed
+    engine.config.settings.observation_profile_id = observation_profile_id
     for i, state in enumerate((True, False, True, False, True)):
         engine.feed("binary_sensor.window", state, 101 + i)
     assert not engine.quarantine
-    assert engine.level == Level.SECURE
+    assert not engine.edges["binary_sensor.window"]
+    assert engine.raw["binary_sensor.window"] is True
+    assert not any(event.kind == "quarantined_flapping" for event in engine.events)
+
+
+def test_flap_detection_starts_fresh_after_arming_and_stops_on_disarm(engine):
+    key = "binary_sensor.lock"
+    for i, state in enumerate((True, False, True, False)):
+        engine.feed(key, state, 101 + i)
+    engine.set_mode("armed_night", 105)
+    engine.feed(key, True, 106)
+    engine.feed(key, False, 107)
+    assert not engine.quarantine
+    engine.feed(key, True, 108)
+    assert key in engine.quarantine
+    engine.set_profile(None, 109)
+    assert not engine.quarantine
+    count = sum(event.kind == "quarantined_flapping" for event in engine.events)
+    for i, state in enumerate((False, True, False, True)):
+        engine.feed(key, state, 110 + i)
+    assert not engine.quarantine
+    assert not engine.edges[key]
+    assert sum(event.kind == "quarantined_flapping" for event in engine.events) == count
+
+
+def test_startup_delay_does_not_count_contact_flaps(engine):
+    engine.config.settings.startup_delay_seconds = 60
+    engine.set_mode("armed_night", 100)
+    for i, state in enumerate((True, False, True, False)):
+        engine.feed("binary_sensor.lock", state, 101 + i)
+    assert not engine.quarantine
+    assert not engine.edges["binary_sensor.lock"]
+    engine.tick(160)
+    for i, state in enumerate((True, False, True)):
+        engine.feed("binary_sensor.lock", state, 161 + i)
+    assert "binary_sensor.lock" in engine.quarantine
+
+
+def test_disarmed_restore_discards_obsolete_flap_quarantine(engine):
+    saved = engine.persistent_state()
+    saved["quarantine"] = {"binary_sensor.lock": {"reason": "quarantined_flapping", "since": 99}}
+    engine.restore(saved, 100)
+    assert not engine.quarantine
 
 
 def test_quarantine_invalidates_pending_chain_even_after_manual_release(engine):

@@ -1,15 +1,15 @@
-import {sensorTypeField, sensorTypeChoices, setSensorType, sensorListGroup, isSensorInput, suggestedSensorType, createSensor, SENSOR_TYPES} from "./sensor-types.js?v=2.15.1";
-import {insideRoomChoices, outsideInsideControls, outsideInsideSVG, renderOutsideInside, setOutsideInside} from "./outside-inside.js?v=2.15.1";
-import {openRobotDialog, readRobotForm, renderCoverage, updateRobotStatuses} from "./robots.js?v=2.15.1";
-import {TOPOLOGY_CSS, connectionEditor, imageControls, roomConnections, setRoomConnection} from "./floorplan-topology.js?v=2.15.1";
-import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings, triggerRows, recognitionDisplayData} from "./live-view.js?v=2.15.1";
-import {RULE_SOURCES_CSS, updateRuleSources} from "./rule-sources.js?v=2.15.1";
-import {bindIconFields, iconField, MDI_ICON, roomSymbol, sensorSymbol, symbolHTML} from "./display-icons.js?v=2.15.1";
-import {DraftJournal} from "./floorplan-drafts.js?v=2.15.1";
-import {renderLevels, renderProfiles, renderConfirmationContext, openRuleDialog, readRuleForm, readAutomaticDetection, readPersonDetection, readAlarmEscalation} from "./level-configuration.js?v=2.15.1";
-import "./window-assistant.js?v=2.15.1";
-import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.15.1";
-/* IQAlarm 2.15.1 · native ES module · no CDN, framework or build required. */
+import {sensorTypeField, sensorTypeChoices, setSensorType, sensorListGroup, isSensorInput, suggestedSensorType, createSensor, SENSOR_TYPES} from "./sensor-types.js?v=2.15.2";
+import {insideRoomChoices, outsideInsideControls, outsideInsideSVG, renderOutsideInside, setOutsideInside} from "./outside-inside.js?v=2.15.2";
+import {openRobotDialog, readRobotForm, renderCoverage, updateRobotStatuses} from "./robots.js?v=2.15.2";
+import {TOPOLOGY_CSS, connectionEditor, imageControls, roomConnections, setRoomConnection} from "./floorplan-topology.js?v=2.15.2";
+import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings, triggerRows, recognitionDisplayData} from "./live-view.js?v=2.15.2";
+import {RULE_SOURCES_CSS, updateRuleSources} from "./rule-sources.js?v=2.15.2";
+import {bindIconFields, iconField, MDI_ICON, roomSymbol, sensorSymbol, symbolHTML} from "./display-icons.js?v=2.15.2";
+import {DraftJournal} from "./floorplan-drafts.js?v=2.15.2";
+import {renderLevels, renderProfiles, renderConfirmationContext, openRuleDialog, readRuleForm, readAutomaticDetection, readPersonDetection, readAlarmEscalation} from "./level-configuration.js?v=2.15.2";
+import "./window-assistant.js?v=2.15.2";
+import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.15.2";
+/* IQAlarm 2.15.2 · native ES module · no CDN, framework or build required. */
 const WINDOW_CSS = `.window-group{padding:18px 0;border-bottom:1px solid var(--divider-color,#dce3ec)}.window-inputs{margin:14px 0 0 24px;padding-left:18px;border-left:2px solid var(--divider-color,#dce3ec)}.window-inputs code{display:block;font-size:10px;overflow-wrap:anywhere;color:var(--secondary-text-color,#64758b)}.information{border-color:color-mix(in srgb,var(--primary-color,#2986bb) 25%,transparent)}.information summary,details.banner summary{cursor:pointer;font-size:13px}.information ha-icon{color:var(--primary-color,#2986bb)}`;
 const FLOORPLAN_MOTION_HOLD_SECONDS = 15;
 const RECOGNITION_FADE_SECONDS = 1.5;
@@ -34,6 +34,14 @@ const selected = (a, b) => a === b ? " selected" : "";
 const options = (items, value = "", blank = "") => `${blank ? `<option value="">${esc(blank)}</option>` : ""}${Object.entries(items).map(([id, label]) => `<option value="${esc(id)}"${selected(id, value)}>${esc(label)}</option>`).join("")}`;
 const date = (epoch) => new Date(epoch * 1000).toLocaleString("de-DE", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit"});
 
+export const FLOORPLAN_VIEW_CSS = `.plan-wrap{position:relative;width:100%;background:var(--primary-background-color,#f3f6fa);border-radius:14px;overflow:hidden;margin-top:16px}.plan-wrap.graphic-mode{background:radial-gradient(circle at 50% 30%,#132846 0%,#08111f 100%);border:1px solid #1e3a5f;box-shadow:inset 0 0 42px #0009}.plan-wrap.template-mode{background:#0b1526;border:1px solid #1e3a5f}.plan-wrap.template-mode image{opacity:.38;filter:grayscale(.35) contrast(1.08)}.plan-wrap svg{display:block;width:100%;height:100%}.plan-wrap polygon{cursor:pointer;stroke-width:2}.plan-wrap .draft{pointer-events:none;fill:#2986bb40;stroke:#38bdf8;stroke-dasharray:6 4}.plan-wrap text{pointer-events:none;paint-order:stroke;stroke:var(--iq-surface);stroke-width:3px;stroke-linejoin:round;fill:var(--primary-text-color,#122);font-weight:650}.plan-wrap g[data-room]{cursor:pointer}.plan-wrap g[data-room]:focus-visible{outline:none}.plan-wrap g[data-room]:focus-visible .room-badge{stroke:#38bdf8;stroke-width:2.6}.plan-wrap g[data-room] text{stroke:#07101d;stroke-width:3.5px;fill:#f8fafc;font-weight:720;letter-spacing:.2px}.plan-wrap g[data-room] .room-sub{fill:#cbd5e1;font-weight:600}.plan-wrap g[data-room] .room-sub.info{fill:#7dd3fc;font-weight:650}.plan-wrap g[data-room] .room-sub.warn{fill:#fbbf24;font-weight:650}.plan-wrap g[data-room] .room-sub.alert{fill:#f87171;font-weight:700}.plan-wrap .room-corner,.plan-wrap .room-glow,.plan-wrap .room-inner,.plan-wrap .room-link{pointer-events:none}.plan-wrap .room-label-group{cursor:grab;touch-action:none;user-select:none}.plan-wrap .room-label-group .room-badge{pointer-events:all;cursor:grab}.plan-wrap .room-label-group text{pointer-events:none}.plan-wrap .room-label-group:hover .room-badge{stroke:#38bdf8;stroke-width:2.4;filter:drop-shadow(0 0 8px #38bdf8aa)}.plan-wrap .room-label-group.dragging{cursor:grabbing;opacity:.88}.plan-wrap .room-label-group.dragging .room-badge{cursor:grabbing}.plan-wrap .room-label-group:focus-visible{outline:none}.plan-wrap .room-label-group:focus-visible .room-badge{stroke:#38bdf8;stroke-width:2.6}.plan-wrap .room-label-group.active-positioning .room-badge{stroke:#38bdf8;stroke-width:3.2;filter:drop-shadow(0 0 14px #38bdf8);animation:pulse-badge 1.4s infinite}
+@keyframes pulse-room-glow{0%,100%{fill-opacity:.34;stroke-opacity:.44}50%{fill-opacity:.10;stroke-opacity:.16}}
+@keyframes pulse-room-badge{0%,100%{stroke-width:2.6px;filter:drop-shadow(0 0 10px currentColor)}50%{stroke-width:1.5px;filter:drop-shadow(0 0 2px currentColor)}}
+.plan-wrap .room-glow.anim-pulse{animation:pulse-room-glow 1.5s ease-in-out infinite}
+.plan-wrap .room-label-group.anim-pulse .room-badge{animation:pulse-room-badge 1.5s ease-in-out infinite}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important;animation:none!important}}
+`;
+
 const CSS = `
 ${RULE_SOURCES_CSS}
 ${LIVE_VIEW_CSS}
@@ -42,7 +50,7 @@ ${TOPOLOGY_CSS}
 *{box-sizing:border-box}button,input,select,textarea{font:inherit}button{cursor:pointer;overflow-wrap:anywhere;max-width:100%}button:disabled{cursor:not-allowed;opacity:.5}ha-icon{--mdc-icon-size:21px;vertical-align:middle}button ha-icon{pointer-events:none}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--iq-accent);outline-offset:3px}button{border:1px solid var(--iq-border);background:var(--iq-surface);color:inherit;border-radius:10px;padding:10px 15px;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;transition:background .15s}button:hover{background:color-mix(in srgb,var(--iq-accent) 8%,var(--iq-surface))}button.primary{background:var(--iq-accent);color:var(--text-primary-color,#fff);border-color:var(--iq-accent)}button.danger{color:var(--iq-red)}button.small{padding:6px 10px;min-height:36px;font-size:13px}.icon-button{padding:8px;border:0;background:transparent;min-width:40px}.shell{height:100%;overflow:auto}.top{position:sticky;top:0;z-index:3;background:var(--iq-surface);border-bottom:1px solid var(--iq-border)}.brand-row{max-width:1440px;margin:auto;padding:18px 30px 14px;display:flex;align-items:center;gap:13px}.brandmark{width:43px;height:47px;background:linear-gradient(145deg,#13b8b0,#076c93);clip-path:polygon(50% 0,93% 16%,88% 64%,74% 84%,50% 100%,26% 84%,12% 64%,7% 16%);display:grid;place-items:center;color:white;font-size:18px;font-weight:800;letter-spacing:-1px}.brand-title{font-size:23px;font-weight:760;letter-spacing:-.7px}.eyebrow{color:var(--iq-muted);font-size:11px;font-weight:650;letter-spacing:1.4px;text-transform:uppercase}.brand-copy{display:grid;gap:2px}.connection{margin-left:auto;display:flex;align-items:center;gap:8px;color:var(--iq-muted);font-size:12px}.dot{width:8px;height:8px;background:var(--iq-green);border-radius:50%;display:inline-block}.dot.off{background:var(--iq-red)}nav{display:flex;gap:8px;max-width:1440px;margin:auto;padding:0 30px;overflow:auto}nav button{border:none;border-bottom:3px solid transparent;border-radius:0;padding:15px 13px;background:transparent;white-space:nowrap;color:var(--iq-muted);font-weight:600;font-size:13px}nav button.active{color:var(--iq-accent);border-bottom-color:var(--iq-accent)}main{max-width:1440px;padding:30px;margin:auto}.page-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:22px;flex-wrap:wrap}h1{font-size:25px;font-weight:720;letter-spacing:-.7px;margin:0 0 5px}h2{font-size:17px;margin:0 0 10px;letter-spacing:-.2px}h3{font-size:15px;margin:0}p{margin:6px 0 0;line-height:1.6;color:var(--iq-muted);font-size:13px}.muted{color:var(--iq-muted)}.card{background:var(--iq-surface);border:1px solid var(--iq-border);border-radius:16px;padding:23px;min-width:0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:18px}.grid.two{grid-template-columns:1.2fr 1fr}.hero{display:flex;align-items:center;gap:28px;background:linear-gradient(120deg,color-mix(in srgb,var(--iq-accent) 7%,var(--iq-surface)),var(--iq-surface));padding:29px;margin-bottom:18px}.level-ring{width:110px;height:110px;flex-shrink:0;border:7px solid color-mix(in srgb,var(--level-color) 20%,transparent);border-top-color:var(--level-color);border-radius:50%;display:flex;align-items:center;justify-content:center;flex-direction:column;color:var(--level-color)}.level-ring strong{font-size:36px;line-height:1.1}.level-ring span{font-size:10px;font-weight:700;letter-spacing:1px}.hero-copy{min-width:0;overflow-wrap:anywhere}.hero h2{font-size:29px;margin:0 0 4px}.hero .pill{margin-left:auto;align-self:flex-start}.pill{display:inline-flex;align-items:center;gap:6px;border-radius:7px;padding:5px 8px;font-size:11px;font-weight:650;background:color-mix(in srgb,var(--level-color,var(--iq-accent)) 10%,var(--iq-surface));color:var(--level-color,var(--iq-accent));white-space:nowrap}.mode-buttons{display:flex;flex-wrap:wrap;gap:9px;margin-top:20px}.mode-buttons button.active{background:color-mix(in srgb,var(--iq-accent) 12%,var(--iq-surface));border-color:var(--iq-accent);color:var(--iq-accent)}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:18px 0 28px}.metric{display:flex;align-items:center;gap:13px;padding:19px}.metric>ha-icon{--mdc-icon-size:25px;color:var(--iq-accent);padding:12px;width:49px;height:49px;background:color-mix(in srgb,var(--iq-accent) 8%,var(--iq-surface));border-radius:12px}.metric strong{display:block;font-size:23px;line-height:1.1}.metric span{font-size:11px;color:var(--iq-muted)}.section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:26px 0 14px;flex-wrap:wrap}.room-head{display:flex;align-items:center;gap:10px;margin-bottom:16px}.room-head h3{min-width:0;flex:1;overflow-wrap:anywhere}.room-head .pill{margin-left:auto}.sensor-line{display:flex;align-items:center;gap:9px;padding:9px 0;border-top:1px solid var(--iq-border);font-size:12px}.sensor-line.two-line{display:flex;flex-direction:column;align-items:stretch;gap:3px;padding:7px 0}.sensor-line-top{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-width:0}.sensor-line-title{display:flex;align-items:center;gap:8px;min-width:0;flex:1}.sensor-line-title ha-icon,.sensor-line-top ha-icon,.sensor-line ha-icon{color:var(--iq-muted);--mdc-icon-size:18px;flex-shrink:0}.sensor-line .sensor-name{font-size:12px;font-weight:550;line-height:1.35;min-width:0;overflow-wrap:break-word;word-break:normal}.sensor-line-bottom{display:flex;align-items:center;justify-content:flex-end;width:100%;text-align:right}.sensor-state{font-size:11px;color:var(--iq-muted);font-weight:400;text-align:right;line-height:1.3}.sensor-state.on{color:var(--iq-amber);font-weight:700}.sensor-state.recent{color:var(--iq-blue,#0284c7);font-weight:650}.banner{border:1px solid color-mix(in srgb,var(--iq-amber) 40%,var(--iq-border));background:color-mix(in srgb,var(--iq-amber) 7%,var(--iq-surface));padding:18px;border-radius:13px;margin:15px 0;display:flex;gap:13px;align-items:center}.banner ha-icon{color:var(--iq-amber)}.banner>div{flex:1;min-width:0}.banner strong{font-size:13px}.banner p{font-size:12px}.event{display:grid;grid-template-columns:110px 30px minmax(0,1fr);gap:12px;border-top:1px solid var(--iq-border);padding:14px 0;font-size:12px;align-items:start}.event>div{min-width:0;overflow-wrap:anywhere}.event time{color:var(--iq-muted);font-variant-numeric:tabular-nums}.event p{font-size:11px;word-break:break-word}.event-level{display:grid;place-items:center;border-radius:6px;width:25px;height:25px;background:color-mix(in srgb,var(--level-color) 12%,var(--iq-surface));color:var(--level-color);font-weight:700}.empty{padding:34px 20px;text-align:center;border:1px dashed var(--iq-border);border-radius:13px;color:var(--iq-muted)}.empty ha-icon{--mdc-icon-size:30px;margin-bottom:12px}.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.row.between{justify-content:space-between}.row.end{justify-content:flex-end}.spacer{flex:1}.topology{display:flex;align-items:center;justify-content:center;gap:6px;margin:17px 0;font-size:11px;color:var(--iq-muted);background:var(--primary-background-color,#f3f6fa);padding:14px 4px;border-radius:10px}.topology span{text-align:center}.topology strong{display:block;color:var(--primary-text-color);font-size:18px;margin-bottom:4px}.chips{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.chips button.active{background:var(--iq-accent);color:var(--text-primary-color,#fff);border-color:var(--iq-accent)}.table-scroll{overflow:auto}table{width:100%;border-collapse:collapse;font-size:12px}th{text-align:left;color:var(--iq-muted);font-size:10px;text-transform:uppercase;letter-spacing:.7px;white-space:nowrap}td,th{padding:13px 9px;border-bottom:1px solid var(--iq-border)}td code{font-size:10px;color:var(--iq-muted);display:block;margin-top:4px}.search{min-width:220px;width:min(100%,390px)}.catalog{max-height:380px;overflow:auto}.catalog-row{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--iq-border);font-size:12px}.catalog-row code{font-size:10px;display:block;margin-top:4px;color:var(--iq-muted);overflow-wrap:anywhere}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.form-grid .wide{grid-column:1/-1}label.field{display:flex;flex-direction:column;gap:7px;font-size:12px;font-weight:600;min-width:0}label small{color:var(--iq-muted);font-size:11px;font-weight:400;line-height:1.5}input:not([type=checkbox]),select,textarea{border:1px solid var(--iq-border);border-radius:8px;background:var(--iq-surface);color:inherit;padding:11px 12px;min-width:0;width:100%;min-height:41px}select[multiple]{height:115px}textarea{min-height:80px;resize:vertical}input[type=checkbox]{accent-color:var(--iq-accent);width:17px;height:17px;flex-shrink:0}.check{display:flex;align-items:flex-start;gap:9px;font-size:12px;line-height:1.6;cursor:pointer}.checks{display:grid;gap:13px}.help{border-left:3px solid var(--iq-accent);padding:10px 14px;background:color-mix(in srgb,var(--iq-accent) 5%,var(--iq-surface));font-size:12px;line-height:1.6;margin:16px 0;color:var(--iq-muted)}fieldset{border:0;padding:0;margin:0;min-width:0}fieldset:disabled{opacity:.6}.save-row{display:flex;gap:12px;align-items:center;margin-top:23px}.action-card{display:flex;align-items:center;gap:14px;margin:12px 0;padding:18px;border:1px solid var(--iq-border);border-radius:12px}.action-card>ha-icon{color:var(--iq-accent)}.action-card .description{flex:1;min-width:0;overflow-wrap:anywhere}.action-card p{font-size:11px}dialog{background:var(--iq-surface);color:inherit;border:1px solid var(--iq-border);border-radius:17px;padding:0;max-width:min(740px,calc(100vw - 28px));width:740px;max-height:90vh;box-shadow:0 20px 80px #0005}dialog::backdrop{background:#101c3080;backdrop-filter:blur(3px)}.dialog-head{padding:22px 25px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--iq-border);position:sticky;top:0;background:var(--iq-surface);z-index:2}.dialog-body{padding:23px 25px}.dialog-foot{flex-wrap:wrap;padding:17px 25px;border-top:1px solid var(--iq-border);display:flex;justify-content:flex-end;gap:10px;position:sticky;bottom:0;background:var(--iq-surface)}dialog[open]{display:flex;flex-direction:column}dialog form{overflow:auto}#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:14px 22px;background:var(--primary-text-color,#182b42);color:var(--iq-surface);border-radius:10px;box-shadow:0 4px 24px #0003;z-index:20;max-width:90vw;font-size:13px}#toast.error{background:var(--iq-red);color:white}#toast:empty{display:none}.loading{padding:70px;text-align:center;color:var(--iq-muted)}pre{white-space:pre-wrap;word-break:break-word;font-size:12px;padding:16px;background:var(--primary-background-color);border-radius:10px}.armed-note{margin-bottom:18px}.footer-note{margin-top:30px;color:var(--iq-muted);font-size:11px;text-align:center}[hidden]{display:none!important}.countdown{font-size:13px;font-weight:650;color:var(--iq-amber);margin-top:10px}
 @media(max-width:1000px){.grid.two{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}nav{gap:0;padding:0 12px}nav button{padding:14px 11px}nav button ha-icon{display:none}}
 @media(max-width:600px){main{padding:18px 14px}.brand-row{padding:12px 14px;gap:9px}.brand-title{font-size:21px}.connection span:not(.dot){display:none}.eyebrow{font-size:9px;letter-spacing:1px}.hero{padding:22px 18px;gap:17px;flex-wrap:wrap}.hero-copy{min-width:0;overflow-wrap:anywhere}.hero h2{font-size:23px}.level-ring{width:80px;height:80px;border-width:5px}.level-ring strong{font-size:28px}.hero .pill{display:none}.hero-copy{flex:1;min-width:150px}.mode-buttons{width:100%;gap:7px}.mode-buttons button{flex:1;min-width:90px;padding:9px;font-size:12px}.card{padding:18px}.metrics{gap:10px}.metric{padding:14px 11px;gap:8px}.metric>ha-icon{display:none}.metric strong{font-size:21px}.form-grid{grid-template-columns:1fr}.event{grid-template-columns:76px 24px minmax(0,1fr);gap:8px}.event>div{min-width:0;overflow-wrap:anywhere}.event time{font-size:10px}.banner{flex-wrap:wrap}.banner button{margin-left:33px}.dialog-body{padding:18px}.dialog-head,.dialog-foot{flex-wrap:wrap;padding:16px 18px}h1{font-size:22px}.page-head>button{width:100%}}
-.level-display{display:flex;flex-direction:column;align-items:center;gap:10px;max-width:170px;text-align:center}.level-caption{font-weight:700;font-size:13px;color:var(--level-color);overflow-wrap:anywhere}.plan-wrap{position:relative;width:100%;background:var(--primary-background-color,#f3f6fa);border-radius:14px;overflow:hidden;margin-top:16px}.plan-wrap.graphic-mode{background:radial-gradient(circle at 50% 30%,#132846 0%,#08111f 100%);border:1px solid #1e3a5f;box-shadow:inset 0 0 42px #0009}.plan-wrap.template-mode{background:#0b1526;border:1px solid #1e3a5f}.plan-wrap.template-mode image{opacity:.38;filter:grayscale(.35) contrast(1.08)}.plan-wrap svg{display:block;width:100%;height:100%}.plan-wrap polygon{cursor:pointer;stroke-width:2}.plan-wrap .draft{pointer-events:none;fill:#2986bb40;stroke:#38bdf8;stroke-dasharray:6 4}.plan-wrap text{pointer-events:none;paint-order:stroke;stroke:var(--iq-surface);stroke-width:3px;stroke-linejoin:round;fill:var(--primary-text-color,#122);font-weight:650}.plan-wrap g[data-room]{cursor:pointer}.plan-wrap g[data-room]:focus-visible{outline:none}.plan-wrap g[data-room]:focus-visible .room-badge{stroke:#38bdf8;stroke-width:2.6}.plan-wrap g[data-room] text{stroke:#07101d;stroke-width:3.5px;fill:#f8fafc;font-weight:720;letter-spacing:.2px}.plan-wrap g[data-room] .room-sub{fill:#cbd5e1;font-weight:600}.plan-wrap g[data-room] .room-sub.info{fill:#7dd3fc;font-weight:650}.plan-wrap g[data-room] .room-sub.warn{fill:#fbbf24;font-weight:650}.plan-wrap g[data-room] .room-sub.alert{fill:#f87171;font-weight:700}.plan-wrap .room-corner,.plan-wrap .room-glow,.plan-wrap .room-inner,.plan-wrap .room-link{pointer-events:none}.plan-wrap .room-label-group{cursor:grab;touch-action:none;user-select:none}.plan-wrap .room-label-group .room-badge{pointer-events:all;cursor:grab}.plan-wrap .room-label-group text{pointer-events:none}.plan-wrap .room-label-group:hover .room-badge{stroke:#38bdf8;stroke-width:2.4;filter:drop-shadow(0 0 8px #38bdf8aa)}.plan-wrap .room-label-group.dragging{cursor:grabbing;opacity:.88}.plan-wrap .room-label-group.dragging .room-badge{cursor:grabbing}.plan-wrap .room-label-group:focus-visible{outline:none}.plan-wrap .room-label-group:focus-visible .room-badge{stroke:#38bdf8;stroke-width:2.6}.plan-wrap .room-label-group.active-positioning .room-badge{stroke:#38bdf8;stroke-width:3.2;filter:drop-shadow(0 0 14px #38bdf8);animation:pulse-badge 1.4s infinite}.stage-row{padding:16px 0;border-bottom:1px solid var(--iq-border)}.stage-row .form-grid{grid-template-columns:80px minmax(0,1fr)}.rule-box{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border:1px solid var(--iq-border);border-radius:10px;background:var(--primary-background-color,#f3f6fa)}@keyframes pulse-badge{0%,100%{stroke-opacity:1}50%{stroke-opacity:.35}}
+.level-display{display:flex;flex-direction:column;align-items:center;gap:10px;max-width:170px;text-align:center}.level-caption{font-weight:700;font-size:13px;color:var(--level-color);overflow-wrap:anywhere}${FLOORPLAN_VIEW_CSS}.stage-row{padding:16px 0;border-bottom:1px solid var(--iq-border)}.stage-row .form-grid{grid-template-columns:80px minmax(0,1fr)}.rule-box{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border:1px solid var(--iq-border);border-radius:10px;background:var(--primary-background-color,#f3f6fa)}@keyframes pulse-badge{0%,100%{stroke-opacity:1}50%{stroke-opacity:.35}}
 .icon-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:7px;margin-top:12px}.icon-options button{font-size:11px;justify-content:flex-start}.icon-options button.active{border-color:var(--iq-accent);background:color-mix(in srgb,var(--iq-accent) 12%,var(--iq-surface))}.plan-steps{display:flex;gap:20px;flex-wrap:wrap;padding:0;margin:20px 0;list-style:none;counter-reset:step}.plan-steps li{font-size:12px;color:var(--iq-muted);display:flex;align-items:center;gap:8px}.plan-steps li::before{counter-increment:step;content:counter(step);border:1px solid var(--iq-accent);border-radius:50%;width:24px;height:24px;display:grid;place-items:center;color:var(--iq-accent);flex-shrink:0}.plan-assistant{padding:16px;border:1px solid var(--iq-border);border-radius:12px;background:var(--primary-background-color,#f3f6fa)}.assistant-step{margin-top:14px;padding:15px 16px;border:2px solid var(--iq-accent);border-radius:12px;background:color-mix(in srgb,var(--iq-accent) 7%,var(--iq-surface))}.assistant-step.saved{border-color:var(--iq-green);background:color-mix(in srgb,var(--iq-green) 8%,var(--iq-surface))}.plan-wrap .plan-proposal{fill:#33a7c028;stroke:#38bdf8;stroke-dasharray:7 5;vector-effect:non-scaling-stroke}.plan-wrap .plan-proposal.chosen{fill:#33a7c055;stroke-width:3}.draft-points circle{fill:var(--iq-surface);stroke:#087e9b;stroke-width:2;cursor:grab;touch-action:none;vector-effect:non-scaling-stroke}.draft-points circle:focus{fill:#50c6d1;outline:none;stroke-width:4}
 .live-floorplans-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,480px),1fr));gap:20px;margin-top:16px}.live-floorplans-grid.stacked{grid-template-columns:1fr}.live-floorplan-item{background:color-mix(in srgb,var(--iq-accent) 4%,var(--iq-surface));border:1px solid var(--iq-border);border-radius:14px;padding:16px;min-width:0;display:flex;flex-direction:column}.live-floorplan-item h3{margin:0;font-size:15px;font-weight:700}.live-floorplan-item .plan-wrap{margin-top:10px;flex:1}
 dialog.wide{width:min(980px,calc(100vw - 28px));max-width:min(980px,calc(100vw - 28px))}
@@ -97,11 +105,6 @@ dialog.wide{width:min(980px,calc(100vw - 28px));max-width:min(980px,calc(100vw -
 .sort-btns .icon-button[disabled]{opacity:.25;cursor:not-allowed}
 .sort-btns .icon-button ha-icon{--mdc-icon-size:18px;color:currentColor}
 .sensor-move-header{padding:14px 16px;background:var(--primary-background-color,#f3f6fa);border-radius:10px;margin-bottom:12px;border:1px solid var(--iq-border)}
-@keyframes pulse-room-glow{0%,100%{fill-opacity:.34;stroke-opacity:.44}50%{fill-opacity:.10;stroke-opacity:.16}}
-@keyframes pulse-room-badge{0%,100%{stroke-width:2.6px;filter:drop-shadow(0 0 10px currentColor)}50%{stroke-width:1.5px;filter:drop-shadow(0 0 2px currentColor)}}
-.plan-wrap .room-glow.anim-pulse{animation:pulse-room-glow 1.5s ease-in-out infinite}
-.plan-wrap .room-label-group.anim-pulse .room-badge{animation:pulse-room-badge 1.5s ease-in-out infinite}
-@media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important;animation:none!important}}
 `;
 
 class IQAlarmPanel extends HTMLElement {
@@ -173,6 +176,7 @@ class IQAlarmPanel extends HTMLElement {
     this.shadowRoot.addEventListener("keydown", e => this._vertexKey(e));
     this.shadowRoot.addEventListener("submit", e => this._submit(e));
     this.shadowRoot.addEventListener("input", e => {
+      this._markSettingsDirty(e.target);
       if(e.target.hasAttribute("data-automatic-threshold")){const n=Number(e.target.value);e.target.form.querySelector("[data-automatic-threshold-label]").textContent=`1/3 ab ${n} · 2/3 ab ${n+1} · 3/3 ab ${n+2} unabhängigen Quellen`;e.target.form.querySelectorAll("[data-automatic-required]").forEach(node=>node.textContent=n+2);}
       if (e.target.hasAttribute("data-image-opacity")) this._previewPlanOpacity(e.target.dataset.imageOpacity,Number(e.target.value)/100);
       if (e.target.id === "sensor-search") this._renderCatalog(e.target.value);
@@ -180,6 +184,7 @@ class IQAlarmPanel extends HTMLElement {
       if (e.target.name === "profile_icon") this._updateIconPreview(e.target.form);
     });
     this.shadowRoot.addEventListener("change", e => {
+      this._markSettingsDirty(e.target);
       if (e.target.id === "outside-area") {
         this._outsideArea=e.target.value;
         e.target.form.querySelector("[data-inside-rooms]").innerHTML=insideRoomChoices(this.data.config,e.target.value);
@@ -312,8 +317,10 @@ class IQAlarmPanel extends HTMLElement {
       const unsub = await this._hass.connection.subscribeMessage(data => {
         if (!this.isConnected || attempt !== this._connectAttempt) return;
         if (data.available === false) { this._connection(false); return; }
-        const first = !this.data; this.data = data; this._connection(true);
-        if (first || this.tab === 0 || this.tab === 5) this._render();
+        const first = !this.data;
+        const settingsChanged = this.tab === 4 && data.config.revision !== this._viewRevision && !this._hasSettingsEdits();
+        this.data = data; this._connection(true);
+        if (first || this.tab === 0 || this.tab === 5 || settingsChanged) this._render();
         else {this._updateLock();updateRobotStatuses(this);if(this.tab===2){this._updateWindowStatuses();this._updateSensorStatuses();}const live=this.shadowRoot.getElementById("live-room-status");if(live&&this.liveRoom&&this.data.config.rooms[this.liveRoom])live.innerHTML=this._roomLive(this.data.config.rooms[this.liveRoom]);}
       }, {type: "iqalarm/subscribe"});
       if (!this.isConnected || attempt !== this._connectAttempt) unsub();
@@ -487,6 +494,15 @@ class IQAlarmPanel extends HTMLElement {
     form.querySelectorAll("[data-scope-list]").forEach(element => {
       element.hidden = form.elements[`all_${element.dataset.scopeList}`].checked;
     });
+  }
+
+  _markSettingsDirty(target) {
+    const form = target.closest?.("form");
+    if (this.tab === 4 && form && this.shadowRoot.getElementById("main").contains(form)) form.dataset.settingsDirty = "true";
+  }
+
+  _hasSettingsEdits() {
+    return Boolean(this._requestBusy || this.shadowRoot.getElementById("editor").open || this.shadowRoot.querySelector('#main form[data-settings-dirty="true"]'));
   }
 
   _profileScope(name, title, values, items) {
@@ -1143,6 +1159,17 @@ class IQAlarmPanel extends HTMLElement {
     }).join("");
   }
 
+  _interiorActivityLabels(sources) {
+    let movement=false,interaction=false;
+    for(const source of sources){
+      const sensor=this._sensorRecord(source.entity_id)||source;
+      if(!["interior_motion","interior_mmwave"].includes(source.role??sensor.role))continue;
+      if(sensor.sensor_kind==="light_switch"||["change","press"].includes(sensor.activation_mode))interaction=true;
+      else movement=true;
+    }
+    return {motionText:movement?"Bewegung":"",interactionText:interaction?"Interaktion":""};
+  }
+
   _getRoomStatusLines(room, now = Date.now() / 1000) {
     const status = this.data.status?.rooms?.[room] || {};
     const sensors = this._displaySensors();
@@ -1160,7 +1187,7 @@ class IQAlarmPanel extends HTMLElement {
     );
     const activePerimeter = [...new Set(activePerimeterIds)].map(id => this._sensorRecord(id)).filter(s => s && s.enabled !== false && raw[s.entity_id] === true);
     const uniqueCamIds = activePerimeter.filter(s => s.role === "perimeter_camera").map(s => s.entity_id);
-    const perimeterMotionText = activePerimeter.some(s => s.role === "perimeter_sensor") ? "Bewegung erkannt" : "";
+    const perimeterMotionText = activePerimeter.some(s => s.role === "perimeter_sensor") ? "Bewegung" : "";
     if (uniqueCamIds.length > 0) {
       let hasPerson = false;
       let hasAuto = false;
@@ -1232,17 +1259,17 @@ class IQAlarmPanel extends HTMLElement {
       else lockText = "Türschloss entriegelt";
     }
 
-    // 4. Bewegung
-    let motionText = "";
-    const recentMotion = roomSensors.some(sensor =>
+    // 4. Bewegung und Betätigungen von Schaltern / Kontakten
+    const recentMotion = roomSensors.filter(sensor =>
       !this.data.status.robot_paused_sensors?.includes(sensor.entity_id) && !["change","press"].includes(sensor.activation_mode) &&
       ["interior_motion", "interior_mmwave"].includes(sensor.role) &&
       raw[sensor.entity_id] === false &&
       this._activityAge(sensor.entity_id,now) < FLOORPLAN_MOTION_HOLD_SECONDS
     );
-    if (status.motion?.length > 0 || recentMotion) {
-      motionText = "Bewegung";
-    }
+    const {motionText,interactionText}=this._interiorActivityLabels([
+      ...(status.motion||[]).map(id=>({role:"interior_motion",...this._sensorRecord(id),entity_id:id})),
+      ...recentMotion,
+    ]);
 
     // 5. Quarantäne
     let quarantineText = "";
@@ -1258,8 +1285,9 @@ class IQAlarmPanel extends HTMLElement {
       contactText,
       lockText,
       motionText,
+      interactionText,
       quarantineText,
-      hasActive: Boolean(cameraText || perimeterMotionText || contactText || lockText || motionText || quarantineText),
+      hasActive: Boolean(cameraText || perimeterMotionText || contactText || lockText || motionText || interactionText || quarantineText),
       sensorCount: allSensors.length,
     };
   }
@@ -1325,15 +1353,15 @@ class IQAlarmPanel extends HTMLElement {
     if(timed){
       const roles=new Set((recognition?.sources||[]).map(source=>source.role));
       info.cameraText=roles.has("perimeter_camera")?(info.cameraText||"Person"):"";
-      info.perimeterMotionText=roles.has("perimeter_sensor")?"Bewegung erkannt":"";
-      info.motionText=roles.has("interior_motion")||roles.has("interior_mmwave")?"Bewegung":"";
+      info.perimeterMotionText=roles.has("perimeter_sensor")?"Bewegung":"";
+      Object.assign(info,this._interiorActivityLabels(recognition?.sources||[]));
       info.contactText=roles.has("entry_contact")||roles.has("vibration_glass")?(info.contactText||"Öffnung erkannt"):"";
       info.lockText=roles.has("lock_contact")?(info.lockText||"Schlossbetätigung"):"";
       info.quarantineText=recognition?.faults?(info.quarantineText||"Sensorstörung"):"";
     }
 
     const confirmed=timed?recognition?.confirmed:status.confirmed&&isArmed;
-    const hasBreach = Boolean(confirmed || (showMotion && info.motionText));
+    const hasBreach = Boolean(confirmed || (showMotion && (info.motionText || info.interactionText)));
     const hasWarning = Boolean((showCamera && (info.cameraText || info.perimeterMotionText)) || (showContact && info.contactText) || (showLock && info.lockText) || info.quarantineText);
     const activeAlert = hasBreach || hasWarning;
     const remaining=recognition?.expires_at==null?null:Math.max(0,recognition.expires_at-now-(this._displayClockOffset||0));
@@ -1352,7 +1380,9 @@ class IQAlarmPanel extends HTMLElement {
     if (info.lockText && showLock) subLines.push({text: info.lockText, kind: "lock"});
     if (info.informationText) subLines.push({text:info.informationText,kind:"information"});
     if (info.motionText && showMotion) subLines.push({text: info.motionText, kind: "motion"});
+    if (info.interactionText && showMotion) subLines.push({text: info.interactionText, kind: "interaction"});
     if (info.quarantineText) subLines.push({text: info.quarantineText, kind: "quarantine"});
+    subLines.sort((a,b)=>Number(a.text==="Potenziell unsicher")-Number(b.text==="Potenziell unsicher"));
     return {info, isArmed, hasBreach, activeAlert, animClass, color, fillId, subLines,
       fadeSeconds:timed?(fading?remaining:recognition?RECOGNITION_FADE_SECONDS:0):RECOGNITION_FADE_SECONDS};
   }
@@ -1389,7 +1419,7 @@ class IQAlarmPanel extends HTMLElement {
     const base = Math.max(plan.width,plan.height)*scale;
     const ptsAttr = points.map(([x,y]) => `${Math.round(x*plan.width*10)/10},${Math.round(y*plan.height*10)/10}`).join(" ");
     const corners = graphic ? points.map(([x,y]) => `<circle class="room-corner" cx="${Math.round(x*plan.width*10)/10}" cy="${Math.round(y*plan.height*10)/10}" r="${Math.max(2.2,base*.0035)}" fill="${color}" fill-opacity=".85"/>`).join("") : "";
-    return `<g data-room="${esc(room)}" style="--room-fade-duration:${presentation.fadeSeconds??1.5}s" role="button" tabindex="0" aria-label="${esc([roomName,...presentation.subLines.map(line => line.text)].join(": "))}"><polygon class="room-glow${animClass}" points="${ptsAttr}" fill="${color}" fill-opacity="${activeAlert ? ".26" : ".14"}" stroke="${color}" stroke-width="${activeAlert ? 8 : 5}" stroke-opacity=".28" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><polygon points="${ptsAttr}" fill="${color}" fill-opacity=".15" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><polygon class="room-inner" points="${ptsAttr}" fill="none" stroke="#e2f1ff" stroke-opacity=".32" stroke-width="1" stroke-dasharray="5 4" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>${corners}</g>`;
+    return `<g data-room="${esc(room)}" style="--room-fade-duration:${presentation.fadeSeconds??1.5}s" ${this.readOnlyFloorplan?"":"role=\"button\" tabindex=\"0\" "}aria-label="${esc([roomName,...presentation.subLines.map(line => line.text)].join(": "))}"><polygon class="room-glow${animClass}" points="${ptsAttr}" fill="${color}" fill-opacity="${activeAlert ? ".26" : ".14"}" stroke="${color}" stroke-width="${activeAlert ? 8 : 5}" stroke-opacity=".28" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><polygon points="${ptsAttr}" fill="${color}" fill-opacity=".15" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><polygon class="room-inner" points="${ptsAttr}" fill="none" stroke="#e2f1ff" stroke-opacity=".32" stroke-width="1" stroke-dasharray="5 4" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>${corners}</g>`;
   }
 
   _zoneLabelSVG(plan,room,points,graphic = false,scale = 1,presentation = this._roomPresentation(room)) {
@@ -1424,7 +1454,7 @@ class IQAlarmPanel extends HTMLElement {
       return `<tspan x="${cx}" dy="${Math.round(lineSpacing*10)/10}" font-size="${Math.round(subSize*10)/10}" class="${fillClass}">${esc(l.text)}</tspan>`;
     }).join("");
 
-    return `<g style="--room-fade-duration:${presentation.fadeSeconds??1.5}s" class="room-label-group${isPositioning ? " active-positioning" : ""}${animClass}" data-label-room="${esc(room)}" data-room="${esc(room)}" data-cx="${cx}" data-cy="${cy}" tabindex="0" role="button" aria-label="Beschriftung ${esc(roomName)} verschieben"><rect class="room-badge" x="${Math.round((cx-badgeW/2)*10)/10}" y="${Math.round((cy-badgeH/2)*10)/10}" width="${Math.round(badgeW)}" height="${Math.round(badgeH)}" rx="${Math.round(rx*10)/10}" fill="#091322e8" stroke="${color}" stroke-width="${isPositioning ? "3" : "1.5"}" vector-effect="non-scaling-stroke"/><text x="${cx}" y="${firstLineY}" text-anchor="middle" font-size="${Math.round(fontSize*10)/10}">${esc(roomName)}${tspans}</text></g>`;
+    return `<g style="--room-fade-duration:${presentation.fadeSeconds??1.5}s" class="room-label-group${isPositioning ? " active-positioning" : ""}${animClass}" data-label-room="${esc(room)}" data-room="${esc(room)}" data-cx="${cx}" data-cy="${cy}" ${this.readOnlyFloorplan?`aria-label="${esc(roomName)}"`:`tabindex="0" role="button" aria-label="Beschriftung ${esc(roomName)} verschieben"`}><rect class="room-badge" x="${Math.round((cx-badgeW/2)*10)/10}" y="${Math.round((cy-badgeH/2)*10)/10}" width="${Math.round(badgeW)}" height="${Math.round(badgeH)}" rx="${Math.round(rx*10)/10}" fill="#091322e8" stroke="${color}" stroke-width="${isPositioning ? "3" : "1.5"}" vector-effect="non-scaling-stroke"/><text x="${cx}" y="${firstLineY}" text-anchor="middle" font-size="${Math.round(fontSize*10)/10}">${esc(roomName)}${tspans}</text></g>`;
   }
   async _loadPlan(plan) {
     const key = `${plan.id}/${plan.image}`; if (this.imageLoading.has(key)) return;
@@ -2331,7 +2361,7 @@ class IQAlarmPanel extends HTMLElement {
       else if (command === "sensor-new-perimeter") this._sensorDialog(id, true);
       else if (command === "filter-perimeter") { this.catalogFilter = "perimeter"; this._render(); this.shadowRoot.getElementById("sensor-search")?.scrollIntoView({behavior: "smooth"}); }
       else if (command === "action-new" || command === "action-edit") this._actionDialog(id);
-      else if (command === "profile-icon") { const form = button.closest("form"); form.elements.profile_icon.value = id; this._updateIconPreview(form); }
+      else if (command === "profile-icon") { const form = button.closest("form"); form.elements.profile_icon.value = id; this._markSettingsDirty(button); this._updateIconPreview(form); }
       else if (command === "floorplan-upload") this._uploadDialog();
       else if (command === "floorplan-pick") this.shadowRoot.getElementById("plan-upload").click();
       else if (command === "floorplan-analyze") await this._analyzePlan();
@@ -2825,6 +2855,16 @@ class IQAlarmPanel extends HTMLElement {
     } catch (err) {this._toast(err.message || String(err), true);}
     finally {this._requestBusy = false; if (button?.isConnected) {button.disabled = false; if (form.dataset.type === "floorplan-upload") button.textContent="Hochladen";} this._updateLock();}
   }
+}
+
+
+// Render the shared live SVG without constructing or connecting the editor panel.
+export function renderLiveFloorplan(data,plan,{now=Date.now()/1000,images=new Map(),first=true}={}) {
+  const view=Object.create(IQAlarmPanel.prototype);
+  view._data=data;view._displayClockOffset=0;view.imageURLs=images;view.readOnlyFloorplan=true;
+  view._loadPlan=()=>{};
+  view._roomPresentation=room=>IQAlarmPanel.prototype._roomPresentation.call(view,room,now);
+  return view._renderPlanSvg(plan,true,false,first);
 }
 
 if (!customElements.get("iqalarm-panel")) customElements.define("iqalarm-panel", IQAlarmPanel);

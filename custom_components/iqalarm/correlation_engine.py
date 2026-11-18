@@ -814,8 +814,8 @@ class CorrelationEngine:
             self.debouncing.pop(entity_id, None)
             self._recompute(now)
             return
-        diagnose = self.reactions_enabled or self.config.settings.diagnose_disarmed
-        if diagnose and sensor.role in CONTACT_ROLES and sensor.flap_enabled:
+        # Live observation must never isolate a contact before the system is armed.
+        if self.reactions_enabled and sensor.role in CONTACT_ROLES and sensor.flap_enabled:
             changes = self.edges[entity_id]
             changes.append(now)
             while changes and now - changes[0] > sensor.flap_window:
@@ -2334,7 +2334,10 @@ class CorrelationEngine:
             if k in self.sensors
             and not self.sensors[k].information_only
             and k not in self.grouped_inputs
-            and (v.get("reason") != "quarantined_flapping" or self.sensors[k].role in CONTACT_ROLES)
+            and (
+                v.get("reason") != "quarantined_flapping"
+                or (self.reactions_enabled and self.sensors[k].role in CONTACT_ROLES)
+            )
         }
         self.last_active = {
             eid: float(t) for eid, t in data.get("last_active", {}).items() if now - float(t) <= 300

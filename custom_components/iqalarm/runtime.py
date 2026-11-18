@@ -31,6 +31,11 @@ from .store import IQAlarmStore
 from .windows import WindowTracker, related_window_information
 
 _LOGGER = logging.getLogger(__name__)
+_PERSISTENCE_FLUSH_WAIT = 2
+_PERSISTENCE_SLOW_WRITE = 10
+_PERSISTENCE_SHUTDOWN_WAIT = 10
+_PERSISTENCE_RETRY_SECONDS = 1
+_PERSISTENCE_RETRY_MAX = 30
 
 
 class IQAlarmRuntime:
@@ -53,6 +58,12 @@ class IQAlarmRuntime:
         self.cleanup_tasks: set[asyncio.Task] = set()
         self.lock = asyncio.Lock()
         self.storage_lock = asyncio.Lock()
+        self._persistence_task: asyncio.Task | None = None
+        self._persistence_requested = 0
+        self._persistence_saved = 0
+        self._persistence_waiters: dict[asyncio.Future, int] = {}
+        self._persistence_failed = False
+        self._persistence_retry_wakeup = asyncio.Event()
         self.pin_lock = asyncio.Lock()
         self.cancels: list[Callable] = []
         self.stopped = False
@@ -381,6 +392,7 @@ class IQAlarmRuntime:
         if self.stopped:
             return
         self.stopped = True
+        self._persistence_retry_wakeup.set()
         if self.external.task:
             self.external.task.cancel()
             await asyncio.gather(self.external.task, return_exceptions=True)
@@ -426,8 +438,16 @@ class IQAlarmRuntime:
                 and owned["kind"] in {"siren", "light", "switch"}
             }
         self.dispatcher.release_media_path()
-        if save:
-            await self.persist()
+        try:
+            if save:
+                async with asyncio.timeout(_PERSISTENCE_SHUTDOWN_WAIT):
+                    await self.persist()
+        except (HomeAssistantError, OSError, TimeoutError) as err:
+            self._report_persistence_failure(err)
+        finally:
+            if self._persistence_task:
+                self._persistence_task.cancel()
+                await asyncio.gather(self._persistence_task, return_exceptions=True)
 
     def _grade_stamp(self):
         return tuple(
@@ -446,19 +466,100 @@ class IQAlarmRuntime:
         return tuple(sorted(self.engine.activity_until.items()))
 
     async def persist(self) -> None:
-        async with self.storage_lock:
-            stamp = self._grade_stamp()
-            activity_stamp = self._activity_stamp()
-            await self.store.async_save(
-                config=self.config,
-                state={
-                    **deepcopy(self.engine.persistent_state()),
-                    "external_monitor": deepcopy(self.external.state),
-                },
-                outputs=deepcopy(self.dispatcher.outputs),
+        """Wait for this request's snapshot without cancelling the shared writer."""
+        self._persistence_requested += 1
+        waiter = asyncio.get_running_loop().create_future()
+        self._persistence_waiters[waiter] = self._persistence_requested
+        if self._persistence_task is None or self._persistence_task.done():
+            self._persistence_task = self.hass.async_create_background_task(
+                self._persist_pending(), "IQAlarm state storage"
             )
-            self._saved_grade_stamp = stamp
-            self._saved_activity_stamp = activity_stamp
+        try:
+            await asyncio.shield(waiter)
+        finally:
+            self._persistence_waiters.pop(waiter, None)
+            waiter.cancel()
+
+    def _report_persistence_failure(self, err: Exception, *, slow: bool = False) -> None:
+        # A burst of callers must produce one incident, not dozens of empty errors.
+        if not self._persistence_failed:
+            self._persistence_failed = True
+            detail = f"{type(err).__name__}: {err}" if str(err) else type(err).__name__
+            reason = (
+                f"Zustand beim Beenden nicht gespeichert ({detail})"
+                if self.stopped
+                else f"Zustandsspeicherung verzögert ({detail}); Schreibvorgang läuft weiter"
+                if slow
+                else f"Zustand noch nicht gespeichert ({detail}); erneuter Versuch automatisch"
+            )
+            self.report("runtime_error", reason)
+
+    async def _persist_pending(self) -> None:
+        retry = _PERSISTENCE_RETRY_SECONDS
+        try:
+            while self._persistence_saved < self._persistence_requested:
+                try:
+                    async with self.storage_lock:
+                        requested = self._persistence_requested
+                        stamp = self._grade_stamp()
+                        activity_stamp = self._activity_stamp()
+                        write = asyncio.create_task(
+                            self.store.async_save(
+                                config=self.config,
+                                state={
+                                    **deepcopy(self.engine.persistent_state()),
+                                    "external_monitor": deepcopy(self.external.state),
+                                },
+                                outputs=deepcopy(self.dispatcher.outputs),
+                            ),
+                            name="IQAlarm atomic state write",
+                        )
+                        try:
+                            # A slow write keeps running. Never start a second disk
+                            # write merely because a caller stopped waiting for it.
+                            done, _ = await asyncio.wait({write}, timeout=_PERSISTENCE_SLOW_WRITE)
+                            if not done:
+                                _LOGGER.warning("IQAlarm state storage is taking unusually long")
+                                self._report_persistence_failure(TimeoutError(), slow=True)
+                            await write
+                        finally:
+                            if not write.done():
+                                write.cancel()
+                            await asyncio.gather(write, return_exceptions=True)
+                        self._saved_grade_stamp = stamp
+                        self._saved_activity_stamp = activity_stamp
+                        self._persistence_saved = requested
+                    for waiter, revision in list(self._persistence_waiters.items()):
+                        if revision <= requested and not waiter.done():
+                            waiter.set_result(None)
+                    if self._persistence_failed:
+                        self._persistence_failed = False
+                        self.report(
+                            "persistence_recovered", "Zustand wieder erfolgreich gespeichert"
+                        )
+                    retry = _PERSISTENCE_RETRY_SECONDS
+                except (HomeAssistantError, OSError, TimeoutError) as err:
+                    _LOGGER.warning(
+                        "IQAlarm state storage failed (%s); retrying",
+                        type(err).__name__,
+                        exc_info=True,
+                    )
+                    self._report_persistence_failure(err)
+                    for waiter in self._persistence_waiters:
+                        if not waiter.done():
+                            waiter.set_exception(err)
+                    if self.stopped:
+                        return
+                    try:
+                        async with asyncio.timeout(retry):
+                            await self._persistence_retry_wakeup.wait()
+                    except TimeoutError:
+                        retry = min(retry * 2, _PERSISTENCE_RETRY_MAX)
+                    self._persistence_retry_wakeup.clear()
+        finally:
+            for waiter in self._persistence_waiters:
+                if not waiter.done():
+                    waiter.cancel()
 
     async def flush(self) -> None:
         self.external.reconcile()
@@ -530,10 +631,12 @@ class IQAlarmRuntime:
 
     async def _flush_persistence(self):
         try:
-            async with asyncio.timeout(2):
+            async with asyncio.timeout(_PERSISTENCE_FLUSH_WAIT):
                 await self.persist()
-        except (HomeAssistantError, OSError, TimeoutError) as err:
-            self.report("runtime_error", f"Zustand nicht gespeichert: {err}")
+        except (HomeAssistantError, OSError, TimeoutError):
+            # The shared writer retains dirty state and reports/retries real
+            # failures. A caller's wait limit must not cancel a healthy write.
+            return
 
     async def _secure_transition(self, event, generation):
         await self.dispatcher.cleanup(

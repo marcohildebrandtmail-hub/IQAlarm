@@ -17,6 +17,39 @@ test.beforeEach(async({page})=>{
   await page.waitForFunction(()=>customElements.get("iqalarm-panel"));
 });
 
+for(const width of [1440,390])test(`room label distinguishes interaction and fits all nine status lines at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:844});
+  const summary=await page.locator('iqalarm-panel').evaluate(panel=>{
+    const now=Date.now()/1000;
+    const sensor=(id,role,extra={})=>({entity_id:id,name:id,room_id:'wc',role,enabled:true,...extra});
+    const sensors=[sensor('binary_sensor.person','perimeter_camera',{name:'Person'}),sensor('binary_sensor.outside','perimeter_sensor'),
+      sensor('binary_sensor.door','entry_contact',{name:'Tür'}),sensor('binary_sensor.window','entry_contact',{name:'Fenster'}),
+      sensor('binary_sensor.lock','lock_contact',{sensor_kind:'door_lock'}),sensor('binary_sensor.motion','interior_motion'),
+      sensor('event.button','interior_motion',{sensor_kind:'light_switch',activation_mode:'press'})];
+    const recognition={level:4,stage_id:'alarm',expires_at:now+60,confirmed:true,event:'active',sources:sensors};
+    panel.tab=0;panel._connected=true;panel.catalog={entities:[],areas:[]};
+    panel.data={config:{secure_stage_id:'secure',stages:[{id:'off',name:'Aus'},{id:'secure',name:'Sicher'},{id:'outside',name:'Umfeld'},{id:'inside',name:'Verdacht'},{id:'alarm',name:'Alarm'}],
+      profiles:{},robots:{},actions:{},rules:{},rooms:{wc:{id:'wc',name:'WC'}},windows:{},floorplans:{},settings:{floorplan_armed_animation:false},
+      sensors:Object.fromEntries(sensors.map(s=>[s.entity_id,s]))},information:[{room_id:'wc'}],windows:{},window_details:{},
+      status:{active:true,profile_id:'away',level:4,stage_id:'alarm',stage_name:'Alarm',confirmed:true,raw:Object.fromEntries(sensors.map(s=>[s.entity_id,true])),last_active:{},quarantine:{},
+        rooms:{wc:{level:4,confirmed:true,motion:['binary_sensor.motion','event.button'],persons:['binary_sensor.person','binary_sensor.outside'],open:['binary_sensor.door','binary_sensor.window','binary_sensor.lock'],quarantined:['binary_sensor.window'],
+          recognitions:[recognition,{level:4,stage_id:'alarm',expires_at:now+60,confirmed:false,event:'flapping',sources:[]}]}}}};
+    const plan={width:1000,height:1000,labels:{wc:[.5,.5]}},points=[[.1,.1],[.9,.1],[.9,.9],[.1,.9]];
+    const display=panel._roomPresentation('wc',now);
+    panel.shadowRoot.innerHTML=`<style>:host{display:block}text{fill:white;font-family:Arial;font-weight:bold}.room-sub{fill:#ff7777;font-weight:normal}</style><svg viewBox="0 0 1000 1000" style="display:block;width:100%;max-width:700px;background:#15202b">${panel._zoneSVG(plan,'wc',points,true,1,display)}${panel._zoneLabelSVG(plan,'wc',points,true,1,display)}</svg>`;
+    return {lines:display.subLines.map(line=>line.text),color:display.color};
+  });
+  expect(summary.lines).toEqual(['Bestätigter Alarm','Person','Bewegung','Tür & Fenster offen','Türschloss entriegelt','Bewegung','Interaktion','Störung: Prell-Quarantäne','Potenziell unsicher']);
+  expect(summary.color).toBe('#ef4444');
+  const label=page.locator('[data-label-room="wc"]');
+  await expect(label.locator('tspan')).toHaveCount(9);
+  const fits=await label.evaluate(group=>{
+    const rect=group.querySelector('rect').getBBox(),text=group.querySelector('text').getBBox();
+    return text.x>=rect.x&&text.y>=rect.y&&text.x+text.width<=rect.x+rect.width&&text.y+text.height<=rect.y+rect.height;
+  });
+  expect(fits).toBe(true);
+});
+
 for(const width of [1440,390])test(`coverage details sit inside the status field instead of a separate card at ${width}px`,async({page})=>{
   await page.setViewportSize({width,height:844});
   await page.locator('iqalarm-panel').evaluate(panel=>{
@@ -160,15 +193,15 @@ for(const width of [1440,390])test(`armed recognition fades to turquoise at the 
     panel.__heldShape=panel.shadowRoot.querySelector('g[data-room="hall"]:not([data-label-room]) polygon:nth-of-type(2)');
   });
   const shape=page.locator('g[data-room="hall"]:not([data-label-room]) polygon').nth(1),label=page.locator('[data-label-room="hall"]'),ring=page.locator('.status-rings');
-  await expect(label).toContainText('Bewegung erkannt');
+  await expect(label).toContainText('Bewegung');
   await expect(ring).toHaveAttribute('aria-label','Alarmstufe 2');
   await expect(shape).toHaveCSS('fill','rgb(245, 158, 11)');
   await expect.poll(()=>shape.evaluate(node=>getComputedStyle(node).fill),{timeout:3500,intervals:[60]}).not.toBe('rgb(245, 158, 11)');
   expect(await shape.evaluate(node=>getComputedStyle(node).fill)).not.toBe('rgb(20, 184, 166)');
-  await expect(label).toContainText('Bewegung erkannt');
+  await expect(label).toContainText('Bewegung');
   await expect(ring).toHaveAttribute('aria-label','Alarmstufe 2');
   await expect(ring).toHaveAttribute('aria-label','Alarmstufe 1',{timeout:2200});
-  await expect(label).not.toContainText('Bewegung erkannt');
+  await expect(label).not.toContainText('Bewegung');
   await expect(shape).toHaveCSS('fill','rgb(20, 184, 166)');
   expect(await page.locator('iqalarm-panel').evaluate(panel=>panel.__heldShape===panel.shadowRoot.querySelector('g[data-room="hall"]:not([data-label-room]) polygon:nth-of-type(2)'))).toBe(true);
 });

@@ -1,5 +1,5 @@
 /* Read-only Lovelace card. Rendering and timer projection are shared with IQAlarm. */
-import {LIVE_VIEW_CSS,patchHTML,recognitionDisplayData,statusRings} from "./live-view.js?v=2.15.1";
+import {LIVE_VIEW_CSS,patchHTML,recognitionDisplayData,statusRings} from "./live-view.js?v=2.15.2";
 
 const esc=value=>String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const css=`
@@ -33,11 +33,12 @@ export class IQAlarmCard extends HTMLElement {
     this._onReady=()=>{this._resetSubscription();this._connect();};
   }
   static getStubConfig(){return {};}
+  static get cardType(){return "custom:iqalarm-card";}
   static getConfigForm(){return {schema:[]};}
   getCardSize(){return 5;}
   getGridOptions(){return {columns:6,rows:"auto",min_columns:3};}
   setConfig(config) {
-    if(!config||config.type!=="custom:iqalarm-card")throw new Error("Kartentyp muss custom:iqalarm-card sein");
+    if(!config||config.type!==this.constructor.cardType)throw new Error(`Kartentyp muss ${this.constructor.cardType} sein`);
     this._config={...config};this._render();this._connect();
   }
   set hass(value) {
@@ -110,9 +111,102 @@ export class IQAlarmCard extends HTMLElement {
   }
 }
 
+const floorplanCss=`
+:host{display:block;color:var(--primary-text-color,#172a34);--iq-surface:var(--card-background-color,#fff);--iq-border:var(--divider-color,#d6dce0);--iq-muted:var(--secondary-text-color,#667580)}
+ha-card{box-sizing:border-box;overflow:hidden}
+.floorplans{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:16px;padding:16px}
+.floorplan{min-width:0}.floorplan-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+h3{margin:0;font-size:15px;overflow-wrap:anywhere}.room-count{font-size:11px;color:var(--iq-muted);white-space:nowrap}
+.plan-wrap{margin-top:10px}.plan-wrap.graphic-mode g[data-room],.plan-wrap.graphic-mode .room-label-group .room-badge{cursor:default;touch-action:auto}
+.plan-wrap.graphic-mode g[data-room]{pointer-events:none}
+.plan-wrap.graphic-mode .room-label-group:hover .room-badge{filter:none}
+.message{padding:20px;text-align:center;color:var(--iq-muted);font-size:13px}
+`;
+
+export function selectedFloorplans(data,selection="") {
+  const plans=Object.values(data.config.floorplans||{});
+  if(!plans.length){
+    if(selection&&selection!=="all")throw Error("Die ausgewählte Etage wurde nicht gefunden.");
+    return Object.keys(data.config.rooms||{}).length?[{id:"virtual",name:"Raum-Grafik",width:1000,height:560,image:null,zones:{}}]:[];
+  }
+  if(!selection||selection==="all")return plans;
+  const byId=plans.find(plan=>plan.id===selection);if(byId)return [byId];
+  const byName=plans.filter(plan=>plan.name===selection);
+  if(byName.length!==1)throw Error(byName.length?"Etagenname nicht eindeutig; bitte die Etagen-ID verwenden.":"Die ausgewählte Etage wurde nicht gefunden.");
+  return byName;
+}
+
+export class IQAlarmFloorplanCard extends IQAlarmCard {
+  constructor() {
+    super();this._images=new Map();this._imageRequests=new Map();this._imageFailures=new Set();this._imageGeneration=0;
+    this.shadowRoot.querySelector("style").textContent=floorplanCss;
+  }
+  static get cardType(){return "custom:iqalarm-floorplan-card";}
+  static getConfigForm(){return {schema:[{name:"floorplan",label:"Etage (Name oder ID; leer: alle)",selector:{text:{}}}]};}
+  getCardSize(){return 8;}
+  getGridOptions(){return {columns:12,rows:"auto",min_columns:6};}
+  setConfig(config) {
+    if(config?.floorplan!==undefined&&(typeof config.floorplan!=="string"||config.floorplan.length>100))throw Error("Etage als Name oder ID angeben.");
+    super.setConfig(config);
+  }
+  _clearImages() {
+    this._imageGeneration++;
+    for(const request of this._imageRequests?.values()||[])request.controller.abort();
+    for(const cached of this._images?.values()||[])URL.revokeObjectURL(cached.url);
+    this._imageRequests?.clear();this._images?.clear();this._imageFailures?.clear();
+  }
+  _resetSubscription() {this._clearImages();super._resetSubscription();}
+  _syncImages(plans) {
+    const wanted=new Map(plans.filter(plan=>plan.image).map(plan=>[plan.id,plan.image]));
+    for(const [id,cached] of this._images)if(wanted.get(id)!==cached.image){URL.revokeObjectURL(cached.url);this._images.delete(id);}
+    for(const [id,request] of this._imageRequests)if(wanted.get(id)!==request.image){request.controller.abort();this._imageRequests.delete(id);}
+    for(const plan of plans){
+      const key=`${plan.id}/${plan.image}`;
+      if(!plan.image||this._images.get(plan.id)?.image===plan.image||this._imageRequests.has(plan.id)||this._imageFailures.has(key)||!this._hass?.fetchWithAuth)continue;
+      const request={image:plan.image,controller:new AbortController()},generation=this._imageGeneration;
+      this._imageRequests.set(plan.id,request);
+      Promise.resolve().then(async()=>{
+        const response=await this._hass.fetchWithAuth(`/api/iqalarm/floorplans/${encodeURIComponent(plan.id)}/image`,{signal:request.controller.signal});
+        if(!response.ok)throw Error("Grundrissbild nicht verfügbar");
+        const blob=await response.blob();
+        if(!this.isConnected||!this._live||generation!==this._imageGeneration||this._imageRequests.get(plan.id)!==request)return;
+        this._images.set(plan.id,{image:plan.image,url:URL.createObjectURL(blob)});
+      }).catch(error=>{if(error?.name!=="AbortError"&&generation===this._imageGeneration)this._imageFailures.add(key);})
+        .finally(()=>{if(this._imageRequests.get(plan.id)===request)this._imageRequests.delete(plan.id);if(this.isConnected&&generation===this._imageGeneration)this._render();});
+    }
+  }
+  _render() {
+    const host=this.shadowRoot?.getElementById("status");if(!host)return;
+    if(!this._live||!this._data){patchHTML(host,`<p class="message" role="status">${esc(this._message||"Verbinde mit IQAlarm …")}</p>`);return;}
+    if(!this._floorplanRenderer){
+      if(!this._rendererPromise&&!this._rendererFailed){
+        this._rendererPromise=import("./iqalarm-panel.js?v=2.15.2").then(module=>{
+          this._floorplanRenderer=module;this.shadowRoot.querySelector("style").textContent=LIVE_VIEW_CSS+module.FLOORPLAN_VIEW_CSS+floorplanCss;
+          if(this.isConnected)this._render();
+        }).catch(()=>{this._rendererFailed=true;if(this.isConnected)this._render();});
+      }
+      patchHTML(host,`<p class="message" role="status">${this._rendererFailed?"Grundriss konnte nicht geladen werden.":"Grundriss wird geladen …"}</p>`);return;
+    }
+    let plans;
+    try{plans=selectedFloorplans(this._data,this._config?.floorplan);}catch(error){this._syncImages([]);patchHTML(host,`<p class="message" role="status">${esc(error.message)}</p>`);return;}
+    if(!plans.length){this._syncImages([]);patchHTML(host,'<p class="message" role="status">Kein Grundriss eingerichtet.</p>');return;}
+    this._syncImages(plans);
+    const now=this._serverTime+performance.now()/1000-this._receivedAt;
+    patchHTML(host,`<div class="floorplans">${plans.map((plan,index)=>{
+      const view=this._floorplanRenderer.renderLiveFloorplan(this._data,plan,{now,images:this._images,first:index===0});
+      return `<section class="floorplan" data-live-key="floor-${esc(plan.id)}"><div class="floorplan-head"><h3>${esc(plan.name)}</h3><span class="room-count">${view.roomCount} ${view.roomCount===1?"Raum":"Räume"}</span></div>${view.svg}</section>`;
+    }).join("")}</div>`);
+  }
+}
+
 if(!customElements.get("iqalarm-card"))customElements.define("iqalarm-card",IQAlarmCard);
+if(!customElements.get("iqalarm-floorplan-card"))customElements.define("iqalarm-floorplan-card",IQAlarmFloorplanCard);
 window.customCards=window.customCards||[];
 if(!window.customCards.some(card=>card.type==="iqalarm-card"))window.customCards.push({
   type:"iqalarm-card",name:"IQAlarm",description:"Kompakter Live-Status mit IQAlarm-Ring, Bestätigungsgrad und Timern.",preview:true,
   documentationURL:"https://github.com/marcohildebrandtmail-hub/IQAlarm#iqalarm-dashboard-karte",
+});
+if(!window.customCards.some(card=>card.type==="iqalarm-floorplan-card"))window.customCards.push({
+  type:"iqalarm-floorplan-card",name:"IQAlarm Grundriss",description:"Live-Grundriss mit Raumfarben und Statusanzeigen; alle oder eine ausgewählte Etage.",preview:true,
+  documentationURL:"https://github.com/marcohildebrandtmail-hub/IQAlarm#iqalarm-grundriss-dashboard-karte",
 });

@@ -39,12 +39,12 @@ test("armed floorplan follows level evidence beyond sensor recent time and fades
   const panel=timedPanel();
   const held=display(panel,200);
   assert.equal(held.color,"#f59e0b");
-  assert.match(held.label,/Bewegung erkannt/);
+  assert.match(held.label,/Bewegung/);
   assert.equal(panel._recognitionDisplayData(200).status.level,2);
   const fading=panel._roomPresentation("tv",278.6);
   assert.equal(fading.color,"#14b8a6");
   assert.ok(Math.abs(fading.fadeSeconds-1.4)<.0001);
-  assert.match(display(panel,278.6).label,/Bewegung erkannt/);
+  assert.match(display(panel,278.6).label,/Bewegung/);
   assert.equal(panel._recognitionDisplayData(278.6).status.level,2);
   assert.equal(panel._recognitionDisplayData(280).status.level,1);
   assert.doesNotMatch(display(panel,280).label,/Bewegung/);
@@ -73,7 +73,7 @@ test("expiry falls back to a remaining lower stage in the same room",()=>{
   assert.equal(panel._roomPresentation("tv",149).color,"#f59e0b");
   assert.ok(panel._roomPresentation("tv",149).subLines.some(line=>line.text==="Bewegung"));
   assert.equal(panel._recognitionDisplayData(151).status.level,2);
-  assert.match(display(panel,151).label,/Bewegung erkannt/);
+  assert.match(display(panel,151).label,/Bewegung/);
 });
 
 test("disarmed floorplan ignores stored alarm deadlines and keeps its short live activity",()=>{
@@ -111,6 +111,45 @@ test("a completed contact pulse has no second visual hold interval",()=>{
   panel.data.config.sensors["binary_sensor.motion"].activation_mode="change";
   const result=display(panel,111);
   assert.equal(result.color,"#14b8a6");assert.doesNotMatch(result.label,/Bewegung/);
+});
+
+for(const settings of [
+  {sensor_kind:"light_switch",activation_mode:"press"},
+  {sensor_kind:"light_switch",activation_mode:"change"},
+  {sensor_kind:"generic",activation_mode:"change"},
+])test(`interaction labels distinguish physical inputs from motion: ${JSON.stringify(settings)}`,()=>{
+  const panel=setup({raw:true});
+  Object.assign(panel.data.config.sensors["binary_sensor.motion"],settings);
+  const result=display(panel,105);
+  assert.match(result.label,/Interaktion/);
+  assert.doesNotMatch(result.label,/Bewegung/);
+  assert.equal(result.color,"#ef4444");
+  panel.data.status.raw["binary_sensor.motion"]=false;
+  panel.data.status.rooms.tv.motion=[];
+  assert.doesNotMatch(display(panel,106).label,/Interaktion|Bewegung/);
+});
+
+test("motion and interaction use separate status lines and expire independently",()=>{
+  const panel=setup({raw:true});
+  const id="binary_sensor.drawer";
+  panel.data.config.sensors[id]={entity_id:id,role:"interior_motion",room_id:"tv",activation_mode:"change"};
+  panel.data.status.raw[id]=true;
+  panel.data.status.rooms.tv.motion.push(id);
+  assert.deepEqual(panel._roomPresentation("tv",105).subLines.filter(line=>["motion","interaction"].includes(line.kind)).map(line=>line.text),["Bewegung","Interaktion"]);
+  panel.data.status.raw[id]=false;
+  panel.data.status.rooms.tv.motion=panel.data.status.rooms.tv.motion.filter(key=>key!==id);
+  assert.equal(panel._roomPresentation("tv",106).subLines.find(line=>line.kind==="motion").text,"Bewegung");
+});
+
+test("armed recognition retains the interaction source label until its existing expiry",()=>{
+  const panel=timedPanel({role:"interior_motion",until:280});
+  Object.assign(panel.data.config.sensors["binary_sensor.motion"],{sensor_kind:"light_switch",activation_mode:"press"});
+  assert.match(display(panel,200).label,/Interaktion/);
+  assert.doesNotMatch(display(panel,200).label,/Bewegung/);
+  panel.data.config.sensors["binary_sensor.other"]={entity_id:"binary_sensor.other",role:"interior_motion",room_id:"tv"};
+  panel.data.status.rooms.tv.recognitions[0].sources.push({entity_id:"binary_sensor.other",role:"interior_motion"});
+  assert.deepEqual(panel._roomPresentation("tv",200).subLines.filter(line=>["motion","interaction"].includes(line.kind)).map(line=>line.text),["Bewegung","Interaktion"]);
+  assert.doesNotMatch(display(panel,280).label,/Interaktion|Bewegung/);
 });
 test("a new motion restarts the shared interval", () => {
   const panel = setup();
@@ -221,19 +260,19 @@ function perimeter(camera, motion) {
 
 test("outdoor motion is never presented as a camera even with a linked camera",()=>{
   const result=display(perimeter(false,true),200);
-  assert.match(result.label,/Bewegung erkannt/);
+  assert.match(result.label,/Bewegung/);
   assert.doesNotMatch(result.label,/Kamera aktiv|Person/);
   assert.equal(result.color,"#f59e0b");
 });
 
 test("camera detection and outdoor motion remain separate simultaneous reports",()=>{
   const result=display(perimeter(true,true),200);
-  assert.match(result.label,/Person/);assert.match(result.label,/Bewegung erkannt/);
+  assert.match(result.label,/Person/);assert.match(result.label,/Bewegung/);
 });
 
 test("a person detection does not invent a motion sensor report",()=>{
   const result=display(perimeter(true,false),200);
-  assert.match(result.label,/Person/);assert.doesNotMatch(result.label,/Bewegung erkannt/);
+  assert.match(result.label,/Person/);assert.doesNotMatch(result.label,/Bewegung/);
 });
 
 test("stale or unavailable perimeter states and isolated sensors do not appear active",()=>{
@@ -247,8 +286,8 @@ test("stale or unavailable perimeter states and isolated sensors do not appear a
 test("outdoor display settings remain independent of interior motion",()=>{
   const panel=perimeter(false,true);
   panel.data.config.settings.floorplan_disarmed_motion=false;
-  assert.match(display(panel,200).label,/Bewegung erkannt/);
+  assert.match(display(panel,200).label,/Bewegung/);
   panel.data.config.settings.floorplan_disarmed_cameras=false;
-  assert.doesNotMatch(display(panel,200).label,/Bewegung erkannt/);
+  assert.doesNotMatch(display(panel,200).label,/Bewegung/);
   assert.equal(display(panel,200).color,"#14b8a6");
 });

@@ -1,5 +1,11 @@
 # IQAlarm
 
+### Version 2.15.2 · Vollständiger geprüfter Anlagenstand
+
+Enthält die Scharfschaltkorrektur aus 2.15.1 und erhält die bereits eingesetzten
+Korrekturen an Speicherung und Sensorbewertung sowie die Grundriss-Karte.
+Details: [RELEASE-2.15.2.md](RELEASE-2.15.2.md).
+
 ### Version 2.15.1 · Scharfschalten trotz Sensorausfall
 
 Ein nicht verfügbarer Sensor verhindert standardmäßig nicht mehr die gesamte
