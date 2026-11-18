@@ -139,13 +139,16 @@ async def verify_v2(hass, entry, admin_token, user_token, calls):
     for entity_id in data["sensors"]:
         hass.states.async_set(entity_id, "off")
     await hass.async_block_till_done()
+    await runtime.activate()
+    assert runtime.engine.profile_id == "party", "Generic activation lost the last IQAlarm profile"
+    await runtime.set_profile(None, "2468")
     await hass.services.async_call(
         "alarm_control_panel",
         "alarm_arm_away",
         {"entity_id": "alarm_control_panel.iqalarm"},
         blocking=True,
     )
-    assert runtime.engine.profile_id == "party", "HA adapter selected another IQAlarm profile"
+    assert runtime.engine.profile_id == runtime.config.ha_profile_ids["armed_away"]
     await runtime.set_profile(None, "2468")
     assert await hass.config_entries.async_reload(entry.entry_id)
     runtime = entry.runtime_data
