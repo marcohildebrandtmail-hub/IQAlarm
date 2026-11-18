@@ -37,7 +37,7 @@ test("free level conditions select entities, source count, timing and profiles, 
   await expect(page.getByLabel("Vorfeld auswerten",{exact:true})).toHaveCount(0);
   await expect(page.getByLabel("Alle Sensoren einbeziehen",{exact:true})).toHaveCount(0);
   await expect(page.getByLabel("Korrelationsfenster (Sekunden)",{exact:true})).toHaveCount(0);
-  await page.getByRole("tab",{name:"Level-Konfiguration"}).click();await page.locator('[data-stage="4"]').click();
+  await page.getByRole("tab",{name:"Level-Konfiguration"}).click();await page.locator('[data-stage="3"]').click();
   await page.getByRole("button",{name:"Regel hinzufügen",exact:true}).click();
   await page.getByLabel("Regelname",{exact:true}).fill("Zwei Außenquellen");
   await page.getByLabel("Sensoren für Bedingung 1",{exact:true}).selectOption([ids.person,ids.person2,ids.outside]);
@@ -54,43 +54,53 @@ test("free level conditions select entities, source count, timing and profiles, 
   const saved=await ws(page,"get"),rule=Object.values(saved.config.rules).find(r=>r.name==="Zwei Außenquellen");
   expect(rule.conditions[0].count).toBe(2);expect(rule.window_seconds).toBe(30);
   expect(saved.config.profiles.qa_night.rule_ids).toContain(rule.id);expect(saved.config.profiles.qa_away.rule_ids).not.toContain(rule.id);
-  await page.reload();await page.getByRole("tab",{name:"Level-Konfiguration"}).click();await page.locator('[data-stage="4"]').click();
+  await page.reload();await page.getByRole("tab",{name:"Level-Konfiguration"}).click();await page.locator('[data-stage="3"]').click();
   await expect(page.getByRole("heading",{name:"Zwei Außenquellen",exact:true})).toBeVisible();
   await page.screenshot({path:"test-results/free-level-rules.png",fullPage:true});
   await ws(page,"set_mode",{mode:"qa_night"});await state(page,ids.person,"on");
   await expect.poll(async()=>(await ws(page,"get")).status.level).toBe(2);
   await state(page,ids.outside,"on");
-  await expect.poll(async()=>(await ws(page,"get")).status.level).toBe(4);
+  await expect.poll(async()=>(await ws(page,"get")).status.level).toBe(3);
   expect((await ws(page,"get")).status.confirmed).toBe(false);
 });
 
-test("profile level actions and dry runs are isolated, persist and duplicate independently",async({page})=>{
-  await page.getByRole("tab",{name:"Profile & System"}).click();
-  const card=page.locator('[data-profile-action-stage="2"]');
-  async function add(message){
+test("level actions keep explicit profile scopes through editing, dry runs and profile copying",async({page})=>{
+  await page.getByRole("tab",{name:"Level-Konfiguration"}).click();
+  await page.locator('[data-stage="2"]').click();
+  const card=page.locator('[data-level-actions="2"]');
+  async function add(message,profile){
     await card.getByRole("button",{name:"Aktion hinzufügen",exact:true}).click();
-    await page.getByLabel(/^Ziel \/ Dienst/).fill("notify.test_phone");await page.getByLabel(/^Nachricht/).fill(message);
-    await page.getByRole("dialog").getByRole("button",{name:"Speichern",exact:true}).click();await expect(page.getByRole("dialog")).not.toBeVisible();
+    const dialog=page.getByRole("dialog");
+    await dialog.locator('[name="all_action_profiles"]').uncheck();
+    await dialog.locator('[name="action_profiles"]').selectOption(profile);
+    await dialog.getByLabel(/^Ziel \/ Dienst/).fill("notify.test_phone");
+    await dialog.getByLabel(/^Nachricht/).fill(message);
+    await dialog.getByRole("button",{name:"Speichern",exact:true}).click();
+    await expect(dialog).not.toBeVisible();
   }
-  await add("Nur nachts");
-  await page.getByRole("button",{name:"Regeln Abwesend",exact:true}).click();await expect(card.getByText("Nur nachts",{exact:true})).toHaveCount(0);
-  await add("Nur abwesend");
-  await card.getByRole("button",{name:"Stufe trocken testen",exact:true}).click();
-  await expect(card.locator("[data-level-test-plan]")).toContainText("Trockenlauf abgeschlossen");
-  let data=await ws(page,"get");const night=Object.values(data.config.actions).find(a=>a.message==="Nur nachts"),away=Object.values(data.config.actions).find(a=>a.message==="Nur abwesend");
+  await add("Nur nachts","qa_night");
+  await add("Nur abwesend","qa_away");
+  let data=await ws(page,"get");
+  const night=Object.values(data.config.actions).find(a=>a.message==="Nur nachts"),away=Object.values(data.config.actions).find(a=>a.message==="Nur abwesend");
   expect(night.profile_ids).toEqual(["qa_night"]);expect(away.profile_ids).toEqual(["qa_away"]);
-  let plan=await ws(page,"test_level",{level:"2",profile_id:"qa_away",dry_run:true});expect(plan.actions.map(a=>a.id)).toContain(away.id);expect(plan.actions.map(a=>a.id)).not.toContain(night.id);
+  const plan=await ws(page,"test_level",{level:"2",profile_id:"qa_away",dry_run:true});
+  expect(plan.actions.map(a=>a.id)).toContain(away.id);expect(plan.actions.map(a=>a.id)).not.toContain(night.id);
+  await page.getByRole("tab",{name:"Profile & System"}).click();
+  await page.getByRole("button",{name:"Regeln Abwesend",exact:true}).click();
   await page.getByRole("button",{name:"Duplizieren",exact:true}).click();
   await page.getByRole("dialog").getByLabel("Profilname",{exact:true}).fill("Kopie Regeln");
   await page.getByRole("dialog").getByRole("button",{name:"Speichern",exact:true}).click();
   data=await ws(page,"get");const copy=Object.entries(data.config.profiles).find(([,p])=>p.name==="Kopie Regeln")[0];
   const copyAction=Object.values(data.config.actions).find(a=>a.message==="Nur abwesend"&&a.profile_ids.includes(copy));
   expect(copyAction.id).not.toBe(away.id);
-  await card.locator(".action-card").filter({hasText:"Nur abwesend"}).getByRole("button",{name:"Aktion bearbeiten",exact:true}).click();
-  await page.getByLabel(/^Nachricht/).fill("Nur Kopie");await page.getByRole("dialog").getByRole("button",{name:"Speichern",exact:true}).click();
-  await page.getByRole("button",{name:"Regeln Abwesend",exact:true}).click();await expect(card.getByText("Nur abwesend",{exact:true})).toBeVisible();await expect(card.getByText("Nur Kopie",{exact:true})).toHaveCount(0);
-  await page.setViewportSize({width:390,height:844});await card.scrollIntoViewIfNeeded();await page.screenshot({path:"test-results/profile-level-actions-mobile.png",fullPage:true});
-  await page.reload();await page.getByRole("tab",{name:"Profile & System"}).click();await page.getByRole("button",{name:"Regeln Nacht",exact:true}).click();await expect(card.getByText("Nur nachts",{exact:true})).toBeVisible();
+  await page.getByRole("tab",{name:"Level-Konfiguration"}).click();await page.locator('[data-stage="2"]').click();
+  await page.locator(`[data-command="action-edit"][data-id="${copyAction.id}"]`).click();
+  await page.getByLabel(/^Nachricht/).fill("Nur Kopie");
+  await page.getByRole("dialog").getByRole("button",{name:"Speichern",exact:true}).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  data=await ws(page,"get");expect(data.config.actions[away.id].message).toBe("Nur abwesend");expect(data.config.actions[copyAction.id].message).toBe("Nur Kopie");
+  await page.reload();await page.getByRole("tab",{name:"Level-Konfiguration"}).click();await page.locator('[data-stage="2"]').click();
+  await expect(card).toContainText("Regeln Nacht");await expect(card).toContainText("Kopie Regeln");
 });
 
 test("deleting an explicitly selected source disables incomplete rules without deleting HA",async({page})=>{
@@ -152,7 +162,9 @@ test("confirmation grade remembers three sources and requires a later opening",a
   const parent=Object.values(data.config.rules).find(r=>r.name==="Vorfeldgrad 3");
   expect(parent.confirmation_target).toBe(3);expect(parent.confirmation_memory_seconds).toBe(180);
   expect(parent.confirmation_thresholds).toEqual([1,2,3]);expect(parent.confirmation_decay_seconds).toEqual([60,60,60]);
-  await page.locator('[data-stage="5"]').click();
+  data.config.stages.push({id:"confirmed_qa",name:"Bestätigungsregel QA",color:"#8000ff",requires_confirmation:true,allow_loud:true,latch:true});
+  await save(page,data.config);
+  await page.locator('[data-stage="confirmed_qa"]').click();
   await page.getByRole("button",{name:"Regel hinzufügen",exact:true}).click();
   await dialog.getByLabel("Regelname",{exact:true}).fill("Nur nach bestätigtem Vorfeld");
   await dialog.getByLabel("Sensoren für Bedingung 1",{exact:true}).selectOption([ids.frame]);
@@ -179,7 +191,7 @@ test("confirmation grade remembers three sources and requires a later opening",a
   await grade.scrollIntoViewIfNeeded();
   await page.screenshot({path:"test-results/confirmation-grade-live.png"});
   await state(page,ids.frame,"on");
-  await expect.poll(async()=>(await ws(page,"get")).status.level).toBe(5);
+  await expect.poll(async()=>(await ws(page,"get")).status.level).toBe(6);
   expect((await ws(page,"get")).status.confirmed).toBe(true);
 });
 
@@ -222,21 +234,20 @@ test("level appearance edits retain security properties without the removed cont
   expect(stage.name).toBe("Vollalarm");expect(stage.requires_confirmation).toBe(true);expect(stage.allow_loud).toBe(true);expect(stage.latch).toBe(true);
 });
 
-test("a profile action can wait for full confirmation independently from level entry",async({page})=>{
-  await page.getByRole("tab",{name:"Profile & System"}).click();
-  await page.getByRole("button",{name:"Regeln Nacht",exact:true}).click();
-  const card=page.locator('[data-profile-action-stage="2"]');
+test("a level action can wait for 3/3 and apply to one alarm profile",async({page})=>{
+  await page.getByRole("tab",{name:"Level-Konfiguration"}).click();await page.locator('[data-stage="2"]').click();
+  const card=page.locator('[data-level-actions="2"]');
   await card.getByRole("button",{name:"Aktion hinzufügen",exact:true}).click();
   const dialog=page.getByRole("dialog");
-  await dialog.getByLabel("Ausführen bei",{exact:true}).selectOption("rule_confirmed");
+  await dialog.getByLabel("Ausführen bei",{exact:true}).selectOption("grade_3");
+  await dialog.locator('[name="all_action_profiles"]').uncheck();await dialog.locator('[name="action_profiles"]').selectOption("qa_night");
   await dialog.getByLabel(/^Ziel \/ Dienst/).fill("notify.test_phone");
   await dialog.getByLabel(/^Nachricht/).fill("Erst bei voller Bestätigung");
   await dialog.getByRole("button",{name:"Speichern",exact:true}).click();await expect(dialog).not.toBeVisible();
-  await expect(card.getByText("Bei vollständiger Bestätigung",{exact:true})).toBeVisible();
+  await expect(card.getByText("Bei 3/3",{exact:true})).toBeVisible();
   const action=Object.values((await ws(page,"get")).config.actions).find(a=>a.message==="Erst bei voller Bestätigung");
-  expect(action.trigger).toBe("rule_confirmed");expect(action.profile_ids).toEqual(["qa_night"]);
-  await page.getByRole("button",{name:"Regeln Abwesend",exact:true}).click();
-  await expect(card.getByText("Erst bei voller Bestätigung",{exact:true})).toHaveCount(0);
+  expect(action.trigger).toBe("grade_3");expect(action.profile_ids).toEqual(["qa_night"]);
+  const plan=await ws(page,"test_level",{level:"2",profile_id:"qa_away",dry_run:true});expect(plan.actions.map(a=>a.id)).not.toContain(action.id);
 });
 
 

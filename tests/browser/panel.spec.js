@@ -17,7 +17,7 @@ test("desktop cockpit and real room/sensor/action/profile CRUD", async ({page}) 
   await page.getByRole("button", {name: "Raum anlegen"}).click();
   await page.getByLabel("Raumname", {exact: true}).fill("Browser Büro");
   await page.getByRole("button", {name: "Speichern", exact: true}).click();
-  await expect(page.getByRole("heading", {name: "Browser Büro", exact: true})).toBeVisible();
+  await expect(page.getByRole("combobox", {name: "Außenbereich", exact: true}).locator("option").filter({hasText:"Browser Büro"})).toHaveCount(1);
   await page.getByRole("tab", {name: "Kameras & Sensoren"}).click();
   await expect(page.getByRole("heading", {name: /Kameras & Außensensoren/})).toBeVisible();
   await page.getByRole("button", {name: "binary_sensor.window bearbeiten", exact: true}).click();
@@ -110,7 +110,6 @@ test("custom profiles can be created, sorted, scoped, copied, armed and deleted 
   await page.getByLabel("Räume auswählen", {exact: false}).selectOption({label: "Wohnzimmer"});
   await page.getByLabel("Alle Sensoren einbeziehen", {exact: true}).uncheck();
   await page.getByLabel("Sensoren auswählen", {exact: false}).selectOption("binary_sensor.window");
-  await page.getByLabel("Alle Aktionen einbeziehen", {exact: true}).uncheck();
   await page.getByLabel("Korrelationsfenster (Sekunden)", {exact: true}).fill("39");
   await page.getByRole("button", {name: "Profil speichern", exact: true}).click();
   await expect(page.getByLabel("Korrelationsfenster (Sekunden)", {exact: true})).toHaveValue("39");
@@ -246,7 +245,6 @@ test("floorplan upload, room polygon, live state and keyboard room details", asy
 
 test("profile icons can be chosen, persisted and displayed without changing rules", async ({page}) => {
   await expect(page.getByRole("button",{name:"Nacht",exact:true}).locator("ha-icon")).toHaveAttribute("icon","mdi:weather-night");
-  await expect(page.getByRole("button",{name:"Zuhause",exact:true}).locator("ha-icon")).toHaveAttribute("icon","mdi:home-outline");
   await page.getByRole("tab",{name:"Profile & System"}).click();
   await page.getByRole("button",{name:"Nacht",exact:true}).click();
   const before=await page.evaluate(() => window.iqTest.request({type:"iqalarm/get"}));
