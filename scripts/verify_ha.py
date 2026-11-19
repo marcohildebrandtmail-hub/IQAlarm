@@ -298,13 +298,42 @@ async def verify(hass, target) -> str:
                 {"id": 7, "type": "iqalarm/test_level", "level": "3", "dry_run": True}
             )
             assert (await ws.receive_json())["result"]["dry_run"]
+        hass.states.async_set("binary_sensor.window", "off")
+        await hass.async_block_till_done()
         async with session.ws_connect("http://127.0.0.1:18123/api/websocket") as ws:
             await ws.receive_json()
             await ws.send_json({"type": "auth", "access_token": user_token})
-            await ws.receive_json()
+            assert (await ws.receive_json())["type"] == "auth_ok"
             await ws.send_json({"id": 1, "type": "iqalarm/get"})
             denied = await ws.receive_json()
             assert denied["success"] is False and denied["error"]["code"] == "unauthorized", denied
+            await ws.send_json(
+                {"id": 2, "type": "iqalarm/config/save", "config": {}, "revision": 0}
+            )
+            assert (await ws.receive_json())["error"]["code"] == "unauthorized"
+            await ws.send_json({"id": 3, "type": "iqalarm/dashboard/get"})
+            result = (await ws.receive_json())["result"]
+            assert set(result) == {"available", "config", "status", "information", "window_details"}
+            assert result["config"]["rooms"]["living"]["name"] == "Wohnzimmer"
+            assert {"actions", "profiles", "rules", "external_monitoring"}.isdisjoint(
+                result["config"]
+            )
+            assert {"events", "breach_chain"}.isdisjoint(result["status"])
+            assert result["status"]["raw"]["binary_sensor.window"] is False
+            await ws.send_json({"id": 4, "type": "iqalarm/dashboard/subscribe"})
+            assert (await ws.receive_json())["success"]
+            event = (await ws.receive_json())["event"]
+            assert event["config"] == result["config"] and "events" not in event["status"]
+            hass.states.async_set("binary_sensor.window", "on")
+            try:
+                async with asyncio.timeout(5):
+                    while (await ws.receive_json())["event"]["status"]["raw"][
+                        "binary_sensor.window"
+                    ] is not True:
+                        pass
+            finally:
+                hass.states.async_set("binary_sensor.window", "off")
+                await hass.async_block_till_done()
         media_name = f"{int(time.time())}_0123456789abcdefabcd.jpg"
         (runtime.dispatcher.media_dir / media_name).write_bytes(b"IQAlarm private media test")
         media_url = "http://127.0.0.1:18123/api/iqalarm/media/" + media_name

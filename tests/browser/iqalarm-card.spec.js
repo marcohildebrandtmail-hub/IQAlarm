@@ -33,7 +33,7 @@ for(const width of [150,320])for(const dark of [false,true])test(`compact read-o
   await expect(card).toContainText('Abwesend');
   await expect(card.locator('button,input,select,a')).toHaveCount(0);
   expect(await card.evaluate(c=>{const a=c.getBoundingClientRect(),b=c.shadowRoot.querySelector('svg').getBoundingClientRect();return b.left>=a.left&&b.right<=a.right;})).toBe(true);
-  expect(await page.evaluate(()=>window.requests)).toEqual([{type:'iqalarm/subscribe'}]);
+  expect(await page.evaluate(()=>window.requests)).toEqual([{type:'iqalarm/dashboard/subscribe'}]);
 });
 test('same ring nodes animate countdown using the server clock',async({page})=>{
   await page.evaluate(()=>{

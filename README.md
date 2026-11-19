@@ -250,8 +250,7 @@ automatisch; ein zusätzlicher Ressourceneintrag ist nicht erforderlich. Alterna
 type: custom:iqalarm-card
 ```
 
-Die Karte verwendet die bestehende, auf HA-Administratoren beschränkte
-IQAlarm-Live-Schnittstelle. Die Zugriffsrechte werden dadurch nicht erweitert.
+Angemeldete Home-Assistant-Nutzer können die IQAlarm-Dashboard-Karten mit Live-Status und Grundrissen sehen. Die Karten verwenden eine separate Leseschnittstelle für Anzeigedaten. Die IQAlarm-Verwaltung benötigt Administratorrechte.
 
 ### Profile
 
@@ -275,7 +274,7 @@ Der Assistent schlägt anschließend lokal Raumflächen vor. Es werden keine Bil
 
 **Entwürfe gehen bei der Raumauswahl nicht verloren.** Der Raum wird der bearbeiteten Fläche zugeordnet, ohne ihre Eckpunkte zu ersetzen. Fehlt beim Speichern noch ein Raum, öffnet sich die Zuordnung direkt im Speicherdialog; dort kann auch ein neuer Raum angelegt werden. Rückgängig/Wiederholen sowie Strg+Z / Strg+Umschalt+Z im Grundriss stellen Bearbeitungsschritte wieder her. Der Entwurf und seine Historie werden je Benutzer, Etage und Bild im lokalen Browser gesichert und nach Neuladen wieder angeboten. Diese Sicherung ist lokal; sie verändert die in HA gespeicherten Flächen erst beim ausdrücklichen Speichern. Bei gesperrtem oder vollem Browserspeicher weist der Editor darauf hin. Außenbereiche werden ebenso als Raum markiert. Die bestehenden Sensorzuordnungen liefern automatisch Fenster-/Türstatus, Bewegung, Personen und Quarantäne. Markierungen bleiben bei Größenänderungen proportional erhalten. Der Live-Grundriss zeigt auch Signale, die ein Profil nur anzeigt. Ein Klick auf den Raum öffnet Sensorstatus und gegebenenfalls die verknüpfte HA-Kamera.
 
-Grundrissbilder werden als bereinigte PNG-Dateien privat unter `.iqalarm_floorplans` gespeichert. Abrufe und Uploads benötigen einen HA-Administrator. Bilder und Markierungen bleiben bei Neustarts und HACS-Updates erhalten.
+Grundrissbilder werden als bereinigte PNG-Dateien privat unter `.iqalarm_floorplans` gespeichert. Der Bildabruf benötigt ein angemeldetes HA-Konto. Uploads benötigen Administratorrechte. Bilder und Markierungen bleiben bei Neustarts und HACS-Updates erhalten.
 
 Die Bewegungsanzeige im Live-Grundriss verwendet einen gemeinsamen 15-Sekunden-Nachlauf für Text und rote Raumfarbe. Solange ein Melder aktiv ist, bleiben beide sichtbar. Nach seiner Ruhemeldung enden sie gemeinsam nach 15 Sekunden; eine erneute Bewegung startet den Nachlauf neu. Das längere Korrelationsfenster beeinflusst diese Anzeige nicht. Bestätigte Alarme behalten ihre eigene rote Darstellung samt ausdrücklicher Beschriftung.
 
@@ -368,7 +367,7 @@ Nach einem Neustart wird der gewählte Modus einschließlich Quarantäne und bes
 | `iqalarm.trigger_test_level` | Eigene Stufen-ID oder `diagnostic`, `dry_run` standardmäßig `true`, optional `profile_id` |
 | `iqalarm_event` | Strukturierte Ereignisse mit Zeit, Modus, Profil, Entscheidung und Auslösekette |
 
-WebSocket-Befehle: `iqalarm/get`, `iqalarm/subscribe`, `iqalarm/catalog`, `iqalarm/config/save`, `iqalarm/crud`, `iqalarm/import_areas`, `iqalarm/set_mode`, `iqalarm/arm_profile`, `iqalarm/clear_quarantine`, `iqalarm/test_level`, `iqalarm/floorplan/analyze`, `iqalarm/window/preview`, `iqalarm/window/capture`. CRUD unterstützt Räume, Sensoren, Aktionen, Profile, Grundrisse, Fenster und Levelregeln. Stufen werden mit der gesamten Konfiguration gespeichert. Neue Etage mit Bild: POST `/api/iqalarm/floorplans/upload?name=Etagenname`. Die Flächenanalyse ist schreibgeschützt. Geschützte Bild-API: GET/POST `/api/iqalarm/floorplans/{id}/image`; Upload mit aktuellem `X-IQAlarm-Revision`-Header. Alle Befehle verlangen einen Administrator. CRUD und Konfigurationsänderungen verlangen die aktuelle `revision`.
+WebSocket-Befehle: `iqalarm/get`, `iqalarm/subscribe`, `iqalarm/catalog`, `iqalarm/config/save`, `iqalarm/crud`, `iqalarm/import_areas`, `iqalarm/set_mode`, `iqalarm/arm_profile`, `iqalarm/clear_quarantine`, `iqalarm/test_level`, `iqalarm/floorplan/analyze`, `iqalarm/window/preview`, `iqalarm/window/capture`. CRUD unterstützt Räume, Sensoren, Aktionen, Profile, Grundrisse, Fenster und Levelregeln. Stufen werden mit der gesamten Konfiguration gespeichert. Neue Etage mit Bild: POST `/api/iqalarm/floorplans/upload?name=Etagenname`. Die Flächenanalyse ist schreibgeschützt. Geschützte Bild-API: GET/POST `/api/iqalarm/floorplans/{id}/image`; Upload mit aktuellem `X-IQAlarm-Revision`-Header. Die Verwaltungsbefehle verlangen einen Administrator. Die Dashboard-Befehle `iqalarm/dashboard/get` und `iqalarm/dashboard/subscribe` liefern angemeldeten HA-Nutzern die Anzeigedaten. CRUD und Konfigurationsänderungen verlangen die aktuelle `revision`.
 
 ## Entwicklung und Verifikation
 

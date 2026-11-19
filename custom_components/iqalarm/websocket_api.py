@@ -13,6 +13,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .compat import vol
 from .const import ALLOWED_SENSOR_DOMAINS, DOMAIN, SIGNAL_UPDATE
+from .dashboard import dashboard_snapshot
 from .floorplan_analysis import analyze_image
 from .level_rules import LevelRule
 from .models import (
@@ -40,6 +41,8 @@ def register(hass) -> None:
     for handler in (
         ws_get,
         ws_subscribe,
+        ws_dashboard_get,
+        ws_dashboard_subscribe,
         ws_config,
         ws_crud,
         ws_import_areas,
@@ -147,12 +150,28 @@ def ws_get(hass, connection, msg) -> None:
 @websocket_api.require_admin
 @callback
 def ws_subscribe(hass, connection, msg) -> None:
+    _subscribe(hass, connection, msg, lambda instance: instance.snapshot())
+
+
+@websocket_api.websocket_command({"type": "iqalarm/dashboard/get"})
+@callback
+def ws_dashboard_get(hass, connection, msg) -> None:
+    connection.send_result(msg["id"], dashboard_snapshot(runtime(hass)))
+
+
+@websocket_api.websocket_command({"type": "iqalarm/dashboard/subscribe"})
+@callback
+def ws_dashboard_subscribe(hass, connection, msg) -> None:
+    _subscribe(hass, connection, msg, dashboard_snapshot)
+
+
+def _subscribe(hass, connection, msg, snapshot) -> None:
     runtime(hass)
 
     @callback
     def updated() -> None:
         try:
-            current = runtime(hass).snapshot()
+            current = snapshot(runtime(hass))
         except HomeAssistantError:
             current = {"available": False}
         connection.send_event(msg["id"], current)

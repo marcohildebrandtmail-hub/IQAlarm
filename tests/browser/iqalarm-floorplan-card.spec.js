@@ -41,7 +41,7 @@ for(const width of [320,1000])for(const dark of [false,true])test(`live floorpla
   await expect(card.locator('button,input,select,[role="button"],[tabindex]')).toHaveCount(0);
   await expect(card.locator('image')).toHaveAttribute('href',/^blob:/);
   expect(await card.evaluate(c=>c.scrollWidth<=c.getBoundingClientRect().width+1)).toBe(true);
-  expect(await page.evaluate(()=>window.requests)).toEqual([{type:'iqalarm/subscribe'}]);
+  expect(await page.evaluate(()=>window.requests)).toEqual([{type:'iqalarm/dashboard/subscribe'}]);
   expect(await page.evaluate(()=>window.imageRequests)).toEqual(['/api/iqalarm/floorplans/eg/image']);
   if(width===320&&dark)await card.screenshot({path:'.ha-test/iqalarm-floorplan-card-mobile.png'});
 });

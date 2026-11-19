@@ -17,8 +17,6 @@ class IQAlarmFloorPlanView(HomeAssistantView):
     requires_auth = True
 
     def instance(self, request, plan_id):
-        if not request["hass_user"].is_admin:
-            raise web.HTTPForbidden()
         instance = request.app["hass"].data.get(DOMAIN, {}).get("runtime")
         if instance is None or plan_id not in instance.config.floorplans:
             raise web.HTTPNotFound()
@@ -38,6 +36,8 @@ class IQAlarmFloorPlanView(HomeAssistantView):
         )
 
     async def post(self, request, plan_id):
+        if not request["hass_user"].is_admin:
+            raise web.HTTPForbidden()
         instance = self.instance(request, plan_id)
         return await upload_image(self, request, instance, plan_id)
 

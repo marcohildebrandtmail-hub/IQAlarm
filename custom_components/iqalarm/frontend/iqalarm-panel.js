@@ -1,15 +1,15 @@
-import {sensorTypeField, sensorTypeChoices, setSensorType, sensorListGroup, isSensorInput, suggestedSensorType, createSensor, SENSOR_TYPES} from "./sensor-types.js?v=2.15.4";
-import {insideRoomChoices, outsideInsideControls, outsideInsideSVG, renderOutsideInside, setOutsideInside} from "./outside-inside.js?v=2.15.4";
-import {openRobotDialog, readRobotForm, renderCoverage, updateRobotStatuses} from "./robots.js?v=2.15.4";
-import {TOPOLOGY_CSS, connectionEditor, imageControls, roomConnections, setRoomConnection} from "./floorplan-topology.js?v=2.15.4";
-import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings, triggerRows, recognitionDisplayData} from "./live-view.js?v=2.15.4";
-import {RULE_SOURCES_CSS, updateRuleSources} from "./rule-sources.js?v=2.15.4";
-import {bindIconFields, iconField, MDI_ICON, roomSymbol, sensorSymbol, symbolHTML} from "./display-icons.js?v=2.15.4";
-import {DraftJournal} from "./floorplan-drafts.js?v=2.15.4";
-import {renderLevels, renderProfiles, renderConfirmationContext, openRuleDialog, readRuleForm, readAutomaticDetection, readPersonDetection, readAlarmEscalation} from "./level-configuration.js?v=2.15.4";
-import "./window-assistant.js?v=2.15.4";
-import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.15.4";
-/* IQAlarm 2.15.4 · native ES module · no CDN, framework or build required. */
+import {sensorTypeField, sensorTypeChoices, setSensorType, sensorListGroup, isSensorInput, suggestedSensorType, createSensor, SENSOR_TYPES} from "./sensor-types.js?v=2.15.5";
+import {insideRoomChoices, outsideInsideControls, outsideInsideSVG, renderOutsideInside, setOutsideInside} from "./outside-inside.js?v=2.15.5";
+import {openRobotDialog, readRobotForm, renderCoverage, updateRobotStatuses} from "./robots.js?v=2.15.5";
+import {TOPOLOGY_CSS, connectionEditor, imageControls, roomConnections, setRoomConnection} from "./floorplan-topology.js?v=2.15.5";
+import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings, triggerRows, recognitionDisplayData} from "./live-view.js?v=2.15.5";
+import {RULE_SOURCES_CSS, updateRuleSources} from "./rule-sources.js?v=2.15.5";
+import {bindIconFields, iconField, MDI_ICON, roomSymbol, sensorSymbol, symbolHTML} from "./display-icons.js?v=2.15.5";
+import {DraftJournal} from "./floorplan-drafts.js?v=2.15.5";
+import {renderLevels, renderProfiles, renderConfirmationContext, openRuleDialog, readRuleForm, readAutomaticDetection, readPersonDetection, readAlarmEscalation} from "./level-configuration.js?v=2.15.5";
+import "./window-assistant.js?v=2.15.5";
+import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.15.5";
+/* IQAlarm 2.15.5 · native ES module · no CDN, framework or build required. */
 const WINDOW_CSS = `.window-group{padding:18px 0;border-bottom:1px solid var(--divider-color,#dce3ec)}.window-inputs{margin:14px 0 0 24px;padding-left:18px;border-left:2px solid var(--divider-color,#dce3ec)}.window-inputs code{display:block;font-size:10px;overflow-wrap:anywhere;color:var(--secondary-text-color,#64758b)}.information{border-color:color-mix(in srgb,var(--primary-color,#2986bb) 25%,transparent)}.information summary,details.banner summary{cursor:pointer;font-size:13px}.information ha-icon{color:var(--primary-color,#2986bb)}`;
 const FLOORPLAN_MOTION_HOLD_SECONDS = 15;
 const RECOGNITION_FADE_SECONDS = 1.5;

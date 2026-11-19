@@ -1,5 +1,5 @@
 /* Read-only Lovelace card. Rendering and timer projection are shared with IQAlarm. */
-import {LIVE_VIEW_CSS,patchHTML,recognitionDisplayData,statusRings} from "./live-view.js?v=2.15.4";
+import {LIVE_VIEW_CSS,patchHTML,recognitionDisplayData,statusRings} from "./live-view.js?v=2.15.5";
 
 const esc=value=>String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const css=`
@@ -91,7 +91,7 @@ export class IQAlarmCard extends HTMLElement {
         this._data=data;this._live=true;this._retryDelay=1000;
         this._serverTime=Number.isFinite(data.status.server_time)?data.status.server_time:Date.now()/1000;
         this._receivedAt=performance.now()/1000;this._render();
-      },{type:"iqalarm/subscribe"});
+      },{type:"iqalarm/dashboard/subscribe"});
       if(!this.isConnected||generation!==this._generation){await unsubscribe();return;}
       this._unsubscribe=unsubscribe;
     } catch(error) {
@@ -160,7 +160,7 @@ export class IQAlarmFloorplanCardEditor extends HTMLElement {
     if(this._loaded||!this._hass?.callWS)return;
     this._loaded=true;const generation=this._generation;
     try{
-      const data=await this._hass.callWS({type:"iqalarm/get"});
+      const data=await this._hass.callWS({type:"iqalarm/dashboard/get"});
       if(generation!==this._generation)return;
       this._plans=Object.values(data.config?.floorplans||{});this._render();
     }catch{if(generation===this._generation)this._loaded=false;}
@@ -222,7 +222,7 @@ export class IQAlarmFloorplanCard extends IQAlarmCard {
     if(!this._live||!this._data){patchHTML(host,`<p class="message" role="status">${esc(this._message||"Verbinde mit IQAlarm …")}</p>`);return;}
     if(!this._floorplanRenderer){
       if(!this._rendererPromise&&!this._rendererFailed){
-        this._rendererPromise=import("./iqalarm-panel.js?v=2.15.4").then(module=>{
+        this._rendererPromise=import("./iqalarm-panel.js?v=2.15.5").then(module=>{
           this._floorplanRenderer=module;this.shadowRoot.querySelector("style").textContent=LIVE_VIEW_CSS+module.FLOORPLAN_VIEW_CSS+floorplanCss;
           if(this.isConnected)this._render();
         }).catch(()=>{this._rendererFailed=true;if(this.isConnected)this._render();});

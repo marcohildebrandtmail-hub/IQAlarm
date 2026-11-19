@@ -73,7 +73,7 @@ async def verify_v2(hass, entry, admin_token, user_token, calls):
     await asyncio.sleep(1.25)
     assert not runtime.engine.confirmed, "Silent confirmation remained latched"
 
-    # All image routes require an administrator. They never become public assets.
+    # Signed-in viewers can read floorplan images. Changes require an administrator.
     origin = "http://127.0.0.1:18123"
     url = origin + "/api/iqalarm/floorplans/eg/image"
     admin = {"Authorization": "Bearer " + admin_token}
@@ -83,9 +83,8 @@ async def verify_v2(hass, entry, admin_token, user_token, calls):
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as response:
             assert response.status == 401
-        for method in ("get", "post"):
-            async with getattr(session, method)(url, headers=user) as response:
-                assert response.status == 403
+        async with session.post(url, headers=user) as response:
+            assert response.status == 403
         revision = runtime.config.revision
         async with session.post(
             url, headers={**admin, "X-IQAlarm-Revision": str(revision)}, data=b"<svg/>"
@@ -96,7 +95,7 @@ async def verify_v2(hass, entry, admin_token, user_token, calls):
             url, headers={**admin, "X-IQAlarm-Revision": str(revision)}, data=image.getvalue()
         ) as response:
             assert response.status == 200, await response.text()
-        async with session.get(url, headers=admin) as response:
+        async with session.get(url, headers=user) as response:
             assert response.status == 200
             assert response.headers["Cache-Control"] == "private, no-store"
             assert (await response.read()).startswith(b"\x89PNG")
