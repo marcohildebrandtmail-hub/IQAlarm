@@ -1,5 +1,5 @@
 /* Read-only Lovelace card. Rendering and timer projection are shared with IQAlarm. */
-import {LIVE_VIEW_CSS,patchHTML,recognitionDisplayData,statusRings} from "./live-view.js?v=2.15.3";
+import {LIVE_VIEW_CSS,patchHTML,recognitionDisplayData,statusRings} from "./live-view.js?v=2.15.4";
 
 const esc=value=>String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const css=`
@@ -117,7 +117,7 @@ ha-card{box-sizing:border-box;overflow:hidden}
 .floorplans{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:16px;padding:16px}
 .floorplan{min-width:0}.floorplan-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
 h3{margin:0;font-size:15px;overflow-wrap:anywhere}.room-count{font-size:11px;color:var(--iq-muted);white-space:nowrap}
-.plan-wrap{margin-top:10px}.plan-wrap.graphic-mode g[data-room],.plan-wrap.graphic-mode .room-label-group .room-badge{cursor:default;touch-action:auto}
+.plan-wrap{margin-top:10px;--iq-floorplan-aspect-ratio:1;box-sizing:border-box}.plan-wrap.graphic-mode g[data-room],.plan-wrap.graphic-mode .room-label-group .room-badge{cursor:default;touch-action:auto}
 .plan-wrap.graphic-mode g[data-room]{pointer-events:none}
 .plan-wrap.graphic-mode .room-label-group:hover .room-badge{filter:none}
 .message{padding:20px;text-align:center;color:var(--iq-muted);font-size:13px}
@@ -222,7 +222,7 @@ export class IQAlarmFloorplanCard extends IQAlarmCard {
     if(!this._live||!this._data){patchHTML(host,`<p class="message" role="status">${esc(this._message||"Verbinde mit IQAlarm …")}</p>`);return;}
     if(!this._floorplanRenderer){
       if(!this._rendererPromise&&!this._rendererFailed){
-        this._rendererPromise=import("./iqalarm-panel.js?v=2.15.3").then(module=>{
+        this._rendererPromise=import("./iqalarm-panel.js?v=2.15.4").then(module=>{
           this._floorplanRenderer=module;this.shadowRoot.querySelector("style").textContent=LIVE_VIEW_CSS+module.FLOORPLAN_VIEW_CSS+floorplanCss;
           if(this.isConnected)this._render();
         }).catch(()=>{this._rendererFailed=true;if(this.isConnected)this._render();});

@@ -80,6 +80,35 @@ test('visual editor selects one floor independently per card and preserves other
   await first.selectOption('og');await expect(second).toHaveValue('all');
 });
 
+test('side-by-side cards align different floorplans without stretching them',async({page})=>{
+  await page.evaluate(()=>{
+    const container=document.getElementById('container');
+    Object.assign(container.style,{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:'8px',alignItems:'start'});
+    const [first]=container.children;
+    const second=document.createElement('iqalarm-floorplan-card');
+    first.setConfig({type:'custom:iqalarm-floorplan-card',floorplan:'eg'});
+    second.setConfig({type:'custom:iqalarm-floorplan-card',floorplan:'og'});
+    second.hass={...first.hass,connection:{subscribeMessage:async callback=>{
+      const data=structuredClone(window.data);
+      data.config.floorplans.og.height=1200;
+      callback(data);
+      return ()=>{};
+    }}};
+    container.append(second);
+  });
+  const cards=page.locator('iqalarm-floorplan-card');
+  await expect(cards.locator('h3')).toHaveText(['Erdgeschoss','Obergeschoss']);
+  const frames=await cards.evaluateAll(elements=>elements.map(card=>{
+    const svg=card.shadowRoot.querySelector('svg');
+    const {top,bottom,width,height}=svg.getBoundingClientRect();
+    const {a,d}=svg.getScreenCTM();
+    return {top,bottom,width,height,ratio:svg.viewBox.baseVal.width/svg.viewBox.baseVal.height,scaleX:a,scaleY:d,cardBottom:card.getBoundingClientRect().bottom};
+  }));
+  expect(frames[0].ratio).not.toBe(frames[1].ratio);
+  for(const key of ['top','bottom','width','height','cardBottom'])expect(frames[0][key]).toBeCloseTo(frames[1][key],1);
+  for(const frame of frames)expect(frame.scaleX).toBeCloseTo(frame.scaleY,6);
+});
+
 test('server-clock activity expires in place without any backend update',async({page})=>{
   const card=page.locator('iqalarm-floorplan-card');
   await page.evaluate(()=>{
