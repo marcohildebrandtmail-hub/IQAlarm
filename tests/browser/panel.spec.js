@@ -355,9 +355,11 @@ test("saving an unassigned edited area and selecting an existing room never rese
   await page.locator("#zone-room").selectOption("living");
   expect(await page.locator("iqalarm-panel").evaluate(el=>el.points)).toEqual(edited);
   await page.getByRole("button",{name:"Bereich speichern",exact:true}).click();
-  const saved=await page.evaluate(()=>window.iqTest.request({type:"iqalarm/get"}));
-  expect(saved.config.floorplans.draft_loss.zones.living).toEqual(edited);
-  expect(saved.config.floorplans.draft_loss.zones.draft_hall).toEqual([[.55,.1],[.9,.1],[.9,.9],[.55,.9]]);
+  await expect.poll(async()=>{
+    const saved=await page.evaluate(()=>window.iqTest.request({type:"iqalarm/get"}));
+    const {living,draft_hall}=saved.config.floorplans.draft_loss.zones;
+    return {living,draft_hall};
+  }).toEqual({living:edited,draft_hall:[[.55,.1],[.9,.1],[.9,.9],[.55,.9]]});
 });
 
 test("room reassignment, another floor, analysis and reload retain unsaved edits with undo",async({page})=>{
