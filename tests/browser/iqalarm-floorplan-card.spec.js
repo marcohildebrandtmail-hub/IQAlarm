@@ -109,6 +109,51 @@ test('side-by-side cards align different floorplans without stretching them',asy
   for(const frame of frames)expect(frame.scaleX).toBeCloseTo(frame.scaleY,6);
 });
 
+test('manual raster height scales the whole plan without overlapping the next card',async({page})=>{
+  const card=page.locator('iqalarm-floorplan-card');
+  await card.evaluate(element=>{
+    const container=element.parentElement;
+    container.style.width='502px';
+    container.style.setProperty('--row-height','56px');
+    container.style.setProperty('--row-gap','8px');
+    const slot=document.createElement('div');
+    slot.id='grid-slot';
+    slot.style.height='248px';
+    const wrapper=document.createElement('span');
+    container.append(slot);
+    slot.append(wrapper);
+    wrapper.append(element);
+    const next=document.createElement('div');
+    next.id='next-card';
+    next.style.marginTop='8px';
+    container.append(next);
+  });
+  for(const floorplan of ['og','all']){
+    await card.evaluate((element,floorplan)=>element.setConfig({type:'custom:iqalarm-floorplan-card',floorplan,grid_options:{rows:4}}),floorplan);
+    const frame=await card.evaluate(element=>{
+      const bounds=element.getBoundingClientRect();
+      const plans=[...element.shadowRoot.querySelectorAll('svg')].map(svg=>{
+        const rect=svg.getBoundingClientRect();
+        const {a,d}=svg.getScreenCTM();
+        return {bottom:rect.bottom,height:rect.height,scaleX:a,scaleY:d};
+      });
+      return {height:bounds.height,bottom:bounds.bottom,nextTop:document.getElementById('next-card').getBoundingClientRect().top,plans};
+    });
+    expect(frame.height).toBe(248);
+    expect(frame.nextTop-frame.bottom).toBe(8);
+    expect(frame.plans).toHaveLength(floorplan==='og'?1:2);
+    for(const plan of frame.plans){
+      expect(plan.height).toBeGreaterThan(30);
+      expect(plan.bottom).toBeLessThan(frame.bottom);
+      expect(plan.scaleX).toBeCloseTo(plan.scaleY,6);
+    }
+  }
+  await card.evaluate(element=>element.setConfig({type:'custom:iqalarm-floorplan-card',floorplan:'og',grid_options:{rows:'auto'}}));
+  const automatic=await card.locator('svg').boundingBox();
+  expect(automatic.height).toBeCloseTo(automatic.width,1);
+  expect(automatic.height).toBeGreaterThan(248);
+});
+
 test('server-clock activity expires in place without any backend update',async({page})=>{
   const card=page.locator('iqalarm-floorplan-card');
   await page.evaluate(()=>{

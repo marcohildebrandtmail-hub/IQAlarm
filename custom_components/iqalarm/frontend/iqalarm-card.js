@@ -1,5 +1,5 @@
 /* Read-only Lovelace card. Rendering and timer projection are shared with IQAlarm. */
-import {LIVE_VIEW_CSS,patchHTML,recognitionDisplayData,statusRings} from "./live-view.js?v=2.15.5";
+import {LIVE_VIEW_CSS,patchHTML,recognitionDisplayData,statusRings} from "./live-view.js?v=2.15.6";
 
 const esc=value=>String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const css=`
@@ -120,6 +120,16 @@ h3{margin:0;font-size:15px;overflow-wrap:anywhere}.room-count{font-size:11px;col
 .plan-wrap{margin-top:10px;--iq-floorplan-aspect-ratio:1;box-sizing:border-box}.plan-wrap.graphic-mode g[data-room],.plan-wrap.graphic-mode .room-label-group .room-badge{cursor:default;touch-action:auto}
 .plan-wrap.graphic-mode g[data-room]{pointer-events:none}
 .plan-wrap.graphic-mode .room-label-group:hover .room-badge{filter:none}
+
+:host([fixed-height]) ha-card{
+  --iq-grid-row-height:var(--row-height,var(--ha-section-grid-row-height,56px));
+  --iq-grid-row-gap:var(--row-gap,var(--ha-section-grid-row-gap,8px));
+  height:calc(var(--iq-grid-rows) * (var(--iq-grid-row-height) + var(--iq-grid-row-gap)) - var(--iq-grid-row-gap));
+}
+:host([fixed-height]) #status{height:100%}
+:host([fixed-height]) .floorplans{box-sizing:border-box;height:100%;grid-auto-rows:minmax(36px,1fr);gap:8px 16px;padding-block:8px;overflow:auto}
+:host([fixed-height]) .floorplan{display:grid;grid-template-rows:auto minmax(0,1fr)}
+:host([fixed-height]) .plan-wrap{margin-top:4px;--iq-floorplan-aspect-ratio:auto}
 .message{padding:20px;text-align:center;color:var(--iq-muted);font-size:13px}
 `;
 
@@ -189,6 +199,11 @@ export class IQAlarmFloorplanCard extends IQAlarmCard {
   getGridOptions(){return {columns:12,rows:"auto",min_columns:6};}
   setConfig(config) {
     if(config?.floorplan!==undefined&&(typeof config.floorplan!=="string"||config.floorplan.length>100))throw Error("Etage als Name oder ID angeben.");
+    const rows=config?.grid_options?.rows;
+    const fixedHeight=Number.isInteger(rows)&&rows>0;
+    this.toggleAttribute("fixed-height",fixedHeight);
+    if(fixedHeight)this.style.setProperty("--iq-grid-rows",rows);
+    else this.style.removeProperty("--iq-grid-rows");
     super.setConfig(config);
   }
   _clearImages() {
@@ -222,7 +237,7 @@ export class IQAlarmFloorplanCard extends IQAlarmCard {
     if(!this._live||!this._data){patchHTML(host,`<p class="message" role="status">${esc(this._message||"Verbinde mit IQAlarm …")}</p>`);return;}
     if(!this._floorplanRenderer){
       if(!this._rendererPromise&&!this._rendererFailed){
-        this._rendererPromise=import("./iqalarm-panel.js?v=2.15.5").then(module=>{
+        this._rendererPromise=import("./iqalarm-panel.js?v=2.15.6").then(module=>{
           this._floorplanRenderer=module;this.shadowRoot.querySelector("style").textContent=LIVE_VIEW_CSS+module.FLOORPLAN_VIEW_CSS+floorplanCss;
           if(this.isConnected)this._render();
         }).catch(()=>{this._rendererFailed=true;if(this.isConnected)this._render();});
