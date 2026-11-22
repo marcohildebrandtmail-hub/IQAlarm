@@ -1,4 +1,4 @@
-import {sensorSymbol, symbolHTML} from "./display-icons.js?v=2.15.7";
+import {sensorSymbol, symbolHTML} from "./display-icons.js?v=2.15.8";
 
 const esc=value=>String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 export const SOURCE_ROLES={perimeter_camera:"Personenerkennung außen",perimeter_sensor:"Bewegungsmelder außen",entry_contact:"Öffnungskontakte",lock_contact:"Türschlösser",interior_motion:"Bewegung innen"};

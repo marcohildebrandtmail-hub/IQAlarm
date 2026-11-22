@@ -1,4 +1,4 @@
-import {randomId} from "./floorplan-rooms.js?v=2.15.7";
+import {randomId} from "./floorplan-rooms.js?v=2.15.8";
 /* Directly executable window setup wizard. All recognition is verified by HA. */
 const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 

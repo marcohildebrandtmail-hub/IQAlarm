@@ -1,15 +1,15 @@
-import {sensorTypeField, sensorTypeChoices, setSensorType, sensorListGroup, isSensorInput, suggestedSensorType, createSensor, SENSOR_TYPES} from "./sensor-types.js?v=2.15.7";
-import {insideRoomChoices, outsideInsideControls, outsideInsideSVG, renderOutsideInside, setOutsideInside} from "./outside-inside.js?v=2.15.7";
-import {openRobotDialog, readRobotForm, renderCoverage, updateRobotStatuses} from "./robots.js?v=2.15.7";
-import {TOPOLOGY_CSS, connectionEditor, imageControls, roomConnections, setRoomConnection} from "./floorplan-topology.js?v=2.15.7";
-import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings, triggerRows, recognitionDisplayData} from "./live-view.js?v=2.15.7";
-import {RULE_SOURCES_CSS, updateRuleSources} from "./rule-sources.js?v=2.15.7";
-import {bindIconFields, iconField, MDI_ICON, roomSymbol, sensorSymbol, symbolHTML} from "./display-icons.js?v=2.15.7";
-import {DraftJournal} from "./floorplan-drafts.js?v=2.15.7";
-import {renderLevels, renderProfiles, renderConfirmationContext, openRuleDialog, readRuleForm, readAutomaticDetection, readPersonDetection, readAlarmEscalation} from "./level-configuration.js?v=2.15.7";
-import "./window-assistant.js?v=2.15.7";
-import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.15.7";
-/* IQAlarm 2.15.7 · native ES module · no CDN, framework or build required. */
+import {sensorTypeField, sensorTypeChoices, setSensorType, sensorListGroup, isSensorInput, suggestedSensorType, createSensor, SENSOR_TYPES} from "./sensor-types.js?v=2.15.8";
+import {insideRoomChoices, outsideInsideControls, outsideInsideSVG, renderOutsideInside, setOutsideInside} from "./outside-inside.js?v=2.15.8";
+import {openRobotDialog, readRobotForm, renderCoverage, updateRobotStatuses} from "./robots.js?v=2.15.8";
+import {TOPOLOGY_CSS, connectionEditor, imageControls, roomConnections, setRoomConnection} from "./floorplan-topology.js?v=2.15.8";
+import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings, triggerRows, recognitionDisplayData} from "./live-view.js?v=2.15.8";
+import {RULE_SOURCES_CSS, updateRuleSources} from "./rule-sources.js?v=2.15.8";
+import {bindIconFields, iconField, MDI_ICON, roomSymbol, sensorSymbol, symbolHTML} from "./display-icons.js?v=2.15.8";
+import {DraftJournal} from "./floorplan-drafts.js?v=2.15.8";
+import {renderLevels, renderProfiles, renderConfirmationContext, openRuleDialog, readRuleForm, readAutomaticDetection, readPersonDetection, readAlarmEscalation} from "./level-configuration.js?v=2.15.8";
+import "./window-assistant.js?v=2.15.8";
+import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.15.8";
+/* IQAlarm 2.15.8 · native ES module · no CDN, framework or build required. */
 const WINDOW_CSS = `.window-group{padding:18px 0;border-bottom:1px solid var(--divider-color,#dce3ec)}.window-inputs{margin:14px 0 0 24px;padding-left:18px;border-left:2px solid var(--divider-color,#dce3ec)}.window-inputs code{display:block;font-size:10px;overflow-wrap:anywhere;color:var(--secondary-text-color,#64758b)}.information{border-color:color-mix(in srgb,var(--primary-color,#2986bb) 25%,transparent)}.information summary,details.banner summary{cursor:pointer;font-size:13px}.information ha-icon{color:var(--primary-color,#2986bb)}`;
 const FLOORPLAN_MOTION_HOLD_SECONDS = 15;
 const RECOGNITION_FADE_SECONDS = 1.5;
@@ -545,21 +545,34 @@ class IQAlarmPanel extends HTMLElement {
     });
     return visible?state.level:Math.min(state.level,baseline);
   }
+  _roomInformationText(room) {
+    return this.data.status.active && (this.data.information||[]).some(item=>item.room_id===room)
+      ? "Potenziell unsicher" : "";
+  }
+  _roomBadgePresentation(room,sensors,now) {
+    const level=this._roomBadgeLevel(room,sensors,now);
+    const {stages,secure_stage_id}=this.data.config;
+    const baseline=Math.max(0,stages.findIndex(stage=>stage.id===secure_stage_id));
+    const warning=level<=baseline && this._roomInformationText(room);
+    return {
+      text:warning || stages[level]?.name || "Sicher",
+      color:warning ? "var(--iq-amber)" : this._color(this.data.status.active ? level : 0),
+    };
+  }
   _updateRoomBadges(now=Date.now()/1000) {
     this.shadowRoot.querySelectorAll("[data-room-badge]").forEach(node=>{
-      const level=this._roomBadgeLevel(node.dataset.roomBadge,undefined,now);
+      const {text,color}=this._roomBadgePresentation(node.dataset.roomBadge,undefined,now);
       node.hidden=!this.data.status.active;
-      const text=this.data.config.stages[level]?.name||"Sicher";
       if(node.textContent!==text)node.textContent=text;
-      node.closest("[data-live-key]")?.style.setProperty("--level-color",this._color(this.data.status.active ? level : 0));
+      node.closest("[data-live-key]")?.style.setProperty("--level-color",color);
     });
   }
   _roomLive(room) {
     const sensors = this._orderedSensors(room.id);
     const now = Date.now() / 1000;
-    const level=this._roomBadgeLevel(room.id,sensors,now);
-    const badge = this.data.status.active ? `<span class="pill" data-room-badge="${esc(room.id)}">${esc(this.data.config.stages[level]?.name || "Sicher")}</span>` : "";
-    return `<article class="card" data-live-key="room-${esc(room.id)}" style="--level-color:${this._color(this.data.status.active ? level : 0)}"><div class="room-head">${symbolHTML(roomSymbol(room))}<h3>${esc(room.name)}</h3>${badge}</div>${this.data.status.active && this.data.status.rooms[room.id]?.detection?`<p class="room-detection">LVL ${this.data.config.stages.findIndex(stage=>stage.id===this.data.status.rooms[room.id].detection.stage_id)} · Bestätigungsgrad ${this.data.status.rooms[room.id].detection.current}/3 · ${esc(this.data.status.rooms[room.id].detection.sources.map(source=>source.name||source.entity_id).join(" · "))}</p>`:""}${sensors.length ? sensors.map(s => {
+    const {text,color}=this._roomBadgePresentation(room.id,sensors,now);
+    const badge = this.data.status.active ? `<span class="pill" data-room-badge="${esc(room.id)}">${esc(text)}</span>` : "";
+    return `<article class="card" data-live-key="room-${esc(room.id)}" style="--level-color:${color}"><div class="room-head">${symbolHTML(roomSymbol(room))}<h3>${esc(room.name)}</h3>${badge}</div>${this.data.status.active && this.data.status.rooms[room.id]?.detection?`<p class="room-detection">LVL ${this.data.config.stages.findIndex(stage=>stage.id===this.data.status.rooms[room.id].detection.stage_id)} · Bestätigungsgrad ${this.data.status.rooms[room.id].detection.current}/3 · ${esc(this.data.status.rooms[room.id].detection.sources.map(source=>source.name||source.entity_id).join(" · "))}</p>`:""}${sensors.length ? sensors.map(s => {
       const raw = this.data.status.raw[s.entity_id];
       const isHandle = s.sensor_kind === "window_handle";
       const paused = this.data.status.robot_paused_sensors?.includes(s.entity_id)||this.data.status.ignored_windows?.includes(s.entity_id);
@@ -1278,7 +1291,7 @@ class IQAlarmPanel extends HTMLElement {
       quarantineText = "Störung: Prell-Quarantäne";
     }
 
-    const informationText=this.data.status.active&&(this.data.information||[]).some(item=>item.room_id===room)?"Potenziell unsicher":"";
+    const informationText=this._roomInformationText(room);
     return {
       informationText,
       cameraText,

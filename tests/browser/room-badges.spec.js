@@ -351,3 +351,54 @@ for(const width of [1440,390])test(`two rooms show overlapping activity and expi
   await expect(roof.locator("[data-room-badge]")).toHaveText("Sicher");
   expect(errors).toEqual([]);
 });
+
+
+test('floorplan and open room detail agree on a closed but unlocked window',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  const panel=page.locator('iqalarm-panel');
+  await panel.evaluate(element=>{
+    const sensorId='binary_sensor.iqalarm_window_left';
+    const plan={id:'eg',name:'Erdgeschoss',width:400,height:300,image:null,zones:{living:[[.1,.1],[.9,.1],[.9,.9],[.1,.9]]}};
+    element.tab=0; element._connected=true; element.catalog={entities:[],areas:[]};
+    element.data={
+      config:{
+        secure_stage_id:'secure',stages:[{id:'off',name:'Aus'},{id:'secure',name:'Sicher',color:'#60b720'},{id:'alarm',name:'Alarm',color:'#cc0000'}],
+        profiles:{},robots:{},actions:{},rules:{},rooms:{living:{id:'living',name:'Wohnzimmer'}},floorplans:{eg:plan},settings:{},sensors:{},
+        windows:{left:{id:'left',name:'Fenster Links',room_id:'living',lock_entity_id:'lock.fenster_links',handle_entity_ids:[],enabled:true}},
+      },
+      information:[{room_id:'living',entity_id:sensorId,window_id:'left',label:'Potenziell unsicher'}],
+      windows:{left:{position:'closed',lock_state:'unlocked'}},window_details:{},
+      status:{active:true,profile_id:'away',profile_name:'Abwesend',level:1,stage_id:'secure',raw:{[sensorId]:false},last_active:{},quarantine:{},
+        monitored_sensors:[sensorId],rule_progress:[],rooms:{living:{level:1,recognitions:[]}}},
+    };
+    element._render();
+  });
+
+  const label=page.locator('[data-label-room="living"]');
+  await expect(label).toContainText('Potenziell unsicher');
+  await label.click();
+  const detail=page.locator('#live-room-status');
+  const badge=detail.locator('[data-room-badge="living"]');
+  await expect(badge).toHaveText('Potenziell unsicher');
+  await expect(detail).toContainText('Geschlossen | Entriegelt');
+  expect(await badge.evaluate(element=>{
+    const style=getComputedStyle(element);
+    return style.getPropertyValue('--level-color').trim()===style.getPropertyValue('--iq-amber').trim();
+  })).toBe(true);
+
+  await panel.evaluate(element=>{
+    element.data.status.rooms.living={level:2,confirmed:true,recognitions:[]};
+    element._updateRoomBadges();
+  });
+  await expect(badge).toHaveText('Alarm');
+
+  await panel.evaluate(element=>{
+    element.data.status.rooms.living={level:1,recognitions:[]};
+    element.data.information=[];
+    element.data.windows.left.lock_state='locked';
+    element._render();
+  });
+  await expect(badge).toHaveText('Sicher');
+  await expect(detail).toContainText('Geschlossen | Verriegelt');
+  await expect(label).not.toContainText('Potenziell unsicher');
+});
