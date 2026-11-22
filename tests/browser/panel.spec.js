@@ -199,10 +199,14 @@ test("custom stage count, labels and rule targets are saved without HA mapping",
   await expect(page.locator('[name="target_contact_motion"] option').filter({hasText:"Alarm nach Maß"})).toHaveCount(1);
   await page.locator('[name="target_contact_motion"]').selectOption({label:`${original} · Alarm nach Maß`});
   await page.getByRole("button",{name:"Profil speichern",exact:true}).click();
-  const state = await page.evaluate(() => window.iqTest.request({type:"iqalarm/get"}));
-  expect(state.config.stages.at(-1).name).toBe("Alarm nach Maß");
-  expect(state.config.profiles.armed_night.stage_targets.contact_motion).toBe(state.config.stages.at(-1).id);
-  expect(state.config.profiles.armed_night.base_mode).toBeUndefined();
+  await expect.poll(() => page.evaluate(async () => {
+    const {config} = await window.iqTest.request({type:"iqalarm/get"});
+    return {
+      stage: config.stages.at(-1).name,
+      targetSaved: config.profiles.armed_night.stage_targets.contact_motion === config.stages.at(-1).id,
+      baseMode: config.profiles.armed_night.base_mode,
+    };
+  })).toEqual({stage:"Alarm nach Maß", targetSaved:true, baseMode:undefined});
   // Restore the mapping before removing the added stage.
   await page.evaluate(async () => {
     const data=await window.iqTest.request({type:"iqalarm/get"});
