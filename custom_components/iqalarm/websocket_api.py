@@ -2,6 +2,7 @@
 
 import time
 from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 from uuid import uuid4
 
@@ -18,6 +19,7 @@ from .floorplan_analysis import analyze_image
 from .level_rules import LevelRule
 from .models import (
     Action,
+    EventLog,
     FloorPlan,
     Profile,
     RobotConfig,
@@ -50,6 +52,7 @@ def register(hass) -> None:
         ws_profile,
         ws_quarantine,
         ws_test,
+        ws_test_telegram,
         ws_catalog,
         ws_analyze_floorplan,
         ws_discover_sensors,
@@ -442,6 +445,53 @@ async def ws_test(hass, connection, msg) -> None:
         connection.send_result(msg["id"], {"dry_run": msg["dry_run"], "actions": result})
     except (ValueError, HomeAssistantError) as err:
         connection.send_error(msg["id"], "test_failed", str(err))
+
+
+@websocket_api.websocket_command(
+    {
+        "type": "iqalarm/test_telegram",
+        vol.Required("level"): str,
+        vol.Required("chat_id"): str,
+        vol.Required("title"): str,
+        vol.Required("message"): str,
+        vol.Optional("bot_id"): str,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_test_telegram(hass, connection, msg) -> None:
+    """Send a marked test of the unsaved Telegram action only."""
+    try:
+        instance = runtime(hass)
+        level = msg["level"]
+        if level != "diagnostic":
+            instance.config.stage(level)
+        action = Action(
+            "telegram_test",
+            level,
+            "telegram",
+            msg["chat_id"],
+            title=msg["title"],
+            message=msg["message"],
+            telegram_bot_id=msg.get("bot_id"),
+        )
+        event = EventLog(
+            time.time(),
+            "test",
+            0 if level == "diagnostic" else instance.config.stage_rank(level),
+            instance.engine.mode.value,
+            "Manueller Telegram-Test",
+            profile_name="Test",
+        )
+        variables = instance.dispatcher.variables(event)
+        await instance.dispatcher.execute(
+            replace(action, title="Test · " + action.title[:193]), variables, instance.generation
+        )
+        connection.send_result(msg["id"])
+    except (ValueError, HomeAssistantError, TimeoutError, OSError) as err:
+        connection.send_error(
+            msg["id"], "test_failed", str(err) or "Telegram-Dienst antwortet nicht"
+        )
 
 
 @websocket_api.websocket_command({"type": "iqalarm/catalog"})

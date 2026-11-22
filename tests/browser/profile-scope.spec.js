@@ -15,6 +15,11 @@ test.beforeEach(async({page})=>{
     const panel=document.querySelector("iqalarm-panel");panel.profile="night";panel.tab=4;window.saves=0;
     panel.hass={callWS:async message=>{
       if(message.type==="iqalarm/catalog")return {entities:[],areas:[],notify_services:[]};
+      if(message.type==="iqalarm/test_telegram"){
+        window.telegramTests.push(message);
+        if(window.telegramFailure)throw Error("Chat-ID nicht freigegeben");
+        return null;
+      }
       if(message.type!=="iqalarm/config/save")throw Error("Unexpected test request");
       if(message.revision!==window.server.config.revision)throw Error("Konfiguration wurde in einem anderen Fenster geändert. Bitte neu laden.");
       window.saves++;window.server.config=structuredClone(message.config);window.server.config.revision++;localStorage.setItem("profile-server",JSON.stringify(window.server));
@@ -144,4 +149,35 @@ test("automation and script can be selected and saved on a quiet alarm level",as
     await expect(dialog).toBeHidden();
   }
   expect(await page.evaluate(()=>Object.values(window.server.config.actions).map(({kind,level})=>[kind,level]))).toEqual([["automation","2"],["script","2"]]);
+});
+
+
+test("Telegram test sends only the current draft and leaves it open",async({page})=>{
+  await page.locator("iqalarm-panel").evaluate(panel=>{
+    window.telegramTests=[];
+    window.telegramFailure=true;
+    panel.stage="2";
+    panel._actionDialog();
+  });
+  const dialog=page.getByRole("dialog");
+  const testButton=dialog.getByRole("button",{name:"Testen",exact:true});
+  await expect(testButton).toBeHidden();
+  await dialog.getByLabel("Aktionsart").selectOption("telegram");
+  await testButton.click();
+  expect(await page.evaluate(()=>window.telegramTests)).toEqual([]);
+  await dialog.getByLabel(/^Telegram-Chat-ID/).fill("-1001234567890");
+  await dialog.getByLabel("Titel").fill("Mein Entwurf");
+  await dialog.getByLabel(/^Nachricht/).fill("Testinhalt");
+  await testButton.click();
+  const result=dialog.locator("[data-telegram-test-result]");
+  await expect(result).toHaveText("Versand fehlgeschlagen: Chat-ID nicht freigegeben");
+  await page.evaluate(()=>{window.telegramFailure=false;});
+  await testButton.click();
+  await expect(result).toHaveText("Testnachricht gesendet.");
+  expect(await page.evaluate(()=>({tests:window.telegramTests,saves:window.saves}))).toEqual({
+    tests:Array(2).fill({type:"iqalarm/test_telegram",level:"2",chat_id:"-1001234567890",title:"Mein Entwurf",message:"Testinhalt"}),
+    saves:0,
+  });
+  await expect(dialog.getByLabel(/^Nachricht/)).toHaveValue("Testinhalt");
+  await expect(dialog).toBeVisible();
 });

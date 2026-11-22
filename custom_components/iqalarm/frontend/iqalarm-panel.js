@@ -1,15 +1,15 @@
-import {sensorTypeField, sensorTypeChoices, setSensorType, sensorListGroup, isSensorInput, suggestedSensorType, createSensor, SENSOR_TYPES} from "./sensor-types.js?v=2.16.3";
-import {insideRoomChoices, outsideInsideControls, outsideInsideSVG, renderOutsideInside, setOutsideInside} from "./outside-inside.js?v=2.16.3";
-import {openRobotDialog, readRobotForm, renderCoverage, updateRobotStatuses} from "./robots.js?v=2.16.3";
-import {TOPOLOGY_CSS, connectionEditor, imageControls, roomConnections, setRoomConnection} from "./floorplan-topology.js?v=2.16.3";
-import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings, triggerRows, recognitionDisplayData, displayedLevel} from "./live-view.js?v=2.16.3";
-import {RULE_SOURCES_CSS, updateRuleSources} from "./rule-sources.js?v=2.16.3";
-import {bindIconFields, iconField, MDI_ICON, roomSymbol, sensorSymbol, symbolHTML} from "./display-icons.js?v=2.16.3";
-import {DraftJournal} from "./floorplan-drafts.js?v=2.16.3";
-import {renderLevels, renderProfiles, renderConfirmationContext, openRuleDialog, readRuleForm, readAutomaticDetection, readPersonDetection, readAlarmEscalation} from "./level-configuration.js?v=2.16.3";
-import "./window-assistant.js?v=2.16.3";
-import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.16.3";
-/* IQAlarm 2.16.3 · native ES module · no CDN, framework or build required. */
+import {sensorTypeField, sensorTypeChoices, setSensorType, sensorListGroup, isSensorInput, suggestedSensorType, createSensor, SENSOR_TYPES} from "./sensor-types.js?v=2.16.4";
+import {insideRoomChoices, outsideInsideControls, outsideInsideSVG, renderOutsideInside, setOutsideInside} from "./outside-inside.js?v=2.16.4";
+import {openRobotDialog, readRobotForm, renderCoverage, updateRobotStatuses} from "./robots.js?v=2.16.4";
+import {TOPOLOGY_CSS, connectionEditor, imageControls, roomConnections, setRoomConnection} from "./floorplan-topology.js?v=2.16.4";
+import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings, triggerRows, recognitionDisplayData, displayedLevel} from "./live-view.js?v=2.16.4";
+import {RULE_SOURCES_CSS, updateRuleSources} from "./rule-sources.js?v=2.16.4";
+import {bindIconFields, iconField, MDI_ICON, roomSymbol, sensorSymbol, symbolHTML} from "./display-icons.js?v=2.16.4";
+import {DraftJournal} from "./floorplan-drafts.js?v=2.16.4";
+import {renderLevels, renderProfiles, renderConfirmationContext, openRuleDialog, readRuleForm, readAutomaticDetection, readPersonDetection, readAlarmEscalation} from "./level-configuration.js?v=2.16.4";
+import "./window-assistant.js?v=2.16.4";
+import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.16.4";
+/* IQAlarm 2.16.4 · native ES module · no CDN, framework or build required. */
 const WINDOW_CSS = `.window-group{padding:18px 0;border-bottom:1px solid var(--divider-color,#dce3ec)}.window-inputs{margin:14px 0 0 24px;padding-left:18px;border-left:2px solid var(--divider-color,#dce3ec)}.window-inputs code{display:block;font-size:10px;overflow-wrap:anywhere;color:var(--secondary-text-color,#64758b)}.information{border-color:color-mix(in srgb,var(--primary-color,#2986bb) 25%,transparent)}.information summary,details.banner summary{cursor:pointer;font-size:13px}.information ha-icon{color:var(--primary-color,#2986bb)}`;
 const FLOORPLAN_MOTION_HOLD_SECONDS = 15;
 const RECOGNITION_FADE_SECONDS = 1.5;
@@ -2251,6 +2251,11 @@ class IQAlarmPanel extends HTMLElement {
       <div data-kinds="light" data-light-on>${this._checkbox("use_color","Warnfarbe verwenden",!!a.color)}</div>
       <div class="wide">${this._checkbox("enabled","Aktion aktivieren",a.enabled)}</div></div>
       <div class="help" data-kinds="siren,switch,light" data-light-on>Von IQAlarm eingeschaltete Geräte werden nach Ablauf der Dauer oder beim Entschärfen ausgeschaltet.</div>`, "action", id);
+    this.shadowRoot.querySelector("#editor .dialog-foot").insertAdjacentHTML(
+      "afterbegin",
+      `<span data-telegram-test-result class="muted" role="status" style="flex:1;overflow-wrap:anywhere"></span>
+       <button type="button" data-command="telegram-test" data-level="${esc(a.level)}">Testen</button>`,
+    );
     this._actionVisibility(a.kind);
     this._scopeVisibility(this.shadowRoot.getElementById("editor-form"));
   }
@@ -2265,6 +2270,8 @@ class IQAlarmPanel extends HTMLElement {
     form.elements.target.required=kind!=="telegram";
     form.elements.telegram_chat_id.required=kind==="telegram";
     form.elements.telegram_chat_id.disabled=kind!=="telegram";
+    form.querySelector('[data-command="telegram-test"]').hidden=kind!=="telegram";
+    form.querySelector("[data-telegram-test-result]").hidden=kind!=="telegram";
     const domains=kind==="siren"?["siren","switch"]:["snapshot","record"].includes(kind)?["camera"]:[kind];
     const targets=this._entities(domains).map(entity=>entity.entity_id);
     if(kind==="notify")targets.unshift(...this.catalog.notify_services);
@@ -2437,6 +2444,24 @@ class IQAlarmPanel extends HTMLElement {
       else if (command === "sensor-new-perimeter") this._sensorDialog(id, true);
       else if (command === "filter-perimeter") { this.catalogFilter = "perimeter"; this._render(); this.shadowRoot.getElementById("sensor-search")?.scrollIntoView({behavior: "smooth"}); }
       else if (command === "action-new" || command === "action-edit") this._actionDialog(id);
+      else if (command === "telegram-test") {
+        const form=button.form;
+        if(form.elements.kind.value!=="telegram" || !form.reportValidity())return;
+        button.disabled=true;
+        const result=form.querySelector("[data-telegram-test-result]");
+        result.textContent="Testnachricht wird gesendet …";
+        const {telegram_chat_id,telegram_bot_id,title,message}=form.elements;
+        try {
+          await this._call("test_telegram",{
+            level:button.dataset.level,chat_id:telegram_chat_id.value.trim(),
+            title:title.value,message:message.value,
+            ...(telegram_bot_id.value?{bot_id:telegram_bot_id.value}:{}),
+          });
+          result.textContent="Testnachricht gesendet.";
+        } catch(error) {
+          result.textContent=`Versand fehlgeschlagen: ${error.message||String(error)}`;
+        }
+      }
       else if (command === "profile-icon") { const form = button.closest("form"); form.elements.profile_icon.value = id; this._markSettingsDirty(button); this._updateIconPreview(form); }
       else if (command === "floorplan-upload") this._uploadDialog();
       else if (command === "floorplan-pick") this.shadowRoot.getElementById("plan-upload").click();

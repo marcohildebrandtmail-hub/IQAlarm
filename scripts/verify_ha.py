@@ -123,6 +123,7 @@ async def verify(hass, target) -> str:
 
     for domain, service in (
         ("notify", "test_phone"),
+        ("telegram_bot", "send_message"),
         ("siren", "turn_on"),
         ("siren", "turn_off"),
         ("light", "turn_on"),
@@ -298,6 +299,43 @@ async def verify(hass, target) -> str:
                 {"id": 7, "type": "iqalarm/test_level", "level": "3", "dry_run": True}
             )
             assert (await ws.receive_json())["result"]["dry_run"]
+            telegram_test = {
+                "type": "iqalarm/test_telegram",
+                "level": "2",
+                "chat_id": "-1001234567890",
+                "bot_id": "test_bot",
+                "title": "Stufe {{level}}",
+                "message": "{{reason}}",
+            }
+            before_test = (
+                runtime.config.to_dict(),
+                runtime.engine.stage_id,
+                runtime.engine.profile_id,
+            )
+            await ws.send_json({"id": 8, **telegram_test})
+            sent = await ws.receive_json()
+            assert sent["success"], sent
+            assert calls[-1] == (
+                "telegram_bot",
+                "send_message",
+                {
+                    "chat_id": -1001234567890,
+                    "config_entry_id": "test_bot",
+                    "parse_mode": "plain_text",
+                    "title": "Test · Stufe 2",
+                    "message": "Manueller Telegram-Test",
+                },
+            )
+            call_count = len(calls)
+            await ws.send_json({"id": 9, **telegram_test, "chat_id": ""})
+            rejected = await ws.receive_json()
+            assert rejected["error"]["code"] == "test_failed", rejected
+            assert len(calls) == call_count
+            assert (
+                runtime.config.to_dict(),
+                runtime.engine.stage_id,
+                runtime.engine.profile_id,
+            ) == before_test
         hass.states.async_set("binary_sensor.window", "off")
         await hass.async_block_till_done()
         async with session.ws_connect("http://127.0.0.1:18123/api/websocket") as ws:
@@ -307,6 +345,9 @@ async def verify(hass, target) -> str:
             await ws.send_json({"id": 1, "type": "iqalarm/get"})
             denied = await ws.receive_json()
             assert denied["success"] is False and denied["error"]["code"] == "unauthorized", denied
+            await ws.send_json({"id": 10, **telegram_test})
+            assert (await ws.receive_json())["error"]["code"] == "unauthorized"
+            assert len(calls) == call_count
             await ws.send_json(
                 {"id": 2, "type": "iqalarm/config/save", "config": {}, "revision": 0}
             )
