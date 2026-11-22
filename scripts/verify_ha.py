@@ -358,9 +358,14 @@ async def verify(hass, target) -> str:
             )
             assert {"events", "breach_chain"}.isdisjoint(result["status"])
             assert result["status"]["raw"]["binary_sensor.window"] is False
+            telegram_calls = [
+                call for call in calls if call[:2] == ("telegram_bot", "send_message")
+            ]
             await ws.send_json({"id": 4, **telegram_test})
             assert (await ws.receive_json())["error"]["code"] == "unauthorized"
-            assert sum(call[:2] == ("telegram_bot", "send_message") for call in calls) == 1
+            assert [
+                call for call in calls if call[:2] == ("telegram_bot", "send_message")
+            ] == telegram_calls
             await ws.send_json({"id": 5, "type": "iqalarm/dashboard/subscribe"})
             assert (await ws.receive_json())["success"]
             event = (await ws.receive_json())["event"]
