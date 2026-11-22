@@ -704,13 +704,34 @@ async def verify_actions(hass, runtime, calls, capture) -> None:
         "kind": "notify",
         "target": "notify.delayed",
     }
+    early_actions = {
+        kind: (kind, service, payload)
+        for kind, service, payload in (
+            ("automation", "trigger", {"entity_id": "automation.test", "skip_condition": False}),
+            ("script", "turn_on", {"entity_id": "script.test"}),
+        )
+    }
+    for kind, (_, _, payload) in early_actions.items():
+        data["actions"]["early_" + kind] = {
+            "id": "early_" + kind,
+            "level": "2",
+            "kind": kind,
+            "target": payload["entity_id"],
+        }
     await runtime.update_config(data, runtime.config.revision)
     hass.states.async_set("binary_sensor.window", "off")
     hass.states.async_set("binary_sensor.motion", "off")
     await hass.async_block_till_done()
     await runtime.set_mode("armed_night")
+    early_start = len(calls)
     hass.states.async_set("binary_sensor.window", "on")
     await asyncio.wait_for(delayed_started.wait(), 5)
+    for _ in range(100):
+        if all(expected in calls[early_start:] for expected in early_actions.values()):
+            break
+        await asyncio.sleep(0.02)
+    assert all(expected in calls[early_start:] for expected in early_actions.values())
+    assert hass.states.get("siren.test").state == "off"
     hass.states.async_set("binary_sensor.motion", "on")
     for _ in range(50):
         if hass.states.get("siren.test").state == "on":
@@ -724,7 +745,8 @@ async def verify_actions(hass, runtime, calls, capture) -> None:
     await runtime.set_mode("disarmed", "2468")
     assert hass.states.get("siren.test").state == "off"
     data = runtime.config.to_dict()
-    del data["actions"]["delayed"]
+    for action_id in ("delayed", "early_automation", "early_script"):
+        del data["actions"][action_id]
     await runtime.update_config(data, runtime.config.revision)
 
     for _ in range(5):

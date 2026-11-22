@@ -514,7 +514,7 @@ class Action:
 
     @property
     def requires_confirmed_stage(self) -> bool:
-        return self.critical or self.kind in {"siren", "switch", "script", "tts", "automation"}
+        return self.critical or self.kind in {"siren", "switch", "tts"}
 
     def __post_init__(self) -> None:
         if not isinstance(self.id, str) or not ID_RE.fullmatch(self.id):

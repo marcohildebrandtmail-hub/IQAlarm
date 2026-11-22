@@ -126,3 +126,22 @@ test("action editor exposes the requested types and persists an explicit Telegra
     kind:"telegram",target:"-1001234567890",telegram_bot_id:"bot",camera_entity_id:null,critical:false,
   });
 });
+
+
+test("automation and script can be selected and saved on a quiet alarm level",async({page})=>{
+  const panel=page.locator("iqalarm-panel");
+  const dialog=page.getByRole("dialog");
+  for(const kind of ["automation","script"]){
+    await panel.evaluate(element=>{
+      element.stage="2";
+      element._actionDialog();
+    });
+    const options=dialog.getByLabel("Aktionsart");
+    await expect(options.locator('option[value="siren"]')).toHaveCount(0);
+    await options.selectOption(kind);
+    await dialog.getByLabel("Ziel / Dienst").fill(kind+".test");
+    await dialog.getByRole("button",{name:"Speichern"}).click();
+    await expect(dialog).toBeHidden();
+  }
+  expect(await page.evaluate(()=>Object.values(window.server.config.actions).map(({kind,level})=>[kind,level]))).toEqual([["automation","2"],["script","2"]]);
+});

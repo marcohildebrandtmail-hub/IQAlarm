@@ -337,9 +337,8 @@ Dateien liegen außerhalb des öffentlichen `/local`-Bereichs und werden standar
 
 ### Aktionen und Tests
 
-- Lautlose Stufen und Diagnose: normale Pushs, Licht, Rollos, Snapshots und Aufzeichnungen (nur bei freigegebenen Profilreaktionen).
-- Bestätigte, akustisch freigegebene Stufen: zusätzlich Sirenen, Schalter, Skripte, TTS und kritische Mobile-App-Pushs.
-- Freie Schalter-/Skript-/Sprachaktionen sind unteren Stufen nicht erlaubt, weil damit eine Innensirene indirekt ausgelöst werden könnte.
+- Push, Telegram, Licht, Automatisierungen und Skripte sind auf allen Stufen und in der Diagnose verfügbar. Die ausgewählten Alarmprofile und Auslösezeitpunkte gelten für alle Aktionsarten.
+- Sirenen, direkte Schalteraktionen, Sprachausgabe und kritische Mobile-App-Pushs benötigen eine bestätigte und dafür freigegebene Stufe.
 - Kritische Pushs/Bilder brauchen einen passenden `notify.mobile_app_*`-Dienst. Generische `notify.*`-Entitäten unterstützen gewöhnliche Textnachrichten über `notify.send_message`.
 - Vorlagen unterstützen `{{room}}`, `{{sensor}}`, `{{level}}`, `{{reason}}`, `{{chain}}`, `{{mode}}` und den Profilnamen `{{profile}}`. Andere Jinja-Ausdrücke werden nicht ausgeführt.
 - IQAlarm schaltet selbst eingeschaltete Sirenen, Schalter, Skripte und Lichter nach der konfigurierten Dauer, beim tatsächlichen Rückfall auf Stufe 0 oder beim Entschärfen aus. Ein ausdrücklich ausgeführter Gerätetest behält seine eigene Dauer. Bereits eingeschaltete Geräte werden nicht zum späteren Abschalten übernommen. Rollos werden geöffnet und bleiben offen.

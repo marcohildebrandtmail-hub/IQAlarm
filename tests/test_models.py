@@ -20,14 +20,12 @@ from iqalarm_core.models import Settings as ScenarioSettings
     [
         ("siren", "siren.house"),
         ("switch", "switch.siren"),
-        ("script", "script.alarm"),
-        ("automation", "automation.alarm"),
         ("tts", "tts.voice"),
     ],
 )
 @pytest.mark.parametrize("level", ["1", "2", "diagnostic"])
 def test_loud_actions_cannot_bypass_silent_stages(kind, target, level):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Akustische/freie Aktionen"):
         config = Configuration(
             settings=ScenarioSettings(startup_delay_seconds=0),
             actions={
@@ -37,10 +35,19 @@ def test_loud_actions_cannot_bypass_silent_stages(kind, target, level):
                     kind,
                     target,
                     media_player="media_player.speaker" if kind == "tts" else None,
+                    profile_ids=["armed_night"],
                 )
             },
         )
         config.validate()
+
+
+@pytest.mark.parametrize("kind", ["script", "automation"])
+@pytest.mark.parametrize("level", ["0", "1", "2", "diagnostic"])
+def test_workflow_actions_can_be_configured_without_confirmed_alarm(kind, level):
+    Configuration(
+        actions={"a": Action("a", level, kind, f"{kind}.alarm", profile_ids=["armed_night"])},
+    ).validate()
 
 
 def test_critical_notification_cannot_bypass_silent_stage():
