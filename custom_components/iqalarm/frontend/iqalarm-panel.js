@@ -1,15 +1,15 @@
-import {sensorTypeField, sensorTypeChoices, setSensorType, sensorListGroup, isSensorInput, suggestedSensorType, createSensor, SENSOR_TYPES} from "./sensor-types.js?v=2.15.6";
-import {insideRoomChoices, outsideInsideControls, outsideInsideSVG, renderOutsideInside, setOutsideInside} from "./outside-inside.js?v=2.15.6";
-import {openRobotDialog, readRobotForm, renderCoverage, updateRobotStatuses} from "./robots.js?v=2.15.6";
-import {TOPOLOGY_CSS, connectionEditor, imageControls, roomConnections, setRoomConnection} from "./floorplan-topology.js?v=2.15.6";
-import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings, triggerRows, recognitionDisplayData} from "./live-view.js?v=2.15.6";
-import {RULE_SOURCES_CSS, updateRuleSources} from "./rule-sources.js?v=2.15.6";
-import {bindIconFields, iconField, MDI_ICON, roomSymbol, sensorSymbol, symbolHTML} from "./display-icons.js?v=2.15.6";
-import {DraftJournal} from "./floorplan-drafts.js?v=2.15.6";
-import {renderLevels, renderProfiles, renderConfirmationContext, openRuleDialog, readRuleForm, readAutomaticDetection, readPersonDetection, readAlarmEscalation} from "./level-configuration.js?v=2.15.6";
-import "./window-assistant.js?v=2.15.6";
-import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.15.6";
-/* IQAlarm 2.15.6 · native ES module · no CDN, framework or build required. */
+import {sensorTypeField, sensorTypeChoices, setSensorType, sensorListGroup, isSensorInput, suggestedSensorType, createSensor, SENSOR_TYPES} from "./sensor-types.js?v=2.15.7";
+import {insideRoomChoices, outsideInsideControls, outsideInsideSVG, renderOutsideInside, setOutsideInside} from "./outside-inside.js?v=2.15.7";
+import {openRobotDialog, readRobotForm, renderCoverage, updateRobotStatuses} from "./robots.js?v=2.15.7";
+import {TOPOLOGY_CSS, connectionEditor, imageControls, roomConnections, setRoomConnection} from "./floorplan-topology.js?v=2.15.7";
+import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings, triggerRows, recognitionDisplayData} from "./live-view.js?v=2.15.7";
+import {RULE_SOURCES_CSS, updateRuleSources} from "./rule-sources.js?v=2.15.7";
+import {bindIconFields, iconField, MDI_ICON, roomSymbol, sensorSymbol, symbolHTML} from "./display-icons.js?v=2.15.7";
+import {DraftJournal} from "./floorplan-drafts.js?v=2.15.7";
+import {renderLevels, renderProfiles, renderConfirmationContext, openRuleDialog, readRuleForm, readAutomaticDetection, readPersonDetection, readAlarmEscalation} from "./level-configuration.js?v=2.15.7";
+import "./window-assistant.js?v=2.15.7";
+import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.15.7";
+/* IQAlarm 2.15.7 · native ES module · no CDN, framework or build required. */
 const WINDOW_CSS = `.window-group{padding:18px 0;border-bottom:1px solid var(--divider-color,#dce3ec)}.window-inputs{margin:14px 0 0 24px;padding-left:18px;border-left:2px solid var(--divider-color,#dce3ec)}.window-inputs code{display:block;font-size:10px;overflow-wrap:anywhere;color:var(--secondary-text-color,#64758b)}.information{border-color:color-mix(in srgb,var(--primary-color,#2986bb) 25%,transparent)}.information summary,details.banner summary{cursor:pointer;font-size:13px}.information ha-icon{color:var(--primary-color,#2986bb)}`;
 const FLOORPLAN_MOTION_HOLD_SECONDS = 15;
 const RECOGNITION_FADE_SECONDS = 1.5;
@@ -485,7 +485,8 @@ class IQAlarmPanel extends HTMLElement {
     this.shadowRoot.querySelectorAll(".armed-note").forEach(e => {e.hidden = !armed;});
     this.shadowRoot.querySelectorAll('[data-command="mode"], [data-command="profile-arm"]').forEach(button => {
       const target = button.dataset.id;
-      button.disabled = !this._connected || this._requestBusy || (button.dataset.command === "profile-arm" && armed && target !== this.data.status.profile_id);
+      const observation = target && this.data.config.profiles[target]?.reactions_enabled === false;
+      button.disabled = !this._connected || this._requestBusy || (armed && observation);
     });
   }
 
@@ -2494,7 +2495,14 @@ class IQAlarmPanel extends HTMLElement {
       else if (command === "more-info") this.dispatchEvent(new CustomEvent("hass-more-info", {detail:{entityId:id},bubbles:true,composed:true}));
       else if (command === "profile-new" || command === "profile-copy") this._profileDialog(command === "profile-copy");
       else if (command === "profile-arm") {
-        button.disabled = true; this.data = await this._call("arm_profile", {profile_id: id}); this._render();
+        const switching = this.data.status.active && this.data.status.profile_id !== id;
+        if (switching && this.data.pin_required) {
+          this._dialog("Alarmprofil wechseln", `<label class="field">PIN<input name="code" type="password" inputmode="numeric" pattern="[0-9]{4,12}" required autocomplete="off" autofocus></label>`, "profile-switch", id);
+        } else {
+          button.disabled = true;
+          this.data = await this._call("arm_profile", {profile_id: id, switch_active: switching});
+          this._render();
+        }
       }
       else if (command === "mode") {
         const mode = button.dataset.mode;
@@ -2754,6 +2762,7 @@ class IQAlarmPanel extends HTMLElement {
           await this._sendPlanImage(file, null, get("name").trim(), this._dialogRevision);
         }
         else if (type === "disarm") this.data = await this._call("set_mode", {mode: "disarmed", code: get("code")});
+        else if (type === "profile-switch") this.data = await this._call("arm_profile", {profile_id: id, switch_active: true, code: get("code")});
         else if (type === "rooms-sort") {
           const list = form.querySelectorAll(".rooms-sort-item");
           const newOrder = Array.from(list).map(el => el.dataset.roomId);

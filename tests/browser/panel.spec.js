@@ -131,10 +131,16 @@ test("custom profiles can be created, sorted, scoped, copied, armed and deleted 
   await page.getByRole("button", {name: "Nacht mit Gästen", exact: true}).click();
   await expect(page.getByRole("heading", {name: "Nacht mit Gästen", exact: true})).toBeVisible();
   await expect(page.getByText("1 Sensoren ausgewertet · Home Assistant: An", {exact: true})).toBeVisible();
-  await expect(page.getByRole("button", {name: "Nacht", exact: true})).toBeDisabled();
   const state = await page.evaluate(() => window.iqTest.request({type: "iqalarm/get"}));
   expect(state.status.mode).toBe("active");
   expect(state.status.profile_name).toBe("Nacht mit Gästen");
+  await page.getByRole("button", {name: "Nacht", exact: true}).click();
+  const switchDialog = page.getByRole("dialog");
+  await expect(switchDialog.getByRole("heading", {name: "Alarmprofil wechseln"})).toBeVisible();
+  await switchDialog.getByLabel("PIN", {exact: true}).fill("2468");
+  await switchDialog.getByRole("button", {name: "Speichern", exact: true}).click();
+  await expect(page.getByRole("heading", {name: "Nacht", exact: true})).toBeVisible();
+  await expect(page.getByText("Alarmreaktionen aktiv", {exact: true})).toBeVisible();
   await page.getByRole("button", {name: "Aus", exact: true}).click();
   await page.getByLabel("PIN", {exact: true}).fill("2468");
   await page.getByRole("button", {name: "Speichern", exact: true}).click();

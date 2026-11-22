@@ -745,15 +745,24 @@ class IQAlarmRuntime:
             raise ValueError("Für diesen HA-Modus ein aktives IQAlarm-Profil festlegen")
         await self.set_profile(key, code)
 
-    async def set_profile(self, profile_id: str | None, code: str | None = None) -> None:
+    async def set_profile(
+        self, profile_id: str | None, code: str | None = None, *, switch_active: bool = False
+    ) -> None:
         if profile_id is None:
             await self.validate_code(code)
         async with self.lock:
             was_active = self.engine.reactions_enabled
             previous_profile_id = self.engine.profile_id
             previous = (self.engine.mode, self.engine.profile_id)
+            if (
+                switch_active
+                and was_active
+                and profile_id is not None
+                and profile_id != previous_profile_id
+            ):
+                await self.validate_code(code)
             self._identify_windows()
-            self.engine.set_profile(profile_id, time.time())
+            self.engine.set_profile(profile_id, time.time(), switch_active=switch_active)
             changed = previous != (self.engine.mode, self.engine.profile_id)
             if changed:
                 self.generation += 1

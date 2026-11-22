@@ -1,5 +1,5 @@
 /* Read-only Lovelace card. Rendering and timer projection are shared with IQAlarm. */
-import {LIVE_VIEW_CSS,patchHTML,recognitionDisplayData,statusRings} from "./live-view.js?v=2.15.6";
+import {LIVE_VIEW_CSS,patchHTML,recognitionDisplayData,statusRings} from "./live-view.js?v=2.15.7";
 
 const esc=value=>String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const css=`
@@ -237,7 +237,7 @@ export class IQAlarmFloorplanCard extends IQAlarmCard {
     if(!this._live||!this._data){patchHTML(host,`<p class="message" role="status">${esc(this._message||"Verbinde mit IQAlarm …")}</p>`);return;}
     if(!this._floorplanRenderer){
       if(!this._rendererPromise&&!this._rendererFailed){
-        this._rendererPromise=import("./iqalarm-panel.js?v=2.15.6").then(module=>{
+        this._rendererPromise=import("./iqalarm-panel.js?v=2.15.7").then(module=>{
           this._floorplanRenderer=module;this.shadowRoot.querySelector("style").textContent=LIVE_VIEW_CSS+module.FLOORPLAN_VIEW_CSS+floorplanCss;
           if(this.isConnected)this._render();
         }).catch(()=>{this._rendererFailed=true;if(this.isConnected)this._render();});

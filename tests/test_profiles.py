@@ -223,3 +223,32 @@ def test_unknown_profile_does_not_change_armed_state(engine):
     with pytest.raises(ValueError, match="Unbekanntes"):
         engine.set_profile("unknown", 101)
     assert engine.profile_id == "armed_night" and engine.reactions_enabled
+
+
+def test_direct_switch_stays_armed_without_restarting_exit_delay(engine):
+    add_profile(engine.config, name="Zutritt erlaubt")
+    engine.set_profile("armed_away", 100)
+    engine.config.settings.startup_delay_seconds = 60
+    engine.set_profile("guests", 101, switch_active=True)
+    assert engine.reactions_enabled and engine.profile_id == "guests"
+    assert engine.arming_until is None
+    assert [event.kind for event in engine.drain()] == ["mode_changed", "profile_switched"]
+
+
+def test_rejected_target_keeps_current_alarm_profile(engine):
+    add_profile(engine.config, room_ids=["hall"])
+    engine.set_profile("armed_away", 100)
+    engine.seed("binary_sensor.lock", True)
+    with pytest.raises(ValueError, match="offen"):
+        engine.set_profile("guests", 101, switch_active=True)
+    assert engine.reactions_enabled and engine.profile_id == "armed_away"
+    assert [event.kind for event in engine.drain()] == ["mode_changed"]
+
+
+def test_active_entry_delay_blocks_direct_profile_switch(engine):
+    add_profile(engine.config)
+    engine.set_profile("armed_away", 100)
+    engine.pending_until = 123
+    with pytest.raises(ValueError, match="laufenden Alarmprüfung"):
+        engine.set_profile("guests", 101, switch_active=True)
+    assert engine.profile_id == "armed_away" and engine.pending_until == 123

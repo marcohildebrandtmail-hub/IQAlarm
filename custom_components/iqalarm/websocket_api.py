@@ -392,13 +392,22 @@ async def ws_mode(hass, connection, msg) -> None:
         connection.send_error(msg["id"], "mode_failed", str(err))
 
 
-@websocket_api.websocket_command({"type": "iqalarm/arm_profile", vol.Required("profile_id"): str})
+@websocket_api.websocket_command(
+    {
+        "type": "iqalarm/arm_profile",
+        vol.Required("profile_id"): str,
+        vol.Optional("switch_active", default=False): bool,
+        vol.Optional("code"): str,
+    }
+)
 @websocket_api.require_admin
 @websocket_api.async_response
 async def ws_profile(hass, connection, msg) -> None:
     try:
         instance = runtime(hass)
-        await instance.set_profile(msg["profile_id"])
+        await instance.set_profile(
+            msg["profile_id"], msg.get("code"), switch_active=msg["switch_active"]
+        )
         connection.send_result(msg["id"], instance.snapshot())
     except (ValueError, HomeAssistantError) as err:
         connection.send_error(msg["id"], "profile_failed", str(err))

@@ -523,7 +523,14 @@ class CorrelationEngine:
         """Legacy service adapter; IDs select profiles and never define behavior."""
         self.set_profile(None if mode in ("disarmed", "inactive") else mode, now, restore=restore)
 
-    def set_profile(self, profile_id: str | None, now: float, *, restore: bool = False) -> None:
+    def set_profile(
+        self,
+        profile_id: str | None,
+        now: float,
+        *,
+        restore: bool = False,
+        switch_active: bool = False,
+    ) -> None:
         """Select an independent profile, separating analysis from output permission."""
         now = self._time(now)
         if self.alarm_state and profile_id is not None and profile_id != self.profile_id:
@@ -533,14 +540,26 @@ class CorrelationEngine:
         profile = self.config.profiles.get(profile_id)
         if profile_id == self.profile_id:
             return
-        if self.reactions_enabled and profile_id is not None:
-            raise ValueError("Vor einem Profilwechsel zuerst entschärfen")
+        switching = self.reactions_enabled and profile is not None
+        if switching:
+            if not switch_active or not profile.reactions_enabled:
+                raise ValueError("Vor einem Profilwechsel zuerst entschärfen")
+            if (
+                not self.secure
+                or self.stage_id != self.baseline_stage_id
+                or self.held_alarm
+                or self.rule_pending
+                or (self.arming_until and self.arming_until > now)
+            ):
+                raise ValueError("Profilwechsel erst nach Ende der laufenden Alarmprüfung möglich")
         previous_profile, previous_ignored = self.profile_id, self.ignored_windows
         self.profile_id = profile_id
         self.ignored_windows = {}
         if self.reactions_enabled and not restore:
             self.ignored_windows = {
-                key: {
+                key: previous_ignored[key]
+                if switching
+                else {
                     "since": now,
                     "source_id": sensor.source_id or key,
                     "room_id": sensor.room_id,
@@ -549,6 +568,7 @@ class CorrelationEngine:
                 if key in self.window_contacts
                 and sensor.role == Role.ENTRY
                 and self.raw.get(key) is True
+                and (not switching or key in previous_ignored)
                 and self._included(sensor, respect_ignored=False)
             }
             blockers = self.arm_blockers()
@@ -564,7 +584,8 @@ class CorrelationEngine:
         self.pending_rule = None
         self.evidence.clear()
         self.debouncing.clear()
-        self.edges.clear()
+        if not switching:
+            self.edges.clear()
         self.pending_until = None
         self.pending_chain = []
         self.breach_chain = []
@@ -586,12 +607,12 @@ class CorrelationEngine:
         elif self.reactions_enabled:
             self.last_profile_id = profile_id
         delay = self.config.settings.startup_delay_seconds
-        if self.reactions_enabled and not restore and delay:
+        if self.reactions_enabled and not restore and not switching and delay:
             self.arming_started_at = now
             self.arming_until = now + delay
         self._log(
             now,
-            "mode_changed",
+            "profile_switched" if switching else "mode_changed",
             f"Profil: {profile.name or profile_id}" if profile else "Alarm aus; Live-Beobachtung",
         )
 

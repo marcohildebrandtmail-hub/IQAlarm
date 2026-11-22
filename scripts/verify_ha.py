@@ -484,6 +484,23 @@ async def verify_profiles(hass, entry, admin_token, user_token, calls) -> None:
             assert entity.attributes["profile_name"] == "Nacht mit Gästen"
             switched = await request("set_mode", mode="armed_night")
             assert not switched["success"] and entry.runtime_data.engine.profile_id == "guests"
+            refused = await request("arm_profile", profile_id="armed_night", switch_active=True)
+            assert not refused["success"] and entry.runtime_data.engine.profile_id == "guests"
+            for profile_id, native_state in (
+                ("armed_night", "armed_night"),
+                ("guests", "armed_custom_bypass"),
+            ):
+                switched = await request(
+                    "arm_profile", profile_id=profile_id, switch_active=True, code="2468"
+                )
+                assert switched["success"], switched
+                await hass.async_block_till_done()
+                current = hass.states.get("alarm_control_panel.iqalarm")
+                assert (
+                    current.state == native_state and current.attributes["profile_id"] == profile_id
+                )
+                assert switched["result"]["status"]["active"]
+            assert len(calls) == before
             changed = await crud("profiles", "save", item={**custom, "name": "Changed"})
             assert not changed["success"]
             hass.states.async_set("binary_sensor.window", "on")
