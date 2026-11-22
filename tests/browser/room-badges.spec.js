@@ -381,6 +381,18 @@ test('floorplan and open room detail agree on a closed but unlocked window',asyn
   const badge=detail.locator('[data-room-badge="living"]');
   await expect(badge).toHaveText('Potenziell unsicher');
   await expect(detail).toContainText('Geschlossen | Entriegelt');
+  const reason=detail.locator('.window-unlocked');
+  await expect(reason).toHaveText('Entriegelt');
+  expect(await reason.evaluate(element=>{
+    const actual=getComputedStyle(element).color;
+    const expected=document.createElement('span');
+    expected.style.color='var(--iq-red)';
+    element.parentElement.append(expected);
+    const red=getComputedStyle(expected).color;
+    expected.remove();
+    return actual===red && actual!==getComputedStyle(element.parentElement).color;
+  })).toBe(true);
+  await expect(page.locator('#main .window-unlocked')).toHaveCount(0);
   expect(await badge.evaluate(element=>{
     const style=getComputedStyle(element);
     return style.getPropertyValue('--level-color').trim()===style.getPropertyValue('--iq-amber').trim();
@@ -396,9 +408,11 @@ test('floorplan and open room detail agree on a closed but unlocked window',asyn
     element.data.status.rooms.living={level:1,recognitions:[]};
     element.data.information=[];
     element.data.windows.left.lock_state='locked';
-    element._render();
+    element._updateSensorStatuses();
   });
   await expect(badge).toHaveText('Sicher');
   await expect(detail).toContainText('Geschlossen | Verriegelt');
+  await expect(reason).toHaveCount(0);
+  await panel.evaluate(element=>element._render());
   await expect(label).not.toContainText('Potenziell unsicher');
 });
