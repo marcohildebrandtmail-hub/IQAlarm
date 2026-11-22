@@ -103,6 +103,7 @@ test("action editor exposes the requested types and persists an explicit Telegra
   await expect(kind.locator("option")).toHaveText(["Push-Nachricht","Telegramnachricht","Licht steuern","Sirene","Automatisierung auslösen","Skript auslösen"]);
   await expect(dialog.getByText("Kamera-Snapshot anhängen")).toHaveCount(0);
   await expect(dialog.getByLabel("Kritischer Alarm")).toBeVisible();
+  await expect(dialog.getByLabel(/^Ziel \/ Dienst/)).toBeVisible();
 
   await kind.selectOption("automation");
   await expect(dialog.locator('#action-targets option[value="automation.alarm"]')).toHaveCount(1);

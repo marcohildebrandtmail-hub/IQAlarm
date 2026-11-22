@@ -2232,7 +2232,7 @@ class IQAlarmPanel extends HTMLElement {
     this._dialog(id ? "Aktion bearbeiten" : "Aktion hinzufügen", `<div class="form-grid">${a.level!=="diagnostic"?`<label class="field wide">Ausführen bei<select name="action_trigger" aria-label="Ausführen bei">${options({level_entered:disarmed?"Beim Deaktivieren":"Beim Erreichen des Levels",...([2,3].includes(this.data.config.stages.findIndex(stage=>stage.id===a.level))?{grade_1:"Bei 1/3",grade_2:"Bei 2/3",grade_3:"Bei 3/3"}:{}),...(a.trigger==="rule_confirmed"?{rule_confirmed:"Bei vollständiger Bestätigung"}:{})},a.trigger||"level_entered")}</select><small>${disarmed?"Die Aktion wird einmal beim Deaktivieren der Anlage ausgeführt.":"Die Aktion wird beim Erreichen des gewählten Levels oder Bestätigungsgrads ausgelöst."}</small></label>`:""}${this._profileScope("action_profiles",disarmed?"Beim Ausschalten aus":"Alarmmodi",a.profile_ids??null,Object.fromEntries(Object.entries(this.data.config.profiles).map(([key,profile])=>[key,profile.name])))}
       <label class="field">Aktionsart<select name="kind">${options(kinds,a.kind)}</select></label>
       <label class="field" data-kinds="notify,light,siren,automation,script,switch,cover,snapshot,record,tts">
-        Ziel / Dienst<input name="target" list="action-targets" value="${esc(a.kind==="telegram"?"":a.target)}">
+        Ziel / Dienst<input name="target" aria-label="Ziel / Dienst" list="action-targets" value="${esc(a.kind==="telegram"?"":a.target)}">
         <datalist id="action-targets"></datalist>
         <small data-kinds="siren">Sirenen-Entität oder Schalter, der die Sirene auslöst.</small>
       </label>
