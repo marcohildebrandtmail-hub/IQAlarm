@@ -120,15 +120,16 @@ class ActionDispatcher:
         data: dict,
         generation: int | None = None,
         expected_stage: str | None = None,
-    ) -> None:
+    ) -> bool:
         if generation is not None and generation != self.runtime.generation:
-            return
+            return False
         if expected_stage is not None and expected_stage != self.runtime.engine.stage_id:
-            return
+            return False
         if not self.hass.services.has_service(domain, service):
             raise HomeAssistantError(f"Dienst {domain}.{service} ist nicht verfügbar")
         async with asyncio.timeout(30):
             await self.hass.services.async_call(domain, service, data, blocking=True)
+        return True
 
     async def snapshot(self, camera: str) -> str:
         """Save outside /local and expose only through the authenticated media view."""
@@ -199,7 +200,7 @@ class ActionDispatcher:
             actions = [
                 action
                 for action in actions
-                if not (action.kind in {"siren", "switch", "script", "tts"} or action.critical)
+                if not action.requires_confirmed_stage
                 or (
                     event.confirmed
                     and (
@@ -283,7 +284,7 @@ class ActionDispatcher:
                                 replace(action, target=camera), variables, generation
                             )
                         return
-                    if action.kind in {"siren", "switch", "light", "script"}:
+                    if action.kind in {"siren", "switch", "light", "script", "automation"}:
                         async with self.locks[action.target]:
                             if generation == self.runtime.generation and (
                                 event.kind == "test"
@@ -364,8 +365,34 @@ class ActionDispatcher:
                     {"entity_id": action.target, "title": title, "message": message},
                     generation,
                 )
+        elif action.kind == "telegram":
+            data = {
+                "chat_id": int(action.target),
+                "title": self.render(action.title, variables),
+                "message": self.render(action.message, variables),
+                "parse_mode": "plain_text",
+            }
+            if action.telegram_bot_id is not None:
+                data["config_entry_id"] = action.telegram_bot_id
+            await self._call("telegram_bot", "send_message", data, generation)
+        elif action.kind == "automation":
+            await self._call(
+                "automation",
+                "trigger",
+                {"entity_id": action.target, "skip_condition": False},
+                generation,
+                expected_stage,
+            )
         elif action.kind in {"siren", "switch", "light", "script"}:
-            domain = action.kind
+            domain = action.target.split(".", 1)[0]
+            if domain == "light" and action.light_command == "turn_off":
+                switched = await self._call(
+                    "light", "turn_off", {"entity_id": action.target}, generation, expected_stage
+                )
+                if switched and self.outputs.pop(action.target, None) is not None:
+                    self.simulation_outputs.discard(action.target)
+                    await self._persist_outputs()
+                return
             state = self.hass.states.get(action.target)
             was_on = state is not None and state.state == "on"
             data = {"entity_id": action.target}

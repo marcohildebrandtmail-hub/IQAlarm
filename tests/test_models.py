@@ -21,6 +21,7 @@ from iqalarm_core.models import Settings as ScenarioSettings
         ("siren", "siren.house"),
         ("switch", "switch.siren"),
         ("script", "script.alarm"),
+        ("automation", "automation.alarm"),
         ("tts", "tts.voice"),
     ],
 )
@@ -204,3 +205,9 @@ def test_sensor_order_roundtrip_deduplicates_and_prunes_removed_or_moved_sensors
 def test_invalid_sensor_order_is_rejected(order):
     with pytest.raises(ValueError):
         Settings(startup_delay_seconds=0, sensor_order=order)
+
+
+@pytest.mark.parametrize("chat", ["", "0", "-0", "123,456", 123, "9223372036854775808"])
+def test_telegram_requires_one_explicit_signed_chat_id(chat):
+    with pytest.raises(ValueError, match="Telegram-Chat-ID"):
+        Action("telegram", "2", "telegram", chat)

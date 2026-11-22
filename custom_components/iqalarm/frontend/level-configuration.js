@@ -1,12 +1,12 @@
-import {renderRobotSettings} from "./robots.js?v=2.15.9";
-import {bindRuleSources, SOURCE_ROLES as ROLES} from "./rule-sources.js?v=2.15.9";
+import {renderRobotSettings} from "./robots.js?v=2.16.0";
+import {bindRuleSources, SOURCE_ROLES as ROLES} from "./rule-sources.js?v=2.16.0";
 /* Native, build-free editors for independent level rules and profile actions. */
 const esc=value=>String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const icon=name=>`<ha-icon icon="mdi:${esc(name)}" aria-hidden="true"></ha-icon>`;
 const options=(items,value)=>Object.entries(items).map(([id,label])=>`<option value="${esc(id)}"${id===value?" selected":""}>${esc(label)}</option>`).join("");
 const EVENTS={active:"Aktiv / Person / Öffnung",unavailable:"Keine Verbindung",flapping:"Sensor-Prellen",override:"Freigegebene Einzelauslösung / Gefahr"};
 export const stageBlocked=(config,id)=>Boolean(config.automatic_detection&&config.automatic_detection.test_mode!==false&&config.stages.findIndex(s=>s.id===id)>config.stages.findIndex(s=>s.id===(config.automatic_detection.test_stage_id||config.automatic_detection.stage_id)));
-const KINDS={notify:"Push",siren:"Sirene",switch:"Schalter",script:"Skript",light:"Licht",cover:"Rollos",snapshot:"Snapshot",record:"Aufzeichnung",tts:"Sprachausgabe"};
+const KINDS={notify:"Push-Nachricht",telegram:"Telegramnachricht",siren:"Sirene",switch:"Schalter",script:"Skript auslösen",automation:"Automatisierung auslösen",light:"Licht steuern",cover:"Rollos",snapshot:"Snapshot",record:"Aufzeichnung",tts:"Sprachausgabe"};
 
 export function readAutomaticDetection(form,config) {
   const fields=new FormData(form),stage_id=config.automatic_detection?.stage_id||config.stages[3].id;

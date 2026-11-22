@@ -509,6 +509,12 @@ class Action:
     enabled: bool = True
     profile_ids: list[str] | None = None
     trigger: str = "level_entered"
+    telegram_bot_id: str | None = None
+    light_command: str = "turn_on"
+
+    @property
+    def requires_confirmed_stage(self) -> bool:
+        return self.critical or self.kind in {"siren", "switch", "script", "tts", "automation"}
 
     def __post_init__(self) -> None:
         if not isinstance(self.id, str) or not ID_RE.fullmatch(self.id):
@@ -521,9 +527,11 @@ class Action:
             raise ValueError("Ungültige Aktionsstufe")
         allowed = {
             "notify",
+            "telegram",
             "siren",
             "switch",
             "script",
+            "automation",
             "light",
             "cover",
             "snapshot",
@@ -532,14 +540,26 @@ class Action:
         }
         if self.kind not in allowed:
             raise ValueError("Unbekannte Aktionsart")
-        if self.level == "diagnostic" and (
-            self.kind in {"siren", "switch", "script", "tts"} or self.critical
-        ):
+        if self.level == "diagnostic" and self.requires_confirmed_stage:
             raise ValueError(
                 "Akustische/freie Aktionen und kritische Pushs sind nicht für Diagnose erlaubt"
             )
-        if self.kind in {"siren", "switch", "script", "light", "cover", "tts"}:
+        if self.kind in {"switch", "script", "light", "cover", "tts", "automation"}:
             entity(self.target, {self.kind})
+        if self.kind == "siren":
+            entity(self.target, {"siren", "switch"})
+        if self.kind == "telegram" and (
+            not isinstance(self.target, str)
+            or not re.fullmatch(r"-?[1-9][0-9]{0,18}", self.target)
+            or abs(int(self.target)) > 2**63 - 1
+        ):
+            raise ValueError("Telegram-Chat-ID als positive oder negative Ganzzahl angeben")
+        if self.telegram_bot_id is not None and (
+            not isinstance(self.telegram_bot_id, str) or not ID_RE.fullmatch(self.telegram_bot_id)
+        ):
+            raise ValueError("Ungültige Telegram-Bot-ID")
+        if self.light_command not in ("turn_on", "turn_off"):
+            raise ValueError("Unbekannter Lichtbefehl")
         if self.kind == "notify":
             entity(self.target, {"notify"})
         if self.kind in {"snapshot", "record"} and self.target != "trigger_camera":
@@ -1222,8 +1242,7 @@ class Configuration:
                 raise ValueError("Aktion verweist auf einen unbekannten Alarmmodus")
             if action.level != "diagnostic" and action.level not in stage_ids:
                 raise ValueError("Aktion verweist auf eine unbekannte Alarmstufe")
-            loud = action.kind in {"siren", "switch", "script", "tts"} or action.critical
-            if loud and (
+            if action.requires_confirmed_stage and (
                 action.level == "diagnostic"
                 or (
                     not self.stage(action.level).allow_loud

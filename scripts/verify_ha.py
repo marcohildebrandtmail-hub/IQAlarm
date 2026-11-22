@@ -592,6 +592,8 @@ async def verify_actions(hass, runtime, calls, capture) -> None:
         ("cover", "open_cover"),
         ("tts", "speak"),
         ("notify", "send_message"),
+        ("telegram_bot", "send_message"),
+        ("automation", "trigger"),
     ):
         hass.services.async_register(domain, service, capture)
     for service in ("snapshot", "record"):
@@ -627,6 +629,46 @@ async def verify_actions(hass, runtime, calls, capture) -> None:
     )
     assert any(c[:2] == ("light", "turn_on") and c[2]["rgb_color"] == [255, 0, 0] for c in calls)
     assert any(c[:2] == ("notify", "send_message") for c in calls)
+    requested = [
+        (
+            Action(
+                "telegram",
+                "2",
+                "telegram",
+                "-1001234567890",
+                telegram_bot_id="test_bot",
+                title="Hinweis",
+            ),
+            (
+                "telegram_bot",
+                "send_message",
+                {
+                    "chat_id": -1001234567890,
+                    "config_entry_id": "test_bot",
+                    "parse_mode": "plain_text",
+                    "title": "Hinweis",
+                    "message": runtime.dispatcher.render(configurations[0].message, variables),
+                },
+            ),
+        ),
+        (
+            Action("automation", "3", "automation", "automation.test"),
+            ("automation", "trigger", {"entity_id": "automation.test", "skip_condition": False}),
+        ),
+        (
+            Action("zigbee_siren", "3", "siren", "switch.zigbee_siren"),
+            ("switch", "turn_on", {"entity_id": "switch.zigbee_siren"}),
+        ),
+        (
+            Action("light_off", "3", "light", "light.other", light_command="turn_off"),
+            ("light", "turn_off", {"entity_id": "light.other"}),
+        ),
+    ]
+    for action, expected in requested:
+        await runtime.dispatcher.execute(action, variables, runtime.generation)
+        assert calls[-1] == expected, calls[-1]
+    assert "light.other" not in runtime.dispatcher.outputs
+    assert "automation.test" not in runtime.dispatcher.outputs
     assert any(
         c[2].get("data", {}).get("image", "").startswith("/api/iqalarm/media/") for c in calls
     )

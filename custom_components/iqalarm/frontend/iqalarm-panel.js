@@ -1,15 +1,15 @@
-import {sensorTypeField, sensorTypeChoices, setSensorType, sensorListGroup, isSensorInput, suggestedSensorType, createSensor, SENSOR_TYPES} from "./sensor-types.js?v=2.15.9";
-import {insideRoomChoices, outsideInsideControls, outsideInsideSVG, renderOutsideInside, setOutsideInside} from "./outside-inside.js?v=2.15.9";
-import {openRobotDialog, readRobotForm, renderCoverage, updateRobotStatuses} from "./robots.js?v=2.15.9";
-import {TOPOLOGY_CSS, connectionEditor, imageControls, roomConnections, setRoomConnection} from "./floorplan-topology.js?v=2.15.9";
-import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings, triggerRows, recognitionDisplayData} from "./live-view.js?v=2.15.9";
-import {RULE_SOURCES_CSS, updateRuleSources} from "./rule-sources.js?v=2.15.9";
-import {bindIconFields, iconField, MDI_ICON, roomSymbol, sensorSymbol, symbolHTML} from "./display-icons.js?v=2.15.9";
-import {DraftJournal} from "./floorplan-drafts.js?v=2.15.9";
-import {renderLevels, renderProfiles, renderConfirmationContext, openRuleDialog, readRuleForm, readAutomaticDetection, readPersonDetection, readAlarmEscalation} from "./level-configuration.js?v=2.15.9";
-import "./window-assistant.js?v=2.15.9";
-import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.15.9";
-/* IQAlarm 2.15.9 · native ES module · no CDN, framework or build required. */
+import {sensorTypeField, sensorTypeChoices, setSensorType, sensorListGroup, isSensorInput, suggestedSensorType, createSensor, SENSOR_TYPES} from "./sensor-types.js?v=2.16.0";
+import {insideRoomChoices, outsideInsideControls, outsideInsideSVG, renderOutsideInside, setOutsideInside} from "./outside-inside.js?v=2.16.0";
+import {openRobotDialog, readRobotForm, renderCoverage, updateRobotStatuses} from "./robots.js?v=2.16.0";
+import {TOPOLOGY_CSS, connectionEditor, imageControls, roomConnections, setRoomConnection} from "./floorplan-topology.js?v=2.16.0";
+import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings, triggerRows, recognitionDisplayData} from "./live-view.js?v=2.16.0";
+import {RULE_SOURCES_CSS, updateRuleSources} from "./rule-sources.js?v=2.16.0";
+import {bindIconFields, iconField, MDI_ICON, roomSymbol, sensorSymbol, symbolHTML} from "./display-icons.js?v=2.16.0";
+import {DraftJournal} from "./floorplan-drafts.js?v=2.16.0";
+import {renderLevels, renderProfiles, renderConfirmationContext, openRuleDialog, readRuleForm, readAutomaticDetection, readPersonDetection, readAlarmEscalation} from "./level-configuration.js?v=2.16.0";
+import "./window-assistant.js?v=2.16.0";
+import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.16.0";
+/* IQAlarm 2.16.0 · native ES module · no CDN, framework or build required. */
 const WINDOW_CSS = `.window-group{padding:18px 0;border-bottom:1px solid var(--divider-color,#dce3ec)}.window-inputs{margin:14px 0 0 24px;padding-left:18px;border-left:2px solid var(--divider-color,#dce3ec)}.window-inputs code{display:block;font-size:10px;overflow-wrap:anywhere;color:var(--secondary-text-color,#64758b)}.information{border-color:color-mix(in srgb,var(--primary-color,#2986bb) 25%,transparent)}.information summary,details.banner summary{cursor:pointer;font-size:13px}.information ha-icon{color:var(--primary-color,#2986bb)}`;
 const FLOORPLAN_MOTION_HOLD_SECONDS = 15;
 const RECOGNITION_FADE_SECONDS = 1.5;
@@ -18,7 +18,19 @@ const RULES = {perimeter: "Vorfeld-Erkennung", single: "Unbestätigter Einzelsen
 const UNCONFIRMED_RULES = ["perimeter", "single", "motion", "fault", "flapping"];
 const PROFILE_ICONS = {"mdi:home-outline":"Zuhause", "mdi:weather-night":"Nacht", "mdi:home-export-outline":"Abwesend", "mdi:palm-tree":"Urlaub", "mdi:account-group-outline":"Besuch", "mdi:garage-variant":"Garage", "mdi:shield-check-outline":"Schutz", "mdi:eye-outline":"Beobachtung", "mdi:dog":"Haustiere", "mdi:briefcase-outline":"Arbeit", "mdi:bed-outline":"Schlafzimmer", "mdi:lock-outline":"Schloss", "mdi:home-floor-0":"Erdgeschoss", "mdi:home-floor-1":"Obergeschoss", "mdi:home-floor-b":"Keller", "mdi:tree-outline":"Garten"};
 const ROLES = {perimeter_camera: "Außenkamera / Person", perimeter_sensor: "Bewegungsmelder außen", entry_contact: "Tür / Fenster / Tor", lock_contact: "Schloss / Riegel", interior_motion: "Bewegung innen", };
-const KINDS = {notify: "Push-Benachrichtigung", siren: "Sirene", switch: "Schalter", script: "Skript", light: "Licht", cover: "Rollos öffnen", snapshot: "Kamera-Snapshot", record: "Kamera-Aufzeichnung", tts: "Sprachausgabe"};
+const ACTION_KINDS = {
+  notify: "Push-Nachricht",
+  telegram: "Telegramnachricht",
+  light: "Licht steuern",
+  siren: "Sirene",
+  automation: "Automatisierung auslösen",
+  script: "Skript auslösen",
+};
+const LEGACY_ACTION_KINDS = {
+  switch: "Schalter", cover: "Rollos öffnen", snapshot: "Kamera-Snapshot",
+  record: "Kamera-Aufzeichnung", tts: "Sprachausgabe",
+};
+const KINDS = {...ACTION_KINDS,...LEGACY_ACTION_KINDS};
 const TABS = [
   ["view-dashboard-outline", "Live-Status"],
   ["floor-plan", "Räume & Grundriss"],
@@ -191,7 +203,7 @@ class IQAlarmPanel extends HTMLElement {
         e.target.form.querySelector("[data-inside-rooms]").innerHTML=insideRoomChoices(this.data.config,e.target.value);
         if(this._outsideInsideMode)this._render();
       }
-      if (e.target.name === "kind") this._actionVisibility(e.target.value);
+      if (["kind","light_command"].includes(e.target.name)) this._actionVisibility(e.target.form.elements.kind.value);
       if (e.target.id === "plan-select") { this._selectPlan(e.target.value); this._render(); }
       if (e.target.id === "live-plan-select") { this.livePlanFilter = e.target.value; this._render(); }
       if (e.target.id === "zone-room") this._assignDraftRoom(e.target.value);
@@ -2210,17 +2222,54 @@ class IQAlarmPanel extends HTMLElement {
     this._actionProfile = null;
     const a = this.data.config.actions[id] || {level: this.stage, kind: "notify", target: "", title: "IQAlarm · Stufe {{level}}", message: "{{room}}: {{sensor}} — {{reason}}\n{{chain}}", enabled: true, critical: false, duration: 180, brightness: 100};
     const disarmed=this.data.config.stages[0]?.id===a.level;
-    const kinds = Object.fromEntries(Object.entries(KINDS).filter(([kind]) => this.data.config.stages.find(stage => stage.id === a.level)?.allow_loud || [this.data.config.alarm_escalation?.stage_id,this.data.config.alarm_escalation?.next_stage_id].includes(a.level) || !["siren", "switch", "script", "tts"].includes(kind)));
-    this._dialog(id ? "Aktion bearbeiten" : "Aktion hinzufügen", `<div class="form-grid">${a.level!=="diagnostic"?`<label class="field wide">Ausführen bei<select name="action_trigger" aria-label="Ausführen bei">${options({level_entered:disarmed?"Beim Deaktivieren":"Beim Erreichen des Levels",...([2,3].includes(this.data.config.stages.findIndex(stage=>stage.id===a.level))?{grade_1:"Bei 1/3",grade_2:"Bei 2/3",grade_3:"Bei 3/3"}:{}),...(a.trigger==="rule_confirmed"?{rule_confirmed:"Bei vollständiger Bestätigung"}:{})},a.trigger||"level_entered")}</select><small>${disarmed?"Die Aktion wird einmal beim Deaktivieren der Anlage ausgeführt.":"Die Aktion wird beim Erreichen des gewählten Levels oder Bestätigungsgrads ausgelöst."}</small></label>`:""}${this._profileScope("action_profiles",disarmed?"Beim Ausschalten aus":"Alarmmodi",a.profile_ids??null,Object.fromEntries(Object.entries(this.data.config.profiles).map(([key,profile])=>[key,profile.name])))}<label class="field">Aktionsart<select name="kind">${options(kinds, a.kind)}</select></label><label class="field">Ziel / Dienst<input name="target" list="action-targets" value="${esc(a.target)}" required><datalist id="action-targets"></datalist><small>Ein konkreter notify-Dienst oder eine Geräte-Entität. Für Snapshot/Aufzeichnung: trigger_camera verwendet die Kamera der Auslösekette.</small></label><label class="field wide" data-kinds="notify">Titel<input name="title" value="${esc(a.title)}" maxlength="200"></label><label class="field wide" data-kinds="notify,tts">Nachricht<textarea name="message" maxlength="3000">${esc(a.message)}</textarea><small>{{room}} · {{sensor}} · {{level}} · {{reason}} · {{chain}}</small></label><label class="field wide" data-kinds="notify">Kamera-Snapshot anhängen<select name="camera_entity_id">${this._entityOptions(["camera"], a.camera_entity_id)}</select></label><div class="wide" data-kinds="notify">${this._checkbox("critical", "Kritischer Alarm (nur für bestätigte, akustisch freigegebene Stufen)", a.critical)}</div><label class="field wide" data-kinds="tts">Lautsprecher<select name="media_player">${this._entityOptions(["media_player"], a.media_player)}</select></label><div data-kinds="siren,switch,script,light,record">${this._number("duration", "Automatisch aus nach / Aufnahmedauer (Sekunden)", a.duration, 1, 3600)}</div><div data-kinds="light">${this._number("brightness", "Helligkeit (%)", a.brightness, 1, 100)}</div><label class="field" data-kinds="light">Warnfarbe<input name="color" type="color" value="${a.color ? '#' + a.color.map(n => n.toString(16).padStart(2, '0')).join('') : '#ff3344'}"></label><div data-kinds="light">${this._checkbox("use_color", "Warnfarbe verwenden", !!a.color)}</div><div class="wide">${this._checkbox("enabled", "Aktion aktivieren", a.enabled)}</div></div><div class="help">Selbst eingeschaltete Sirenen, Schalter und Lichter werden zeitgesteuert oder beim Entschärfen ausgeschaltet. Bereits eingeschaltete Geräte werden nicht abgeschaltet. Rollos werden geöffnet und bleiben offen.</div>`, "action", id);
+    const allowsLoud = this.data.config.stages.find(stage=>stage.id===a.level)?.allow_loud ||
+      [this.data.config.alarm_escalation?.stage_id,this.data.config.alarm_escalation?.next_stage_id].includes(a.level);
+    const kinds = Object.fromEntries(Object.entries(ACTION_KINDS).filter(([kind])=>
+      allowsLoud || !["siren","automation","script"].includes(kind)));
+    if(id && !kinds[a.kind])kinds[a.kind]=KINDS[a.kind];
+    const bots=Object.fromEntries((this.catalog.telegram_bots||[]).map(bot=>[bot.id,bot.name]));
+    if(a.telegram_bot_id && !bots[a.telegram_bot_id])bots[a.telegram_bot_id]=a.telegram_bot_id;
+    this._dialog(id ? "Aktion bearbeiten" : "Aktion hinzufügen", `<div class="form-grid">${a.level!=="diagnostic"?`<label class="field wide">Ausführen bei<select name="action_trigger" aria-label="Ausführen bei">${options({level_entered:disarmed?"Beim Deaktivieren":"Beim Erreichen des Levels",...([2,3].includes(this.data.config.stages.findIndex(stage=>stage.id===a.level))?{grade_1:"Bei 1/3",grade_2:"Bei 2/3",grade_3:"Bei 3/3"}:{}),...(a.trigger==="rule_confirmed"?{rule_confirmed:"Bei vollständiger Bestätigung"}:{})},a.trigger||"level_entered")}</select><small>${disarmed?"Die Aktion wird einmal beim Deaktivieren der Anlage ausgeführt.":"Die Aktion wird beim Erreichen des gewählten Levels oder Bestätigungsgrads ausgelöst."}</small></label>`:""}${this._profileScope("action_profiles",disarmed?"Beim Ausschalten aus":"Alarmmodi",a.profile_ids??null,Object.fromEntries(Object.entries(this.data.config.profiles).map(([key,profile])=>[key,profile.name])))}
+      <label class="field">Aktionsart<select name="kind">${options(kinds,a.kind)}</select></label>
+      <label class="field" data-kinds="notify,light,siren,automation,script,switch,cover,snapshot,record,tts">
+        Ziel / Dienst<input name="target" list="action-targets" value="${esc(a.kind==="telegram"?"":a.target)}">
+        <datalist id="action-targets"></datalist>
+        <small data-kinds="siren">Sirenen-Entität oder Schalter, der die Sirene auslöst.</small>
+      </label>
+      <label class="field" data-kinds="telegram">Telegram-Chat-ID<input name="telegram_chat_id" value="${esc(a.kind==="telegram"?a.target:"")}" pattern="-?[1-9][0-9]{0,18}" maxlength="20">
+        <small>Die Chat-ID muss im Home-Assistant-Telegram-Bot freigegeben sein.</small>
+      </label>
+      <label class="field" data-kinds="telegram">Telegram-Bot<select name="telegram_bot_id">${options(bots,a.telegram_bot_id,"Automatisch")}</select></label>
+      <label class="field wide" data-kinds="notify,telegram">Titel<input name="title" value="${esc(a.title)}" maxlength="200"></label>
+      <label class="field wide" data-kinds="notify,telegram,tts">Nachricht<textarea name="message" maxlength="3000">${esc(a.message)}</textarea><small>{{room}} · {{sensor}} · {{level}} · {{reason}} · {{chain}}</small></label>
+      ${allowsLoud?`<div class="wide" data-kinds="notify">${this._checkbox("critical","Kritischer Alarm",a.critical)}<small class="muted">Spielt auf kompatiblen Handys einen Alarmton, auch bei lautloser Einstellung. Nur bei bestätigtem Alarm auf einer freigegebenen Stufe.</small></div>`:""}
+      <label class="field wide" data-kinds="tts">Lautsprecher<select name="media_player">${this._entityOptions(["media_player"],a.media_player)}</select></label>
+      <label class="field" data-kinds="light">Lichtbefehl<select name="light_command">${options({turn_on:"Einschalten",turn_off:"Ausschalten"},a.light_command||"turn_on")}</select></label>
+      <div data-kinds="siren,switch,script,light,record" data-light-on>${this._number("duration","Dauer (Sekunden)",a.duration,1,3600)}</div>
+      <div data-kinds="light" data-light-on>${this._number("brightness","Helligkeit (%)",a.brightness,1,100)}</div>
+      <label class="field" data-kinds="light" data-light-on>Warnfarbe<input name="color" type="color" value="${a.color?'#'+a.color.map(n=>n.toString(16).padStart(2,'0')).join(''):'#ff3344'}"></label>
+      <div data-kinds="light" data-light-on>${this._checkbox("use_color","Warnfarbe verwenden",!!a.color)}</div>
+      <div class="wide">${this._checkbox("enabled","Aktion aktivieren",a.enabled)}</div></div>
+      <div class="help" data-kinds="siren,switch,light" data-light-on>Von IQAlarm eingeschaltete Geräte werden nach Ablauf der Dauer oder beim Entschärfen ausgeschaltet.</div>`, "action", id);
     this._actionVisibility(a.kind);
     this._scopeVisibility(this.shadowRoot.getElementById("editor-form"));
   }
 
   _actionVisibility(kind) {
-    const dialog = this.shadowRoot.getElementById("editor");
-    dialog.querySelectorAll("[data-kinds]").forEach(e => {e.hidden = !e.dataset.kinds.split(",").includes(kind);});
-    const targets = ["snapshot","record"].includes(kind) && this.data.config.rules ? ["trigger_camera", ...this._entities(["camera"]).map(e => e.entity_id)] : kind === "notify" ? [...this.catalog.notify_services, ...this._entities(["notify"]).map(e => e.entity_id)] : this._entities([kind === "snapshot" || kind === "record" ? "camera" : kind]).map(e => e.entity_id);
-    dialog.querySelector("#action-targets").innerHTML = [...new Set(targets)].map(id => `<option value="${esc(id)}"></option>`).join("");
+    const form=this.shadowRoot.getElementById("editor-form");
+    const turningLightOff=kind==="light" && form.elements.light_command.value==="turn_off";
+    form.querySelectorAll("[data-kinds]").forEach(element=>{
+      element.hidden=!element.dataset.kinds.split(",").includes(kind) ||
+        turningLightOff && element.hasAttribute("data-light-on");
+    });
+    form.elements.target.required=kind!=="telegram";
+    form.elements.telegram_chat_id.required=kind==="telegram";
+    form.elements.telegram_chat_id.disabled=kind!=="telegram";
+    const domains=kind==="siren"?["siren","switch"]:["snapshot","record"].includes(kind)?["camera"]:[kind];
+    const targets=this._entities(domains).map(entity=>entity.entity_id);
+    if(kind==="notify")targets.unshift(...this.catalog.notify_services);
+    if(["snapshot","record"].includes(kind) && this.data.config.rules)targets.unshift("trigger_camera");
+    form.querySelector("#action-targets").innerHTML=[...new Set(targets)].map(id=>`<option value="${esc(id)}"></option>`).join("");
   }
 
   _roomsSortDialog() {
@@ -2843,7 +2892,19 @@ class IQAlarmPanel extends HTMLElement {
             collection="robots";item=readRobotForm(form);if(id)item.id=id;
           } else if (type === "action") {
             collection = "actions"; const old = this.data.config.actions[id], kind = get("kind");
-            item = {profile_ids:bool("all_action_profiles")?Object.keys(this.data.config.profiles):fields.getAll("action_profiles"),level: old?.level || this.stage, trigger: get("action_trigger") || "level_entered", kind, target: get("target"), title: get("title"), message: get("message"), duration: num("duration"), brightness: num("brightness"), critical: kind === "notify" && bool("critical"), camera_entity_id: kind === "notify" ? get("camera_entity_id") || null : null, media_player: kind === "tts" ? get("media_player") || null : null, enabled: bool("enabled"), color: kind === "light" && bool("use_color") ? [1, 3, 5].map(i => parseInt(get("color").slice(i, i + 2), 16)) : null}; if (id) item.id = id;
+            item = {
+              profile_ids:bool("all_action_profiles")?Object.keys(this.data.config.profiles):fields.getAll("action_profiles"),
+              level:old?.level||this.stage,trigger:get("action_trigger")||"level_entered",kind,
+              target:(kind==="telegram"?get("telegram_chat_id"):get("target")).trim(),
+              title:get("title"),message:get("message"),duration:num("duration"),brightness:num("brightness"),
+              critical:kind==="notify"&&bool("critical"),
+              telegram_bot_id:kind==="telegram"?get("telegram_bot_id")||null:null,
+              light_command:kind==="light"?get("light_command"):"turn_on",
+              camera_entity_id:kind==="notify"?old?.camera_entity_id||null:null,
+              media_player:kind==="tts"?get("media_player")||null:null,enabled:bool("enabled"),
+              color:kind==="light"&&bool("use_color")?[1,3,5].map(i=>parseInt(get("color").slice(i,i+2),16)):null,
+            };
+            if(id)item.id=id;
           } else if (type === "profile") {
             collection = "profiles";
             item = this._profileTemplate ? structuredClone(this.data.config.profiles[this._profileTemplate]) : {reactions_enabled:true, action_ids:null, motion_mode:"always",rule_ids:[]};

@@ -89,3 +89,39 @@ test("saved exclusions survive profile changes, unrelated saves and page reload"
   await expect(page.locator('[name="all_room_ids"]')).not.toBeChecked();
   await expect(page.locator('select[name="room_ids"]')).toHaveValues(["eg"]);
 });
+
+
+test("action editor exposes the requested types and persists an explicit Telegram chat",async({page})=>{
+  await page.locator("iqalarm-panel").evaluate(panel=>{
+    window.server.config.stages[4].allow_loud=true;
+    panel.data.config.stages[4].allow_loud=true;
+    panel.catalog={entities:[{entity_id:"automation.alarm"},{entity_id:"siren.camera"},{entity_id:"switch.smoke_siren"}],areas:[],notify_services:[],telegram_bots:[{id:"bot",name:"Test-Bot"}]};
+    panel.stage="4";
+    panel._actionDialog();
+  });
+  const dialog=page.getByRole("dialog"), kind=dialog.getByLabel("Aktionsart");
+  await expect(kind.locator("option")).toHaveText(["Push-Nachricht","Telegramnachricht","Licht steuern","Sirene","Automatisierung auslösen","Skript auslösen"]);
+  await expect(dialog.getByText("Kamera-Snapshot anhängen")).toHaveCount(0);
+  await expect(dialog.getByLabel("Kritischer Alarm")).toBeVisible();
+
+  await kind.selectOption("automation");
+  await expect(dialog.locator('#action-targets option[value="automation.alarm"]')).toHaveCount(1);
+  await kind.selectOption("siren");
+  await expect(dialog.locator("#action-targets option")).toHaveCount(2);
+  await kind.selectOption("light");
+  await dialog.getByLabel("Lichtbefehl").selectOption("turn_off");
+  await expect(dialog.getByLabel("Helligkeit (%)")).toBeHidden();
+
+  await kind.selectOption("telegram");
+  await expect(dialog.getByLabel("Ziel / Dienst")).toBeHidden();
+  await expect(dialog.getByLabel("Kritischer Alarm")).toBeHidden();
+  await dialog.getByRole("button",{name:"Speichern"}).click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel(/^Telegram-Chat-ID/).fill("-1001234567890");
+  await dialog.getByRole("combobox",{name:/^Telegram-Bot/}).selectOption("bot");
+  await dialog.getByRole("button",{name:"Speichern"}).click();
+  await expect(dialog).toBeHidden();
+  expect(await page.evaluate(()=>Object.values(window.server.config.actions)[0])).toMatchObject({
+    kind:"telegram",target:"-1001234567890",telegram_bot_id:"bot",camera_entity_id:null,critical:false,
+  });
+});

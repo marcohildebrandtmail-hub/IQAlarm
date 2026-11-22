@@ -460,6 +460,7 @@ async def ws_catalog(hass, connection, msg) -> None:
         "siren",
         "switch",
         "script",
+        "automation",
         "light",
         "cover",
         "notify",
@@ -522,8 +523,14 @@ async def ws_catalog(hass, connection, msg) -> None:
         if service not in ("notify", "send_message")
     ]
     areas = [{"id": a.id, "name": a.name} for a in area_registry.async_get(hass).async_list_areas()]
+    bots = [
+        {"id": entry.entry_id, "name": entry.title}
+        for entry in hass.config_entries.async_entries("telegram_bot")
+        if not entry.disabled_by
+    ]
     connection.send_result(
-        msg["id"], {"entities": entities, "notify_services": notify, "areas": areas}
+        msg["id"],
+        {"entities": entities, "notify_services": notify, "areas": areas, "telegram_bots": bots},
     )
 
 
