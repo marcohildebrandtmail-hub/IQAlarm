@@ -1,5 +1,5 @@
 /* Directed links between an outdoor area and its indoor rooms. */
-import {roomVisualCenter} from "./floorplan-rooms.js?v=2.16.1";
+import {roomVisualCenter} from "./floorplan-rooms.js?v=2.16.2";
 const esc=value=>String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 export function setOutsideInside(config,outside,inside) {

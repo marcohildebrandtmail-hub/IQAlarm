@@ -1,15 +1,15 @@
-import {sensorTypeField, sensorTypeChoices, setSensorType, sensorListGroup, isSensorInput, suggestedSensorType, createSensor, SENSOR_TYPES} from "./sensor-types.js?v=2.16.1";
-import {insideRoomChoices, outsideInsideControls, outsideInsideSVG, renderOutsideInside, setOutsideInside} from "./outside-inside.js?v=2.16.1";
-import {openRobotDialog, readRobotForm, renderCoverage, updateRobotStatuses} from "./robots.js?v=2.16.1";
-import {TOPOLOGY_CSS, connectionEditor, imageControls, roomConnections, setRoomConnection} from "./floorplan-topology.js?v=2.16.1";
-import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings, triggerRows, recognitionDisplayData, displayedLevel} from "./live-view.js?v=2.16.1";
-import {RULE_SOURCES_CSS, updateRuleSources} from "./rule-sources.js?v=2.16.1";
-import {bindIconFields, iconField, MDI_ICON, roomSymbol, sensorSymbol, symbolHTML} from "./display-icons.js?v=2.16.1";
-import {DraftJournal} from "./floorplan-drafts.js?v=2.16.1";
-import {renderLevels, renderProfiles, renderConfirmationContext, openRuleDialog, readRuleForm, readAutomaticDetection, readPersonDetection, readAlarmEscalation} from "./level-configuration.js?v=2.16.1";
-import "./window-assistant.js?v=2.16.1";
-import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.16.1";
-/* IQAlarm 2.16.1 · native ES module · no CDN, framework or build required. */
+import {sensorTypeField, sensorTypeChoices, setSensorType, sensorListGroup, isSensorInput, suggestedSensorType, createSensor, SENSOR_TYPES} from "./sensor-types.js?v=2.16.2";
+import {insideRoomChoices, outsideInsideControls, outsideInsideSVG, renderOutsideInside, setOutsideInside} from "./outside-inside.js?v=2.16.2";
+import {openRobotDialog, readRobotForm, renderCoverage, updateRobotStatuses} from "./robots.js?v=2.16.2";
+import {TOPOLOGY_CSS, connectionEditor, imageControls, roomConnections, setRoomConnection} from "./floorplan-topology.js?v=2.16.2";
+import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings, triggerRows, recognitionDisplayData, displayedLevel} from "./live-view.js?v=2.16.2";
+import {RULE_SOURCES_CSS, updateRuleSources} from "./rule-sources.js?v=2.16.2";
+import {bindIconFields, iconField, MDI_ICON, roomSymbol, sensorSymbol, symbolHTML} from "./display-icons.js?v=2.16.2";
+import {DraftJournal} from "./floorplan-drafts.js?v=2.16.2";
+import {renderLevels, renderProfiles, renderConfirmationContext, openRuleDialog, readRuleForm, readAutomaticDetection, readPersonDetection, readAlarmEscalation} from "./level-configuration.js?v=2.16.2";
+import "./window-assistant.js?v=2.16.2";
+import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.16.2";
+/* IQAlarm 2.16.2 · native ES module · no CDN, framework or build required. */
 const WINDOW_CSS = `.window-group{padding:18px 0;border-bottom:1px solid var(--divider-color,#dce3ec)}.window-inputs{margin:14px 0 0 24px;padding-left:18px;border-left:2px solid var(--divider-color,#dce3ec)}.window-inputs code{display:block;font-size:10px;overflow-wrap:anywhere;color:var(--secondary-text-color,#64758b)}.information{border-color:color-mix(in srgb,var(--primary-color,#2986bb) 25%,transparent)}.information summary,details.banner summary{cursor:pointer;font-size:13px}.information ha-icon{color:var(--primary-color,#2986bb)}`;
 const FLOORPLAN_MOTION_HOLD_SECONDS = 15;
 const RECOGNITION_FADE_SECONDS = 1.5;
@@ -93,7 +93,7 @@ dialog.wide{width:min(980px,calc(100vw - 28px));max-width:min(980px,calc(100vw -
 .room-pick-btn:hover{background:color-mix(in srgb,var(--iq-accent) 10%,var(--iq-surface));border-color:var(--iq-accent)}
 .room-pick-btn.current{border-color:var(--iq-accent);background:color-mix(in srgb,var(--iq-accent) 14%,var(--iq-surface));color:var(--iq-accent);cursor:default}
 .room-pick-btn small{font-size:11px;font-weight:400;color:var(--iq-muted);margin-left:auto}
-#live-room-status .window-unlocked{color:var(--iq-red)}
+.window-unlocked{color:var(--iq-red)}
 .room-head-title{display:flex;align-items:center;gap:7px;min-width:0;flex:1}
 .room-head-title h3{margin:0;font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .room-head-title ha-icon{flex-shrink:0;--mdc-icon-size:20px;color:var(--iq-accent)}
@@ -334,7 +334,7 @@ class IQAlarmPanel extends HTMLElement {
         const settingsChanged = this.tab === 4 && data.config.revision !== this._viewRevision && !this._hasSettingsEdits();
         this.data = data; this._connection(true);
         if (first || this.tab === 0 || this.tab === 5 || settingsChanged) this._render();
-        else {this._updateLock();updateRobotStatuses(this);if(this.tab===2){this._updateWindowStatuses();this._updateSensorStatuses();}const live=this.shadowRoot.getElementById("live-room-status");if(live&&this.liveRoom&&this.data.config.rooms[this.liveRoom])live.innerHTML=this._roomLive(this.data.config.rooms[this.liveRoom],true);}
+        else {this._updateLock();updateRobotStatuses(this);if(this.tab===2){this._updateWindowStatuses();this._updateSensorStatuses();}const live=this.shadowRoot.getElementById("live-room-status");if(live&&this.liveRoom&&this.data.config.rooms[this.liveRoom])live.innerHTML=this._roomLive(this.data.config.rooms[this.liveRoom]);}
       }, {type: "iqalarm/subscribe"});
       if (!this.isConnected || attempt !== this._connectAttempt) unsub();
       else this._unsubscribe = unsub;
@@ -399,10 +399,10 @@ class IQAlarmPanel extends HTMLElement {
     if(this._sensorRecent(sensor,now))return "Kürzlich";
     return "Ruhig";
   }
-  _roomSensorStateMarkup(sensor,now,paused,detail) {
+  _roomSensorStateMarkup(sensor,now,paused,showWarning) {
     const {status,information}=this.data;
     const displayOnly=status.active && !paused && !status.monitored_sensors.includes(sensor.entity_id) ? " · nur Anzeige" : "";
-    if(detail && sensor.enabled && sensor.window_id && status.active && information?.some(item=>item.window_id===sensor.window_id)) {
+    if(showWarning && sensor.enabled && sensor.window_id && status.active && information?.some(item=>item.window_id===sensor.window_id)) {
       const [position,lock]=this._windowLabelParts(sensor.window_id);
       if(lock==="Entriegelt")return `${esc(position)} | <span class="window-unlocked">${esc(lock)}</span>${displayOnly}`;
     }
@@ -439,7 +439,7 @@ class IQAlarmPanel extends HTMLElement {
       const isRecent=this._sensorRecent(sensor,now);
       node.classList.toggle("on",raw===true&&!isHandle&&!paused);
       node.classList.toggle("recent",isRecent);
-      const markup=this._roomSensorStateMarkup(sensor,now,paused,Boolean(node.closest("#live-room-status")));
+      const markup=this._roomSensorStateMarkup(sensor,now,paused,Boolean(node.closest('[data-live-key^="room-"]')));
       if(node.innerHTML!==markup)patchHTML(node,markup);
     });
     this._updateRoomBadges(now);
@@ -500,7 +500,7 @@ class IQAlarmPanel extends HTMLElement {
     if (this.tab === 4) this._scopeVisibility(this.shadowRoot.getElementById(this.data.config.rules?"profile-levels-form":"rules-form"));
     if (this.tab === 2) this._renderCatalog(this.shadowRoot.getElementById("sensor-search")?.value || "");
     const live = this.shadowRoot.getElementById("live-room-status");
-    if (live && this.liveRoom && this.data.config.rooms[this.liveRoom]) live.innerHTML = this._roomLive(this.data.config.rooms[this.liveRoom],true);
+    if (live && this.liveRoom && this.data.config.rooms[this.liveRoom]) live.innerHTML = this._roomLive(this.data.config.rooms[this.liveRoom]);
     this._scheduleRecognitionRefresh();
   }
 
@@ -592,7 +592,7 @@ class IQAlarmPanel extends HTMLElement {
       node.closest("[data-live-key]")?.style.setProperty("--level-color",color);
     });
   }
-  _roomLive(room,detail=false) {
+  _roomLive(room) {
     const sensors = this._orderedSensors(room.id);
     const now = Date.now() / 1000;
     const {text,color}=this._roomBadgePresentation(room.id,sensors,now);
@@ -602,7 +602,7 @@ class IQAlarmPanel extends HTMLElement {
       const isHandle = s.sensor_kind === "window_handle";
       const paused = this.data.status.robot_paused_sensors?.includes(s.entity_id)||this.data.status.ignored_windows?.includes(s.entity_id);
       const isRecent = this._sensorRecent(s,now);
-      return `<div class="sensor-line two-line"><div class="sensor-line-top"><div class="sensor-line-title">${symbolHTML(sensorSymbol(s))}<span class="sensor-name">${esc(s.name || s.entity_id)}</span></div></div><div class="sensor-line-bottom">${this._sensorIgnoredMarker(s)}<span class="sensor-state ${raw === true && !isHandle && !paused ? "on" : isRecent ? "recent" : ""}" data-sensor-state-id="${esc(s.entity_id)}">${this._roomSensorStateMarkup(s,now,paused,detail)}</span></div></div>`;
+      return `<div class="sensor-line two-line"><div class="sensor-line-top"><div class="sensor-line-title">${symbolHTML(sensorSymbol(s))}<span class="sensor-name">${esc(s.name || s.entity_id)}</span></div></div><div class="sensor-line-bottom">${this._sensorIgnoredMarker(s)}<span class="sensor-state ${raw === true && !isHandle && !paused ? "on" : isRecent ? "recent" : ""}" data-sensor-state-id="${esc(s.entity_id)}">${this._roomSensorStateMarkup(s,now,paused,true)}</span></div></div>`;
     }).join("") : `<p>Noch keine Sensoren zugeordnet.</p>`}</article>`;
   }
 
@@ -1739,7 +1739,7 @@ class IQAlarmPanel extends HTMLElement {
     const sensors = this._displaySensors().filter(s => s.room_id === room || s.front_of.includes(room));
     const cameras = [...new Set(sensors.flatMap(s => [s.camera_entity_id,s.entity_id.startsWith("camera.") ? s.entity_id : null]).filter(Boolean))];
     this.liveRoom = room;
-    this._dialog(data.name, `<div id="live-room-status">${this._roomLive(data,true)}</div>` + cameras.map(id => `<button type="button" style="margin-top:14px" data-command="more-info" data-id="${esc(id)}">${icon("cctv")}${esc(this.catalog.entities.find(e => e.entity_id === id)?.name || id)}</button>`).join(""),"live");
+    this._dialog(data.name, `<div id="live-room-status">${this._roomLive(data)}</div>` + cameras.map(id => `<button type="button" style="margin-top:14px" data-command="more-info" data-id="${esc(id)}">${icon("cctv")}${esc(this.catalog.entities.find(e => e.entity_id === id)?.name || id)}</button>`).join(""),"live");
     this.shadowRoot.querySelector('#editor [type="submit"]').hidden = true;
   }
 
