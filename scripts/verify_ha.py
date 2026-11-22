@@ -345,9 +345,6 @@ async def verify(hass, target) -> str:
             await ws.send_json({"id": 1, "type": "iqalarm/get"})
             denied = await ws.receive_json()
             assert denied["success"] is False and denied["error"]["code"] == "unauthorized", denied
-            await ws.send_json({"id": 10, **telegram_test})
-            assert (await ws.receive_json())["error"]["code"] == "unauthorized"
-            assert len(calls) == call_count
             await ws.send_json(
                 {"id": 2, "type": "iqalarm/config/save", "config": {}, "revision": 0}
             )
@@ -361,7 +358,10 @@ async def verify(hass, target) -> str:
             )
             assert {"events", "breach_chain"}.isdisjoint(result["status"])
             assert result["status"]["raw"]["binary_sensor.window"] is False
-            await ws.send_json({"id": 4, "type": "iqalarm/dashboard/subscribe"})
+            await ws.send_json({"id": 4, **telegram_test})
+            assert (await ws.receive_json())["error"]["code"] == "unauthorized"
+            assert sum(call[:2] == ("telegram_bot", "send_message") for call in calls) == 1
+            await ws.send_json({"id": 5, "type": "iqalarm/dashboard/subscribe"})
             assert (await ws.receive_json())["success"]
             event = (await ws.receive_json())["event"]
             assert event["config"] == result["config"] and "events" not in event["status"]
