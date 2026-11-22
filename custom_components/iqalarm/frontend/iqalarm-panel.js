@@ -1,15 +1,15 @@
-import {sensorTypeField, sensorTypeChoices, setSensorType, sensorListGroup, isSensorInput, suggestedSensorType, createSensor, SENSOR_TYPES} from "./sensor-types.js?v=2.16.0";
-import {insideRoomChoices, outsideInsideControls, outsideInsideSVG, renderOutsideInside, setOutsideInside} from "./outside-inside.js?v=2.16.0";
-import {openRobotDialog, readRobotForm, renderCoverage, updateRobotStatuses} from "./robots.js?v=2.16.0";
-import {TOPOLOGY_CSS, connectionEditor, imageControls, roomConnections, setRoomConnection} from "./floorplan-topology.js?v=2.16.0";
-import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings, triggerRows, recognitionDisplayData} from "./live-view.js?v=2.16.0";
-import {RULE_SOURCES_CSS, updateRuleSources} from "./rule-sources.js?v=2.16.0";
-import {bindIconFields, iconField, MDI_ICON, roomSymbol, sensorSymbol, symbolHTML} from "./display-icons.js?v=2.16.0";
-import {DraftJournal} from "./floorplan-drafts.js?v=2.16.0";
-import {renderLevels, renderProfiles, renderConfirmationContext, openRuleDialog, readRuleForm, readAutomaticDetection, readPersonDetection, readAlarmEscalation} from "./level-configuration.js?v=2.16.0";
-import "./window-assistant.js?v=2.16.0";
-import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.16.0";
-/* IQAlarm 2.16.0 · native ES module · no CDN, framework or build required. */
+import {sensorTypeField, sensorTypeChoices, setSensorType, sensorListGroup, isSensorInput, suggestedSensorType, createSensor, SENSOR_TYPES} from "./sensor-types.js?v=2.16.1";
+import {insideRoomChoices, outsideInsideControls, outsideInsideSVG, renderOutsideInside, setOutsideInside} from "./outside-inside.js?v=2.16.1";
+import {openRobotDialog, readRobotForm, renderCoverage, updateRobotStatuses} from "./robots.js?v=2.16.1";
+import {TOPOLOGY_CSS, connectionEditor, imageControls, roomConnections, setRoomConnection} from "./floorplan-topology.js?v=2.16.1";
+import {LIVE_VIEW_CSS, patchHTML, patchNode, statusRings, triggerRows, recognitionDisplayData, displayedLevel} from "./live-view.js?v=2.16.1";
+import {RULE_SOURCES_CSS, updateRuleSources} from "./rule-sources.js?v=2.16.1";
+import {bindIconFields, iconField, MDI_ICON, roomSymbol, sensorSymbol, symbolHTML} from "./display-icons.js?v=2.16.1";
+import {DraftJournal} from "./floorplan-drafts.js?v=2.16.1";
+import {renderLevels, renderProfiles, renderConfirmationContext, openRuleDialog, readRuleForm, readAutomaticDetection, readPersonDetection, readAlarmEscalation} from "./level-configuration.js?v=2.16.1";
+import "./window-assistant.js?v=2.16.1";
+import {alignPlanZones, buildGraphicZones, graphicViewBox, hasRoomReference, mergePolygons, orthogonalizePolygon, randomId, resolveRoom, roomGroups, roomVisualCenter} from "./floorplan-rooms.js?v=2.16.1";
+/* IQAlarm 2.16.1 · native ES module · no CDN, framework or build required. */
 const WINDOW_CSS = `.window-group{padding:18px 0;border-bottom:1px solid var(--divider-color,#dce3ec)}.window-inputs{margin:14px 0 0 24px;padding-left:18px;border-left:2px solid var(--divider-color,#dce3ec)}.window-inputs code{display:block;font-size:10px;overflow-wrap:anywhere;color:var(--secondary-text-color,#64758b)}.information{border-color:color-mix(in srgb,var(--primary-color,#2986bb) 25%,transparent)}.information summary,details.banner summary{cursor:pointer;font-size:13px}.information ha-icon{color:var(--primary-color,#2986bb)}`;
 const FLOORPLAN_MOTION_HOLD_SECONDS = 15;
 const RECOGNITION_FADE_SECONDS = 1.5;
@@ -545,7 +545,7 @@ class IQAlarmPanel extends HTMLElement {
     const offline = sensors.filter(x => s.raw[x.entity_id] == null && !s.ignored_windows?.includes(x.entity_id)).length;
     const profileButtons = `<button data-command="mode" data-mode="inactive" class="${!s.profile_id ? "active" : ""}">${icon("power")}Aus</button>` + Object.entries(c.profiles).map(([id, p]) => `<button data-command="profile-arm" data-id="${esc(id)}" class="${s.profile_id === id ? "active" : ""}">${this._profileSymbol(p)}${esc(p.name)}</button>`).join("");
     return this._head("Dein Haus im Überblick") + quarantine +
-      `<section class="card hero" data-live-key="hero" style="--level-color:${this._color(s.active && s.profile_id ? s.level : 0)}">${statusRings(displayData,Date.now()/1000+(this._displayClockOffset||0))}<div class="hero-copy"><h2>${s.profile_name ? esc(s.profile_name) : "Anlage aus"}</h2><p>${s.arming_until?"Startverzögerung läuft":s.active ? "Alarmreaktionen aktiv" : "Live-Status aktiv · keine Geräteaktionen"}</p><p>${s.monitored_sensors.length} Sensoren ausgewertet · Home Assistant: ${s.active ? "An" : "Aus"}</p>${s.pending_until ? `<div class="countdown">Eingangsverzögerung bis ${date(s.pending_until)}</div>` : ""}${renderConfirmationContext({data:displayData})}<div class="mode-buttons">${profileButtons}</div></div>${renderCoverage(this)}</section>` + this._floorplan(false) + information +
+      `<section class="card hero" data-live-key="hero" style="--level-color:${this._color(displayedLevel(s))}">${statusRings(displayData,Date.now()/1000+(this._displayClockOffset||0))}<div class="hero-copy"><h2>${s.profile_name ? esc(s.profile_name) : "Anlage aus"}</h2><p>${s.arming_until?"Startverzögerung läuft":s.active ? "Alarmreaktionen aktiv" : "Live-Status aktiv · keine Geräteaktionen"}</p><p>${s.monitored_sensors.length} Sensoren ausgewertet · Home Assistant: ${s.active ? "An" : "Aus"}</p>${s.pending_until ? `<div class="countdown">Eingangsverzögerung bis ${date(s.pending_until)}</div>` : ""}${renderConfirmationContext({data:displayData})}<div class="mode-buttons">${profileButtons}</div></div>${renderCoverage(this)}</section>` + this._floorplan(false) + information +
       `<div class="section-title"><h2>Räume & Sicherheitsstatus</h2><button class="small" data-tab="1">Räume verwalten ${icon("arrow-right")}</button></div><div class="grid">${rooms.length ? rooms.map(r => this._roomLive(r)).join("") : this._empty("Hier beginnt dein Schutzkonzept", "Lege Räume an oder importiere deine Home-Assistant-Bereiche.", "floor-plan")}</div>` +
       `<div class="metrics">${[["floor-plan", rooms.length, "Räume verbunden"], ["shield-check-outline", !s.active ? sensors.length : s.monitored_sensors.length, !s.active ? "Sensoren eingerichtet" : "Sensoren im Profil"], ["window-open-variant", open, "Kontakte geöffnet"], ["connection", quarantineItems.length + offline, "Störungen / isoliert"]].map(([symbol, n, title]) => `<div class="card metric">${icon(symbol)}<div><strong>${n}</strong><span>${title}</span></div></div>`).join("")}</div>`;
   }
@@ -1366,7 +1366,7 @@ class IQAlarmPanel extends HTMLElement {
     if(hero){
       const rings=hero.querySelector('[data-live-key="status-rings"]');
       if(rings){const buffer=document.createElement('div');buffer.innerHTML=statusRings(data,Date.now()/1000+(this._displayClockOffset||0));patchNode(rings,buffer.firstElementChild);}
-      hero.style.setProperty('--level-color',this._color(data.status.active?data.status.level:0));
+      hero.style.setProperty('--level-color',this._color(displayedLevel(data.status)));
       const context=hero.querySelector('[data-live-key="confirmation-context"]'),markup=renderConfirmationContext({data});
       if(context&&markup){const buffer=document.createElement('div');buffer.innerHTML=markup;patchNode(context,buffer.firstElementChild);}
       else if(context)context.remove();

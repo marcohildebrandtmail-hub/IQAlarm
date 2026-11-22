@@ -43,10 +43,20 @@ test('same ring nodes animate countdown using the server clock',async({page})=>{
   });
   const card=page.locator('iqalarm-card');
   await expect(card).toContainText('Start in 01:00');
+  const level=card.locator('svg text');
+  await expect(level).toHaveText('0');
   await page.clock.fastForward(30000);
   await expect(card).toContainText('Start in 00:30');
   expect(await card.locator('[data-promotion-ring]').getAttribute('stroke-dashoffset')).not.toBe('0');
   expect(await card.evaluate(c=>c.shadowRoot.querySelector('svg')===window.svg)).toBe(true);
+  await page.clock.fastForward(31000);
+  await expect(card).toContainText('Start in 00:00');
+  await expect(level).toHaveText('0');
+  await page.evaluate(()=>{
+    window.receive({...window.data,status:{...window.data.status,level:1,stage_id:'1',stage_name:'Sicher',arming_until:null}});
+  });
+  await expect(level).toHaveText('1');
+  await expect(card.locator('[data-promotion-ring]')).toHaveCount(0);
 });
 test('LVL 4 countdown waits for confirmed LVL 5 from the backend',async({page})=>{
   await page.evaluate(()=>{

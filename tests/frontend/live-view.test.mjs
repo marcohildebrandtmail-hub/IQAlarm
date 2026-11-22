@@ -106,6 +106,10 @@ test("startup delay fills only the existing red ring and shows the remaining tim
   const d={config:{settings:{startup_delay_seconds:60},stages:[{name:"Aus"},{name:"Sicher"}]},status:{active:true,profile_id:"away",mode:"active",stage_id:"1",stage_name:"Sicher",level:1,arming_started_at:100,arming_until:160,rule_progress:[]}};
   const html=statusRings(d,130);
   assert.match(html,/data-promotion-ring/);assert.match(html,/Start in 00:30/);
+  assert.match(html,/Alarmstufe 0, Start in 00:30/);
+  assert.equal(ringValues(d,130).level,0);
+  assert.match(statusRings(d,161),/>0<\/text>/);
+  assert.match(statusRings({...d,status:{...d.status,arming_until:null}},161),/>1<\/text>/);
   assert.doesNotMatch(html,/<progress|class="card"/);
   assert.equal(promotionProgress(d,100),0);assert.equal(promotionProgress(d,130),.5);assert.equal(promotionProgress(d,160),1);
   d.status.active=false;assert.equal(promotionProgress(d,130),null);

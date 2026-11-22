@@ -1,5 +1,5 @@
 /* Read-only Lovelace card. Rendering and timer projection are shared with IQAlarm. */
-import {LIVE_VIEW_CSS,patchHTML,recognitionDisplayData,statusRings} from "./live-view.js?v=2.16.0";
+import {LIVE_VIEW_CSS,patchHTML,recognitionDisplayData,statusRings,displayedLevel} from "./live-view.js?v=2.16.1";
 
 const esc=value=>String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const css=`
@@ -17,7 +17,7 @@ ha-card{height:100%;box-sizing:border-box;overflow:hidden}
 export function cardMarkup(data,now) {
   const display=recognitionDisplayData(data,now),s=display.status;
   const active=Boolean(s.active&&s.profile_id);
-  const stage=display.config.stages[active?s.level:0];
+  const stage=display.config.stages[displayedLevel(s)];
   const color=/^#[a-f\d]{6}$/i.test(stage?.color)?stage.color:"var(--primary-color)";
   const remaining=active&&Number.isFinite(s.pending_until)?Math.max(0,Math.ceil(s.pending_until-now)):null;
   const entry=remaining===null?"":`<p class="entry">Eingangsverzögerung ${String(Math.floor(remaining/60)).padStart(2,"0")}:${String(remaining%60).padStart(2,"0")}</p>`;
@@ -237,7 +237,7 @@ export class IQAlarmFloorplanCard extends IQAlarmCard {
     if(!this._live||!this._data){patchHTML(host,`<p class="message" role="status">${esc(this._message||"Verbinde mit IQAlarm …")}</p>`);return;}
     if(!this._floorplanRenderer){
       if(!this._rendererPromise&&!this._rendererFailed){
-        this._rendererPromise=import("./iqalarm-panel.js?v=2.16.0").then(module=>{
+        this._rendererPromise=import("./iqalarm-panel.js?v=2.16.1").then(module=>{
           this._floorplanRenderer=module;this.shadowRoot.querySelector("style").textContent=LIVE_VIEW_CSS+module.FLOORPLAN_VIEW_CSS+floorplanCss;
           if(this.isConnected)this._render();
         }).catch(()=>{this._rendererFailed=true;if(this.isConnected)this._render();});

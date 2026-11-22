@@ -231,6 +231,9 @@ for(const width of [1440,390])test(`startup clock animates the existing red ring
     const now=Date.now()/1000;p.data.status.arming_started_at=now-30;p.data.status.arming_until=now+30;p._render();
   });
   await expect(page.locator('.grade-caption')).toHaveText('Start in 00:30');
+  const level=page.locator('.hero .status-rings text');
+  await expect(level).toHaveText('0');
+  await expect(page.locator('.hero .level-caption')).toHaveText('Startverzögerung');
   const circle=page.locator('[data-promotion-ring]');
   expect(Number(await circle.getAttribute('stroke-dashoffset'))/(2*Math.PI*61)).toBeCloseTo(.5,3);
   await page.clock.runFor(10000);
@@ -240,4 +243,10 @@ for(const width of [1440,390])test(`startup clock animates the existing red ring
   expect(remainingFraction).toBeGreaterThanOrEqual(19/60);
   expect(remainingFraction).toBeLessThanOrEqual(20/60);
   await expect(page.locator('.hero progress')).toHaveCount(0);
+  await expect(level).toHaveText('0');
+  await page.locator('iqalarm-panel').evaluate(p=>{
+    p.data.status.arming_until=null;p.data.status.arming_started_at=null;p._render();
+  });
+  await expect(level).toHaveText('1');
+  await expect(circle).toHaveCount(0);
 });

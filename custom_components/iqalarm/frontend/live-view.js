@@ -162,10 +162,18 @@ export function recognitionDisplayData(data,now=Date.now()/1000) {
   const stage=data.config.stages[level];
   return {...display,status:{...status,level,stage_id:stage.id,stage_name:stage.name,stage_color:stage.color}};
 }
+function inactive(status) {
+  return status.active === false || status.mode === "inactive" || status.profile_id === null;
+}
+function starting(status) {
+  return Boolean(status.active && status.profile_id && Number.isFinite(status.arming_until));
+}
+export function displayedLevel(status) {
+  return inactive(status) || starting(status) ? 0 : status.level;
+}
 export function ringValues(data,now=Date.now()/1000) {
   const status=data.status;
-  const isInactive = status.active === false || status.mode === "inactive" || status.profile_id === null;
-  if(isInactive){
+  if(inactive(status) || starting(status)){
     return {level:0,grade:null,confirmation:0};
   }
   const entries=(status.rule_progress||[]).filter(p=>p.stage_id===status.stage_id&&p.target>0);
@@ -179,7 +187,7 @@ export function ringValues(data,now=Date.now()/1000) {
 }
 export function startupProgress(data,now) {
   const s=data.status;
-  if(!s.active||!s.profile_id||!Number.isFinite(s.arming_until))return null;
+  if(!starting(s))return null;
   const start=s.arming_started_at??(s.arming_until-(data.config.settings?.startup_delay_seconds??60));
   return s.arming_until>start?Math.max(0,Math.min(1,(now-start)/(s.arming_until-start))):null;
 }
@@ -194,11 +202,12 @@ export function promotionProgress(data,now) {
   return Math.max(0,Math.min(1,1-(end-now)/settings.promote_seconds));
 }
 export function statusRings(data,now=Date.now()/1000) {
-  const isInactive = data.status.active === false || data.status.mode === "inactive" || data.status.profile_id === null;
+  const {status}=data;
   const {level,grade,confirmation}=ringValues(data,now),outer=2*Math.PI*61,inner=2*Math.PI*46;
   const label=grade?.kind==="coverage"?"Überwachungsrisiko":"Bestätigungsgrad";
-  const stageName = isInactive ? (data.config.stages[0]?.name || "Deaktiviert") : data.status.stage_name;
-  const levelNum = isInactive ? 0 : data.status.level;
+  const stageName=starting(status) ? "Startverzögerung" :
+    inactive(status) ? (data.config.stages[0]?.name || "Deaktiviert") : status.stage_name;
+  const levelNum=displayedLevel(status);
   const startup=startupProgress(data,now);
   const remaining=startup!==null?Math.max(0,Math.ceil(data.status.arming_until-now)):null;
   const timer=startup!==null?`Start in ${String(Math.floor(remaining/60)).padStart(2,"0")}:${String(remaining%60).padStart(2,"0")}`:grade?.kind==="escalation"?`LVL 5 in ${String(Math.floor(Math.max(0,Math.ceil(data.status.alarm.deadline-now))/60)).padStart(2,"0")}:${String(Math.max(0,Math.ceil(data.status.alarm.deadline-now))%60).padStart(2,"0")}`:null;
